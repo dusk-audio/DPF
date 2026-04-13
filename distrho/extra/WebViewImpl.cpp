@@ -455,6 +455,7 @@ WebViewHandle webViewCreate(const char* const url,
     config.limitsNavigationsToAppBoundDomains = false;
     config.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
     config.preferences = prefs;
+    config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
 
     const CGRect rect = CGRectMake(options.offset.x / scaleFactor,
                                    options.offset.y / scaleFactor,
