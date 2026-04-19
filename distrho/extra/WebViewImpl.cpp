@@ -22,30 +22,7 @@
 #endif
 
 // #define WEB_VIEW_INCLUDE_GTK3_EXPLICITLY
-
-// #undef Bool
-// #undef CursorShape
-// #undef Expose
-// #undef FocusIn
-// #undef FocusOut
-// #undef FontChange
-// #undef KeyPress
-// #undef KeyRelease
-// #undef None
-// #undef Status
-// #define QT_NO_VERSION_TAGGING
-// #include <QGuiApplication>
-// #include <QEvent>
-// #include <QtCore/QChar>
-// #include <QtCore/QPoint>
-// #include <QtCore/QSize>
-// #undef signals
-
-#ifdef WEB_VIEW_INCLUDE_GTK3_EXPLICITLY
-#include <gtk/gtk.h>
-#include <gtk/gtkx.h>
-#include <webkit2/webkit2.h>
-#endif
+// #define WEB_VIEW_INCLUDE_QTx_EXPLICITLY
 
 #ifdef DISTRHO_OS_MAC
 # define WEB_VIEW_USING_MACOS_WEBKIT 1
@@ -93,6 +70,53 @@
 # else
 #  include <semaphore.h>
 # endif
+#endif
+
+#ifdef WEB_VIEW_INCLUDE_GTK3_EXPLICITLY
+#include <gtk/gtk.h>
+#include <gtk/gtkx.h>
+#include <webkit2/webkit2.h>
+#endif
+
+#ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+enum {
+    X_Expose = Expose,
+    X_False = False,
+    X_FocusIn = FocusIn,
+    X_FocusOut = FocusOut,
+    X_KeyPress = KeyPress,
+    X_KeyRelease = KeyRelease,
+    X_None = None,
+    X_True = True,
+};
+typedef Status X_Status;
+#undef Always
+#undef Bool
+#undef CursorShape
+#undef Expose
+#undef False
+#undef FocusIn
+#undef FocusOut
+#undef FontChange
+#undef GrayScale
+#undef KeyPress
+#undef KeyRelease
+#undef None
+#undef Status
+#undef True
+#undef Unsorted
+#undef index
+#undef signals
+#include <QtWebEngineWidgets>
+#define Expose X_Expose
+#define False X_False
+#define FocusIn X_FocusIn
+#define FocusOut X_FocusOut
+#define KeyPress X_KeyPress
+#define KeyRelease X_KeyRelease
+#define None 0L
+#define Status X_Status
+#define True X_True
 #endif
 
 // -----------------------------------------------------------------------------------------------------------
@@ -916,33 +940,146 @@ typedef int (*GSourceFunc)(void*);
 #define WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START 0
 #endif
 
-// -----------------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------------------
 
-class QApplication { uint8_t _[16 * 2]; };
-class QByteArray { public: uint8_t _[24 * 2]; };
-class QChar;
-class QChildEvent;
-class QColor;
-class QEvent { uint8_t _[16 * 2]; };
-class QIODevice;
-class QJsonObject;
-class QJsonValue { uint8_t _[128 /* TODO */ * 2]; };
-class QMetaMethod;
-class QMetaObject { uint8_t _[56 * 2]; };
-class QString { uint8_t _[8 * 4]; };
-class QTimerEvent;
-class QUrl { uint8_t _[8 * 4]; };
-class QWebChannel { uint8_t _[128 /* TODO */ * 2]; };
-class QWebEnginePage { uint8_t _[128 /* TODO */ * 2]; };
-class QWebEngineProfile { uint8_t _[128 /* TODO */ * 2]; };
-class QWebEngineScript { uint8_t _[128 /* TODO */ * 2]; };
-class QWebEngineScriptCollection;
-class QWebEngineSettings;
-class QWebEngineUrlRequestJob;
-class QWebEngineUrlScheme { uint8_t _[128 /* TODO */ * 2]; };
-class QWebEngineUrlSchemeHandler;
-class QWebEngineView { uint8_t _[56 * 2]; };
-class QWindow;
+#define SIZEOF_QApplication 16
+#define SIZEOF_QByteArray 24
+#define SIZEOF_QJsonValue 24
+#define SIZEOF_QMetaObject 56
+#define SIZEOF_QString 24
+#define SIZEOF_QUrl 8
+#define SIZEOF_QWebChannel 16
+#define SIZEOF_QWebEnginePage 24
+#define SIZEOF_QWebEngineScript 8
+#define SIZEOF_QWebEngineUrlScheme 8
+#define SIZEOF_QWebEngineView 56
+
+#ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+
+static_assert(sizeof(QApplication) == SIZEOF_QApplication, "wrong size");
+static_assert(sizeof(QByteArray) <= SIZEOF_QByteArray, "wrong size");
+static_assert(sizeof(QJsonValue) == SIZEOF_QJsonValue, "wrong size");
+static_assert(sizeof(QMetaObject) <= SIZEOF_QMetaObject, "wrong size");
+static_assert(sizeof(QString) <= SIZEOF_QString, "wrong size");
+static_assert(sizeof(QUrl) == SIZEOF_QUrl, "wrong size");
+static_assert(sizeof(QWebChannel) == SIZEOF_QWebChannel, "wrong size");
+static_assert(sizeof(QWebEnginePage) == SIZEOF_QWebEnginePage, "wrong size");
+static_assert(sizeof(QWebEngineScript) == SIZEOF_QWebEngineScript, "wrong size");
+static_assert(sizeof(QWebEngineUrlScheme) == SIZEOF_QWebEngineUrlScheme, "wrong size");
+static_assert(sizeof(QWebEngineView) <= SIZEOF_QWebEngineView, "wrong size");
+
+#define QApplication_exec() QApplication::exec()
+#define QApplication_postEvent(a, b, c) QApplication::postEvent(a, b, c)
+#define QApplication_quit() QApplication::quit()
+#define QApplication_setAttribute(a, b) QApplication::setAttribute(a, b)
+#define QJsonObject_value(obj, a) static_cast<const QJsonObject*>(obj)->value(a)
+#define QJsonValue_toString(obj) static_cast<const QJsonValue*>(obj)->toString()
+#define QString_toUtf8(obj)  static_cast<QString*>(obj)->toUtf8()
+#define QWebChannel_registerObject(obj, a, b) static_cast<QWebChannel*>(obj)->registerObject(a, b)
+#define QWebEnginePage_runJavaScript(obj, a, b, c) static_cast<QWebEnginePage*>(obj)->runJavaScript(a, b, c)
+#define QWebEnginePage_runJavaScript_compat(obj, a) static_cast<QWebEnginePage*>(obj)->runJavaScript(a)
+#define QWebEnginePage_setBackgroundColor(obj, a) static_cast<QWebEnginePage*>(obj)->setBackgroundColor(a)
+#define QWebEnginePage_setWebChannel(obj, a, b) static_cast<QWebEnginePage*>(obj)->setWebChannel(a, b)
+#define QWebEnginePage_webChannel(obj) static_cast<QWebEnginePage*>(obj)->webChannel()
+#define QWebEngineProfile_defaultProfile() QWebEngineProfile::defaultProfile()
+#define QWebEngineProfile_installUrlSchemeHandler(obj, a, b) static_cast<QWebEngineProfile*>(obj)->installUrlSchemeHandler(a, b)
+#define QWebEngineProfile_scripts(obj) static_cast<QWebEngineProfile*>(obj)->scripts()
+#define QWebEngineProfile_settings(obj) static_cast<QWebEngineProfile*>(obj)->settings()
+#define QWebEngineScriptCollection_insert(obj, a) static_cast<QWebEngineScriptCollection*>(obj)->insert(a)
+#define QWebEngineScript_setInjectionPoint(obj, a) static_cast<QWebEngineScript*>(obj)->setInjectionPoint(a)
+#define QWebEngineScript_setRunsOnSubFrames(obj, a) static_cast<QWebEngineScript*>(obj)->setRunsOnSubFrames(a)
+#define QWebEngineScript_setSourceCode(obj, a) static_cast<QWebEngineScript*>(obj)->setSourceCode(a)
+#define QWebEngineScript_setWorldId(obj, a) static_cast<QWebEngineScript*>(obj)->setWorldId(a)
+#define QWebEngineSettings_setAttribute(obj, a, b) static_cast<QWebEngineSettings*>(obj)->setAttribute(a, b)
+#define QWebEngineUrlRequestJob_reply(obj, a, b) static_cast<QWebEngineUrlRequestJob*>(obj)->reply(a)
+#define QWebEngineUrlScheme_registerScheme(a) QWebEngineUrlScheme::registerScheme(a)
+#define QWebEngineUrlScheme_setFlags(obj, a) static_cast<QWebEngineUrlScheme*>(obj)->setFlags(a)
+#define QWebEngineUrlScheme_setSyntax(obj, a) static_cast<QWebEngineUrlScheme*>(obj)->setSyntax(a)
+#define QWebEngineView_move(obj, a) static_cast<QWebEngineView*>(obj)->move(a)
+#define QWebEngineView_resize(obj, a) static_cast<QWebEngineView*>(obj)->resize(a)
+#define QWebEngineView_setPage(obj, a) static_cast<QWebEngineView*>(obj)->setPage(a)
+#define QWebEngineView_setUrl(obj, a) static_cast<QWebEngineView*>(obj)->setUrl(a)
+#define QWebEngineView_show(obj) static_cast<QWebEngineView*>(obj)->show()
+#define QWebEngineView_winId(obj) static_cast<QWebEngineView*>(obj)->winId()
+#define QWebEngineView_windowHandle(obj) static_cast<QWebEngineView*>(obj)->windowHandle()
+#define QWindow_fromWinId(a) QWindow::fromWinId(a)
+#define QWindow_setParent(obj, a) static_cast<QWindow*>(obj)->setParent(a)
+
+#else
+
+struct QApplication { uint8_t _[SIZEOF_QApplication]; };
+struct QByteArray { public: uint8_t _[SIZEOF_QByteArray]; };
+struct QChar;
+struct QChildEvent;
+struct QColor;
+struct QEvent {
+    enum Type {
+        User = 1000,
+    };
+};
+struct QIODevice;
+struct QJsonObject;
+struct QJsonValue { uint8_t _[SIZEOF_QJsonValue]; };
+struct QMetaMethod;
+struct QMetaObject { uint8_t _[SIZEOF_QMetaObject]; };
+struct QString { uint8_t _[SIZEOF_QString]; };
+struct QTimerEvent;
+struct QUrl {
+    uint8_t _[SIZEOF_QUrl];
+    enum ParsingMode {
+        StrictMode = 1,
+    };
+};
+struct QWebChannel { uint8_t _[SIZEOF_QWebChannel]; };
+struct QWebEnginePage { uint8_t _[SIZEOF_QWebEnginePage]; };
+struct QWebEngineProfile;
+struct QWebEngineScript {
+    uint8_t _[SIZEOF_QWebEngineUrlScheme];
+    enum InjectionPoint {
+        DocumentCreation = 2,
+    };
+    enum ScriptWorldId {
+        MainWorld = 0,
+    };
+};
+struct QWebEngineScriptCollection;
+struct QWebEngineSettings {
+    enum WebAttribute {
+        JavascriptCanAccessClipboard = 3,
+        LocalContentCanAccessRemoteUrls = 6,
+        PlaybackRequiresUserGesture = 26,
+        JavascriptCanPaste = 28,
+    };
+};
+struct QWebEngineUrlRequestJob;
+struct QWebEngineUrlScheme {
+    uint8_t _[SIZEOF_QWebEngineView];
+    enum Flags {
+        SecureScheme = 0x1,
+        LocalScheme = 0x2,
+        LocalAccessAllowed = 0x4,
+        ServiceWorkersAllowed = 0x8,
+        ViewSourceAllowed = 0x20,
+        ContentSecurityPolicyIgnored = 0x40,
+    };
+    enum Syntax {
+        Path = 3,
+    };
+};
+struct QWebEngineUrlSchemeHandler;
+struct QWebEngineView { uint8_t _[56 * 2]; };
+struct QWindow;
+
+namespace Qt {
+    enum ApplicationAttribute {
+        AA_X11InitThreads = 10,
+        AA_UseHighDpiPixmaps = 13,
+        AA_EnableHighDpiScaling = 20,
+    };
+    enum EventPriority {
+        HighEventPriority = 1,
+    };
+};
 
 struct QPoint {
     int _x, _y;
@@ -954,6 +1091,9 @@ struct QSize {
     QSize(int w, int h) : _w(w), _h(h) {}
 };
 
+typedef int QFlags;
+#endif
+
 // -----------------------------------------------------------------------------------------------------------
 
 #define JOIN(A, B) A ## B
@@ -962,9 +1102,11 @@ struct QSize {
     JOIN(NAME, _t) NAME = reinterpret_cast<JOIN(NAME, _t)>(dlsym(nullptr, #NAME)); \
     DISTRHO_SAFE_ASSERT_RETURN(NAME != nullptr, false);
 
-#define CPPSYM(S, NAME, SN) \
-    S NAME = reinterpret_cast<S>(dlsym(nullptr, #SN)); \
+#define CPPSYM(NAME, SYMBOL) \
+    JOIN(NAME, _t) NAME = reinterpret_cast<JOIN(NAME, _t)>(dlsym(nullptr, #SYMBOL)); \
     DISTRHO_SAFE_ASSERT_RETURN(NAME != nullptr, false);
+
+// -----------------------------------------------------------------------------------------------------------
 
 static int web_wake_idle(void* const ptr)
 {
@@ -1383,6 +1525,8 @@ static bool gtk3(Display* const display,
 // -----------------------------------------------------------------------------------------------------------
 // qt common code
 
+#ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+
 #define TRACE d_stdout("%04d: %s", __LINE__, __PRETTY_FUNCTION__);
 
 class QObject
@@ -1484,6 +1628,7 @@ public:
 
     virtual void sendMessage(const QJsonObject&) = 0;
 };
+#endif
 
 // -----------------------------------------------------------------------------------------------------------
 
@@ -1500,6 +1645,9 @@ public:
           _rb(rb),
           isQt5(false)
     {
+       #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        qstrkey = "m";
+       #else
         void (*QString__init)(QString*, const QChar*, int) =
             reinterpret_cast<typeof(QString__init)>(dlsym(nullptr, "_ZN7QStringC2EPK5QCharx"));
 
@@ -1509,8 +1657,9 @@ public:
             QString__init = reinterpret_cast<typeof(QString__init)>(dlsym(nullptr, "_ZN7QStringC2EPK5QChari"));
         }
 
-        const ushort key_qchar[] = { 'm', 0 };
+        constexpr const ushort key_qchar[] = { 'm', 0 };
         QString__init(&qstrkey, reinterpret_cast<const QChar*>(key_qchar), 1);
+       #endif
     }
 
     void customEvent(QEvent*) override
@@ -1520,6 +1669,7 @@ public:
 
     void sendMessage(const QJsonObject& obj) override
     {
+       #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
         static void (*QByteArray_clear)(QByteArray*) =
             reinterpret_cast<typeof(QByteArray_clear)>(dlsym(nullptr, "_ZN10QByteArray5clearEv"));
 
@@ -1537,14 +1687,19 @@ public:
         static QByteArray (*QString_toUtf8)(const QString*) =
             reinterpret_cast<typeof(QString_toUtf8)>(dlsym(nullptr, "_ZNK7QString6toUtf8Ev")) ?:
             reinterpret_cast<typeof(QString_toUtf8)>(dlsym(nullptr, "_ZN7QString13toUtf8_helperERKS_"));
+       #endif
 
         const QJsonValue json = QJsonObject_value(&obj, qstrkey);
         QString qstrvalue = QJsonValue_toString(&json);
         QByteArray data = QString_toUtf8(&qstrvalue);
 
+       #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        const char* const value = data.data();
+       #else
         const uint8_t* const dptr = static_cast<const uint8_t*>(*reinterpret_cast<const void**>(data._));
         const intptr_t offset = isQt5 ? *reinterpret_cast<const intptr_t*>(dptr + 16) : 16;
         const char* const value = reinterpret_cast<const char*>(dptr + offset);
+       #endif
 
         d_debug("js call received with data '%s'", value);
 
@@ -1556,11 +1711,12 @@ public:
         rbctrl2.writeCustomData(value, len);
         rbctrl2.commitWrite();
 
+       #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
         // QByteArray and QString destructors are inlined and can't be called from here, call their next closest thing
         QByteArray_clear(&data);
         QString_setRawData(&qstrvalue, nullptr, 0);
-
         QJsonValue__deinit(&json);
+       #endif
     }
 };
 
@@ -1579,6 +1735,7 @@ static bool qtwebengine(const int qtVersion,
                         const char* const initialJS,
                         WebViewRingBuffer* const shmptr)
 {
+   #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
     void* lib;
     switch (qtVersion)
     {
@@ -1646,13 +1803,13 @@ static bool qtwebengine(const int qtVersion,
 
     typedef void (*QApplication__init_t)(QApplication*, int&, char**, int);
     typedef void (*QApplication_exec_t)();
-    typedef void (*QApplication_postEvent_t)(QObject*, QEvent*, int);
+    typedef void (*QApplication_postEvent_t)(QObject*, QEvent*, Qt::EventPriority);
     typedef void (*QApplication_quit_t)();
-    typedef void (*QApplication_setAttribute_t)(int, bool);
-    typedef void (*QEvent__init_t)(QEvent*, int /* QEvent::Type */);
+    typedef void (*QApplication_setAttribute_t)(Qt::ApplicationAttribute, bool);
+    typedef void (*QEvent__init_t)(QEvent*, QEvent::Type);
     typedef QJsonValue (*QJsonObject_value_t)(const QJsonObject*, const QString &);
     typedef QString (*QJsonValue_toString_t)(const QJsonValue*);
-    typedef void (*QUrl__init_t)(QUrl*, const QString&, int /* QUrl::ParsingMode */);
+    typedef void (*QUrl__init_t)(QUrl*, const QString&, QUrl::ParsingMode);
     typedef void (*QWebChannel__init_t)(QWebChannel*, QObject*);
     typedef void (*QWebChannel_registerObject_t)(QWebChannel*, const QString&, QObject*);
     typedef void (*QWebEnginePage__init_t)(QWebEnginePage*, QWebEngineProfile*, QObject*);
@@ -1663,17 +1820,17 @@ static bool qtwebengine(const int qtVersion,
     typedef QWebEngineSettings* (*QWebEngineProfile_settings_t)(QWebEngineProfile*);
     typedef QWebEngineScriptCollection* (*QWebEngineProfile_scripts_t)(QWebEngineProfile*);
     typedef void (*QWebEngineScript__init_t)(QWebEngineScript*);
-    typedef void (*QWebEngineScript_setInjectionPoint_t)(QWebEngineScript*, int /* QWebEngineScript::InjectionPoint */);
+    typedef void (*QWebEngineScript_setInjectionPoint_t)(QWebEngineScript*, QWebEngineScript::InjectionPoint);
     typedef void (*QWebEngineScript_setRunsOnSubFrames_t)(QWebEngineScript*, bool);
     typedef void (*QWebEngineScript_setSourceCode_t)(QWebEngineScript*, const QString &);
     typedef void (*QWebEngineScript_setWorldId_t)(QWebEngineScript*, uint32_t);
     typedef void (*QWebEngineScriptCollection_insert_t)(QWebEngineScriptCollection*, QWebEngineScript&);
-    typedef void (*QWebEngineSettings_setAttribute_t)(QWebEngineSettings*, int /* QWebEngineSettings::WebAttribute */, bool);
+    typedef void (*QWebEngineSettings_setAttribute_t)(QWebEngineSettings*, QWebEngineSettings::WebAttribute, bool);
     // typedef void (*QWebEngineUrlRequestJob_reply_t)(QWebEngineUrlRequestJob*, const QByteArray&, QIODevice*);
     typedef void (*QWebEngineUrlScheme__init_t)(QWebEngineUrlScheme*, const QByteArray&);
     typedef void (*QWebEngineUrlScheme_registerScheme_t)(QWebEngineUrlScheme&);
-    typedef void (*QWebEngineUrlScheme_setFlags_t)(QWebEngineUrlScheme*, int /* QWebEngineUrlScheme::Flags */);
-    typedef void (*QWebEngineUrlScheme_setSyntax_t)(QWebEngineUrlScheme*, int /* QWebEngineUrlScheme::Syntax */);
+    typedef void (*QWebEngineUrlScheme_setFlags_t)(QWebEngineUrlScheme*, QWebEngineUrlScheme::Flags);
+    typedef void (*QWebEngineUrlScheme_setSyntax_t)(QWebEngineUrlScheme*, QWebEngineUrlScheme::Syntax);
     typedef void (*QWebEngineUrlSchemeHandler__init_t)(QObject*, QObject*);
     typedef void (*QWebEngineView__init_t)(QWebEngineView*, QObject*);
     typedef void (*QWebEngineView_move_t)(QWebEngineView*, const QPoint&);
@@ -1686,47 +1843,48 @@ static bool qtwebengine(const int qtVersion,
     typedef QWindow* (*QWindow_fromWinId_t)(ulonglong);
     typedef void (*QWindow_setParent_t)(QWindow*, void*);
 
-    CPPSYM(QApplication__init_t, QApplication__init, _ZN12QApplicationC1ERiPPci)
-    CPPSYM(QApplication_exec_t, QApplication_exec, _ZN15QGuiApplication4execEv)
-    CPPSYM(QApplication_postEvent_t, QApplication_postEvent, _ZN16QCoreApplication9postEventEP7QObjectP6QEventi)
-    CPPSYM(QApplication_quit_t, QApplication_quit, _ZN16QCoreApplication4quitEv)
-    CPPSYM(QApplication_setAttribute_t, QApplication_setAttribute, _ZN16QCoreApplication12setAttributeEN2Qt20ApplicationAttributeEb)
-    CPPSYM(QEvent__init_t, QEvent__init, _ZN6QEventC1ENS_4TypeE)
-    CPPSYM(QJsonObject_value_t, QJsonObject_value, _ZNK11QJsonObject5valueERK7QString)
-    CPPSYM(QJsonValue_toString_t, QJsonValue_toString, _ZNK10QJsonValue8toStringEv)
-    CPPSYM(QUrl__init_t, QUrl__init, _ZN4QUrlC1ERK7QStringNS_11ParsingModeE)
-    CPPSYM(QWebChannel__init_t, QWebChannel__init, _ZN11QWebChannelC1EP7QObject)
-    CPPSYM(QWebChannel_registerObject_t, QWebChannel_registerObject, _ZN11QWebChannel14registerObjectERK7QStringP7QObject)
-    CPPSYM(QWebEnginePage__init_t, QWebEnginePage__init, _ZN14QWebEnginePageC1EP17QWebEngineProfileP7QObject)
-    CPPSYM(QWebEnginePage_setBackgroundColor_t, QWebEnginePage_setBackgroundColor, _ZN14QWebEnginePage18setBackgroundColorERK6QColor)
-    CPPSYM(QWebEnginePage_webChannel_t, QWebEnginePage_webChannel, _ZNK14QWebEnginePage10webChannelEv)
-    CPPSYM(QWebEngineProfile_defaultProfile_t, QWebEngineProfile_defaultProfile, _ZN17QWebEngineProfile14defaultProfileEv)
-    CPPSYM(QWebEngineProfile_installUrlSchemeHandler_t, QWebEngineProfile_installUrlSchemeHandler, _ZN17QWebEngineProfile23installUrlSchemeHandlerERK10QByteArrayP26QWebEngineUrlSchemeHandler)
-    CPPSYM(QWebEngineProfile_settings_t, QWebEngineProfile_settings, _ZNK17QWebEngineProfile8settingsEv)
-    CPPSYM(QWebEngineProfile_scripts_t, QWebEngineProfile_scripts, _ZNK17QWebEngineProfile7scriptsEv)
-    CPPSYM(QWebEngineScript__init_t, QWebEngineScript__init, _ZN16QWebEngineScriptC1Ev)
-    CPPSYM(QWebEngineScript_setInjectionPoint_t, QWebEngineScript_setInjectionPoint, _ZN16QWebEngineScript17setInjectionPointENS_14InjectionPointE)
-    CPPSYM(QWebEngineScript_setRunsOnSubFrames_t, QWebEngineScript_setRunsOnSubFrames, _ZN16QWebEngineScript18setRunsOnSubFramesEb)
-    CPPSYM(QWebEngineScript_setSourceCode_t, QWebEngineScript_setSourceCode, _ZN16QWebEngineScript13setSourceCodeERK7QString)
-    CPPSYM(QWebEngineScript_setWorldId_t, QWebEngineScript_setWorldId, _ZN16QWebEngineScript10setWorldIdEj)
-    CPPSYM(QWebEngineScriptCollection_insert_t, QWebEngineScriptCollection_insert, _ZN26QWebEngineScriptCollection6insertERK16QWebEngineScript)
-    CPPSYM(QWebEngineSettings_setAttribute_t, QWebEngineSettings_setAttribute, _ZN18QWebEngineSettings12setAttributeENS_12WebAttributeEb)
-    // CPPSYM(QWebEngineUrlRequestJob_reply_t, QWebEngineUrlRequestJob_reply, _ZN23QWebEngineUrlRequestJob5replyERK10QByteArrayP9QIODevice)
-    CPPSYM(QWebEngineUrlScheme__init_t, QWebEngineUrlScheme__init, _ZN19QWebEngineUrlSchemeC1ERK10QByteArray)
-    CPPSYM(QWebEngineUrlScheme_registerScheme_t, QWebEngineUrlScheme_registerScheme, _ZN19QWebEngineUrlScheme14registerSchemeERKS_)
-    CPPSYM(QWebEngineUrlScheme_setFlags_t, QWebEngineUrlScheme_setFlags, _ZN19QWebEngineUrlScheme8setFlagsE6QFlagsINS_4FlagEE)
-    CPPSYM(QWebEngineUrlScheme_setSyntax_t, QWebEngineUrlScheme_setSyntax, _ZN19QWebEngineUrlScheme9setSyntaxENS_6SyntaxE)
-    CPPSYM(QWebEngineUrlSchemeHandler__init_t, QWebEngineUrlSchemeHandler__init, _ZN26QWebEngineUrlSchemeHandlerC1EP7QObject)
-    CPPSYM(QWebEngineView__init_t, QWebEngineView__init, _ZN14QWebEngineViewC1EP7QWidget)
-    CPPSYM(QWebEngineView_move_t, QWebEngineView_move, _ZN7QWidget4moveERK6QPoint)
-    CPPSYM(QWebEngineView_resize_t, QWebEngineView_resize, _ZN7QWidget6resizeERK5QSize)
-    CPPSYM(QWebEngineView_setPage_t, QWebEngineView_setPage, _ZN14QWebEngineView7setPageEP14QWebEnginePage)
-    CPPSYM(QWebEngineView_setUrl_t, QWebEngineView_setUrl, _ZN14QWebEngineView6setUrlERK4QUrl)
-    CPPSYM(QWebEngineView_show_t, QWebEngineView_show, _ZN7QWidget4showEv)
-    CPPSYM(QWebEngineView_winId_t, QWebEngineView_winId, _ZNK7QWidget5winIdEv)
-    CPPSYM(QWebEngineView_windowHandle_t, QWebEngineView_windowHandle, _ZNK7QWidget12windowHandleEv)
-    CPPSYM(QWindow_fromWinId_t, QWindow_fromWinId, _ZN7QWindow9fromWinIdEy)
-    CPPSYM(QWindow_setParent_t, QWindow_setParent, _ZN7QWindow9setParentEPS_)
+    CPPSYM(QApplication__init, _ZN12QApplicationC1ERiPPci)
+    CPPSYM(QApplication_exec, _ZN15QGuiApplication4execEv)
+    CPPSYM(QApplication_postEvent, _ZN16QCoreApplication9postEventEP7QObjectP6QEventi)
+    CPPSYM(QApplication_quit, _ZN16QCoreApplication4quitEv)
+    CPPSYM(QApplication_setAttribute, _ZN16QCoreApplication12setAttributeEN2Qt20ApplicationAttributeEb)
+    CPPSYM(QEvent__init, _ZN6QEventC1ENS_4TypeE)
+    CPPSYM(QJsonObject_value, _ZNK11QJsonObject5valueERK7QString)
+    CPPSYM(QJsonValue_toString, _ZNK10QJsonValue8toStringEv)
+    CPPSYM(QUrl__init, _ZN4QUrlC1ERK7QStringNS_11ParsingModeE)
+    CPPSYM(QWebChannel__init, _ZN11QWebChannelC1EP7QObject)
+    CPPSYM(QWebChannel_registerObject, _ZN11QWebChannel14registerObjectERK7QStringP7QObject)
+    CPPSYM(QWebEnginePage__init, _ZN14QWebEnginePageC1EP17QWebEngineProfileP7QObject)
+    CPPSYM(QWebEnginePage_setBackgroundColor, _ZN14QWebEnginePage18setBackgroundColorERK6QColor)
+    CPPSYM(QWebEnginePage_webChannel, _ZNK14QWebEnginePage10webChannelEv)
+    CPPSYM(QWebEngineProfile_defaultProfile, _ZN17QWebEngineProfile14defaultProfileEv)
+    CPPSYM(QWebEngineProfile_installUrlSchemeHandler, _ZN17QWebEngineProfile23installUrlSchemeHandlerERK10QByteArrayP26QWebEngineUrlSchemeHandler)
+    CPPSYM(QWebEngineProfile_settings, _ZNK17QWebEngineProfile8settingsEv)
+    CPPSYM(QWebEngineProfile_scripts, _ZNK17QWebEngineProfile7scriptsEv)
+    CPPSYM(QWebEngineScript__init, _ZN16QWebEngineScriptC1Ev)
+    CPPSYM(QWebEngineScript_setInjectionPoint, _ZN16QWebEngineScript17setInjectionPointENS_14InjectionPointE)
+    CPPSYM(QWebEngineScript_setRunsOnSubFrames, _ZN16QWebEngineScript18setRunsOnSubFramesEb)
+    CPPSYM(QWebEngineScript_setSourceCode, _ZN16QWebEngineScript13setSourceCodeERK7QString)
+    CPPSYM(QWebEngineScript_setWorldId, _ZN16QWebEngineScript10setWorldIdEj)
+    CPPSYM(QWebEngineScriptCollection_insert, _ZN26QWebEngineScriptCollection6insertERK16QWebEngineScript)
+    CPPSYM(QWebEngineSettings_setAttribute, _ZN18QWebEngineSettings12setAttributeENS_12WebAttributeEb)
+    // CPPSYM(QWebEngineUrlRequestJob_reply, _ZN23QWebEngineUrlRequestJob5replyERK10QByteArrayP9QIODevice)
+    CPPSYM(QWebEngineUrlScheme__init, _ZN19QWebEngineUrlSchemeC1ERK10QByteArray)
+    CPPSYM(QWebEngineUrlScheme_registerScheme, _ZN19QWebEngineUrlScheme14registerSchemeERKS_)
+    CPPSYM(QWebEngineUrlScheme_setFlags, _ZN19QWebEngineUrlScheme8setFlagsE6QFlagsINS_4FlagEE)
+    CPPSYM(QWebEngineUrlScheme_setSyntax, _ZN19QWebEngineUrlScheme9setSyntaxENS_6SyntaxE)
+    CPPSYM(QWebEngineUrlSchemeHandler__init, _ZN26QWebEngineUrlSchemeHandlerC1EP7QObject)
+    CPPSYM(QWebEngineView__init, _ZN14QWebEngineViewC1EP7QWidget)
+    CPPSYM(QWebEngineView_move, _ZN7QWidget4moveERK6QPoint)
+    CPPSYM(QWebEngineView_resize, _ZN7QWidget6resizeERK5QSize)
+    CPPSYM(QWebEngineView_setPage, _ZN14QWebEngineView7setPageEP14QWebEnginePage)
+    CPPSYM(QWebEngineView_setUrl, _ZN14QWebEngineView6setUrlERK4QUrl)
+    CPPSYM(QWebEngineView_show, _ZN7QWidget4showEv)
+    CPPSYM(QWebEngineView_winId, _ZNK7QWidget5winIdEv)
+    CPPSYM(QWebEngineView_windowHandle, _ZNK7QWidget12windowHandleEv)
+    CPPSYM(QWindow_fromWinId, _ZN7QWindow9fromWinIdEy)
+    CPPSYM(QWindow_setParent, _ZN7QWindow9setParentEPS_)
+   #endif
 
     unsetenv("QT_FONT_DPI");
     unsetenv("QT_SCREEN_SCALE_FACTORS");
@@ -1746,41 +1904,62 @@ static bool qtwebengine(const int qtVersion,
     std::snprintf(scale, 7, "%.2f", scaleFactor);
     setenv("QT_SCALE_FACTOR", scale, 1);
 
+   #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+    QByteArray urlSchemeName("dpf", 3);
+   #else
     QByteArray urlSchemeName;
     QByteArray__init(&urlSchemeName, "dpf", 3);
+   #endif
 
-    constexpr const int urlSchemeFlags = 0
-        | 0x1 /* QWebEngineUrlScheme::SecureScheme */
-        | 0x2 /* QWebEngineUrlScheme::LocalScheme */
-        | 0x4 /* QWebEngineUrlScheme::LocalAccessAllowed */
-        | 0x8 /* QWebEngineUrlScheme::ServiceWorkersAllowed */
-        | 0x40 /* QWebEngineUrlScheme::ContentSecurityPolicyIgnored */
-    ;
+    // TODO
+    constexpr const bool debug = true;
+
+    constexpr const QWebEngineUrlScheme::Flags urlSchemeFlags = static_cast<QWebEngineUrlScheme::Flags>(0
+        | QWebEngineUrlScheme::SecureScheme
+        | QWebEngineUrlScheme::LocalScheme
+        | QWebEngineUrlScheme::LocalAccessAllowed
+        | QWebEngineUrlScheme::ServiceWorkersAllowed
+        | QWebEngineUrlScheme::ContentSecurityPolicyIgnored
+        | (debug ? QWebEngineUrlScheme::ViewSourceAllowed : 0)
+        );
+   #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+    QWebEngineUrlScheme urlScheme(urlSchemeName);
+   #else
     QWebEngineUrlScheme urlScheme;
     QWebEngineUrlScheme__init(&urlScheme, urlSchemeName);
-    QWebEngineUrlScheme_setSyntax(&urlScheme, 3 /* QWebEngineUrlScheme::Syntax::Path */);
+   #endif
+    QWebEngineUrlScheme_setSyntax(&urlScheme, QWebEngineUrlScheme::Syntax::Path);
     QWebEngineUrlScheme_setFlags(&urlScheme, urlSchemeFlags);
     QWebEngineUrlScheme_registerScheme(urlScheme);
 
+   #if !defined(QT_VERSION_MAJOR) || (QT_VERSION_MAJOR < 6)
     if (qtVersion == 5)
     {
-        QApplication_setAttribute(10 /* Qt::AA_X11InitThreads */, true);
-        QApplication_setAttribute(13 /* Qt::AA_UseHighDpiPixmaps */, true);
-        QApplication_setAttribute(20 /* Qt::AA_EnableHighDpiScaling */, true);
+        QApplication_setAttribute(Qt::AA_X11InitThreads, true);
+        QApplication_setAttribute(Qt::AA_UseHighDpiPixmaps, true);
+        QApplication_setAttribute(Qt::AA_EnableHighDpiScaling, true);
     }
+   #endif
 
     static int argc = 1;
     static char argv0[] = "dpf-webview";
     static char* argv[] = { argv0, nullptr };
 
+   #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+    QApplication app(argc, argv, 0);
+   #else
     QApplication app;
     QApplication__init(&app, argc, argv, 0);
+   #endif
 
     EventFilterQObject eventFilter(shmptr);
 
     QString qstrchannel, qstrmcode, qstrurl;
     {
         static constexpr const char* channel_src = "external";
+       #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        qstrchannel = channel_src;
+       #else
         const size_t channel_len = std::strlen(channel_src);
         ushort* const channel_qchar = new ushort[channel_len + 1];
 
@@ -1792,6 +1971,7 @@ static bool qtwebengine(const int qtVersion,
         QString__init(&qstrchannel, reinterpret_cast<QChar*>(channel_qchar), channel_len);
 
         delete[] channel_qchar;
+       #endif
     }
     {
         static constexpr const char* mcode_src = "\
@@ -1803,6 +1983,9 @@ static bool qtwebengine(const int qtVersion,
             \"method\": \"sendMessage\",\
             \"args\":[{\"m\":m}], \
         }));}";
+       #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        qstrmcode = mcode_src;
+       #else
         const size_t mcode_len = std::strlen(mcode_src);
         ushort* const mcode_qchar = new ushort[mcode_len + 1];
 
@@ -1814,8 +1997,12 @@ static bool qtwebengine(const int qtVersion,
         QString__init(&qstrmcode, reinterpret_cast<QChar*>(mcode_qchar), mcode_len);
 
         delete[] mcode_qchar;
+       #endif
     }
     {
+       #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        qstrurl = url;
+       #else
         const size_t url_len = std::strlen(url);
         ushort* const url_qchar = new ushort[url_len + 1];
 
@@ -1827,10 +2014,15 @@ static bool qtwebengine(const int qtVersion,
         QString__init(&qstrurl, reinterpret_cast<QChar*>(url_qchar), url_len);
 
         delete[] url_qchar;
+       #endif
     }
 
+   #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+    QUrl qurl(qstrurl, QUrl::StrictMode);
+   #else
     QUrl qurl;
-    QUrl__init(&qurl, qstrurl, 1 /* QUrl::StrictMode */);
+    QUrl__init(&qurl, qstrurl, QUrl::StrictMode);
+   #endif
 
     QWebEngineProfile* const profile = QWebEngineProfile_defaultProfile();
     QWebEngineScriptCollection* const scripts = QWebEngineProfile_scripts(profile);
@@ -1838,11 +2030,13 @@ static bool qtwebengine(const int qtVersion,
 
     {
         QWebEngineScript mscript;
+       #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
         QWebEngineScript__init(&mscript);
-        QWebEngineScript_setInjectionPoint(&mscript, 2 /* QWebEngineScript::DocumentCreation */);
+       #endif
+        QWebEngineScript_setInjectionPoint(&mscript, QWebEngineScript::DocumentCreation);
         QWebEngineScript_setRunsOnSubFrames(&mscript, true);
         QWebEngineScript_setSourceCode(&mscript, qstrmcode);
-        QWebEngineScript_setWorldId(&mscript, 0 /* QWebEngineScript::MainWorld */);
+        QWebEngineScript_setWorldId(&mscript, QWebEngineScript::MainWorld);
         QWebEngineScriptCollection_insert(scripts, mscript);
     }
 
@@ -1850,6 +2044,9 @@ static bool qtwebengine(const int qtVersion,
     {
         QString qstrcode;
         {
+           #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+            qstrcode = initialJS;
+           #else
             const size_t code_len = std::strlen(initialJS);
             ushort* const code_qchar = new ushort[code_len + 1];
 
@@ -1859,31 +2056,46 @@ static bool qtwebengine(const int qtVersion,
             code_qchar[code_len] = 0;
 
             QString__init(&qstrcode, reinterpret_cast<QChar*>(code_qchar), code_len);
+           #endif
         }
 
         QWebEngineScript script;
+       #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
         QWebEngineScript__init(&script);
-        QWebEngineScript_setInjectionPoint(&script, 2 /* QWebEngineScript::DocumentCreation */);
+       #endif
+        QWebEngineScript_setInjectionPoint(&script, QWebEngineScript::DocumentCreation);
         QWebEngineScript_setRunsOnSubFrames(&script, true);
         QWebEngineScript_setSourceCode(&script, qstrcode);
-        QWebEngineScript_setWorldId(&script, 0 /* QWebEngineScript::MainWorld */);
+        QWebEngineScript_setWorldId(&script, QWebEngineScript::MainWorld);
         QWebEngineScriptCollection_insert(scripts, script);
     }
 
-    QWebEngineSettings_setAttribute(settings, 3 /* QWebEngineSettings::JavascriptCanAccessClipboard */, true);
-    QWebEngineSettings_setAttribute(settings, 6 /* QWebEngineSettings::LocalContentCanAccessRemoteUrls */, true);
-    QWebEngineSettings_setAttribute(settings, 26 /* QWebEngineSettings::PlaybackRequiresUserGesture */, true);
-    QWebEngineSettings_setAttribute(settings, 28 /* QWebEngineSettings::JavascriptCanPaste */, true);
+    QWebEngineSettings_setAttribute(settings, QWebEngineSettings::JavascriptCanAccessClipboard, true);
+    QWebEngineSettings_setAttribute(settings, QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);
+    QWebEngineSettings_setAttribute(settings, QWebEngineSettings::PlaybackRequiresUserGesture, true);
+    QWebEngineSettings_setAttribute(settings, QWebEngineSettings::JavascriptCanPaste, true);
 
+   #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+    QWebEngineView webview(static_cast<QWidget*>(nullptr));
+   #else
     QWebEngineView webview;
     QWebEngineView__init(&webview, nullptr);
+   #endif
 
+   #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+    QWebEnginePage page(profile, &webview);
+   #else
     QWebEnginePage page;
     QWebEnginePage__init(&page, profile, reinterpret_cast<QObject*>(&webview));
+   #endif
     // QWebEnginePage_setBackgroundColor(&page, QColor{0,0,0,0});
 
+   #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+    QWebChannel channel(&webview);
+   #else
     QWebChannel channel;
     QWebChannel__init(&channel, reinterpret_cast<QObject*>(&webview));
+   #endif
     QWebChannel_registerObject(&channel, qstrchannel, &eventFilter);
     QWebEnginePage_setWebChannel(&page, &channel, 0);
 
@@ -1911,45 +2123,57 @@ static bool qtwebengine(const int qtVersion,
         QWebEnginePage& _page;
         QWebEngineView& _webview;
         EventFilterQObject& _eventFilter;
-        const QString__init_t _QString__init;
-        const QWebEnginePage_runJavaScript_compat_t _QWebEnginePage_runJavaScript_compat;
-        const QWebEnginePage_runJavaScript_t _QWebEnginePage_runJavaScript;
-        const QWebEngineView_setUrl_t _QWebEngineView_setUrl;
-        const QApplication_quit_t _QApplication_quit;
-        const QEvent__init_t _QEvent__init;
-        const QApplication_postEvent_t _QApplication_postEvent;
+       #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        const QString__init_t QString__init;
+        const QWebEnginePage_runJavaScript_compat_t QWebEnginePage_runJavaScript_compat;
+        const QWebEnginePage_runJavaScript_t QWebEnginePage_runJavaScript;
+        const QWebEngineView_setUrl_t QWebEngineView_setUrl;
+        const QApplication_quit_t QApplication_quit;
+        const QEvent__init_t QEvent__init;
+        const QApplication_postEvent_t QApplication_postEvent;
+       #endif
 
         QtWebFramework(const int qtVersion,
                        WebViewRingBuffer* const shmptr,
                        const QUrl& qurl,
                        QWebEnginePage& page,
                        QWebEngineView& webview,
-                       EventFilterQObject& eventFilter,
-                       const QString__init_t QString__init,
-                       const QWebEnginePage_runJavaScript_compat_t QWebEnginePage_runJavaScript_compat,
-                       const QWebEnginePage_runJavaScript_t QWebEnginePage_runJavaScript,
-                       const QWebEngineView_setUrl_t QWebEngineView_setUrl,
-                       const QApplication_quit_t QApplication_quit,
-                       const QEvent__init_t QEvent__init,
-                       const QApplication_postEvent_t QApplication_postEvent)
+                       EventFilterQObject& eventFilter
+                    #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+                     , const QString__init_t _QString__init,
+                       const QWebEnginePage_runJavaScript_compat_t _QWebEnginePage_runJavaScript_compat,
+                       const QWebEnginePage_runJavaScript_t _QWebEnginePage_runJavaScript,
+                       const QWebEngineView_setUrl_t _QWebEngineView_setUrl,
+                       const QApplication_quit_t _QApplication_quit,
+                       const QEvent__init_t _QEvent__init,
+                       const QApplication_postEvent_t _QApplication_postEvent
+                    #endif
+                       )
             : _qtVersion(qtVersion),
               _shmptr(shmptr),
               _qurl(qurl),
               _page(page),
               _webview(webview),
-              _eventFilter(eventFilter),
-              _QString__init(QString__init),
-              _QWebEnginePage_runJavaScript_compat(QWebEnginePage_runJavaScript_compat),
-              _QWebEnginePage_runJavaScript(QWebEnginePage_runJavaScript),
-              _QWebEngineView_setUrl(QWebEngineView_setUrl),
-              _QApplication_quit(QApplication_quit),
-              _QEvent__init(QEvent__init),
-              _QApplication_postEvent(QApplication_postEvent) {}
+              _eventFilter(eventFilter)
+           #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+            , QString__init(_QString__init),
+              QWebEnginePage_runJavaScript_compat(_QWebEnginePage_runJavaScript_compat),
+              QWebEnginePage_runJavaScript(_QWebEnginePage_runJavaScript),
+              QWebEngineView_setUrl(_QWebEngineView_setUrl),
+              QApplication_quit(_QApplication_quit),
+              QEvent__init(_QEvent__init),
+              QApplication_postEvent(_QApplication_postEvent)
+           #endif
+        {
+        }
 
         void evaluate(const char* const js) override
         {
             QString qstrjs;
             {
+               #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+                qstrjs = js;
+               #else
                 const size_t js_len = std::strlen(js);
                 ushort* const js_qchar = new ushort[js_len + 1];
 
@@ -1958,24 +2182,27 @@ static bool qtwebengine(const int qtVersion,
 
                 js_qchar[js_len] = 0;
 
-                _QString__init(&qstrjs, reinterpret_cast<const QChar*>(js_qchar), js_len);
+                QString__init(&qstrjs, reinterpret_cast<const QChar*>(js_qchar), js_len);
+               #endif
             }
 
             if (_qtVersion == 5)
-                _QWebEnginePage_runJavaScript_compat(&_page, qstrjs);
+                QWebEnginePage_runJavaScript_compat(&_page, qstrjs);
             else
-                _QWebEnginePage_runJavaScript(&_page, qstrjs, 0,
-                                             #ifdef DISTRHO_PROPER_CPP11_SUPPORT
-                                              {}
-                                             #else
-                                              0
-                                             #endif
-                                              );
+                QWebEnginePage_runJavaScript(&_page,
+                                             qstrjs,
+                                             0,
+                                            #ifdef DISTRHO_PROPER_CPP11_SUPPORT
+                                             {}
+                                            #else
+                                             0
+                                            #endif
+                                             );
         }
 
         void reload() override
         {
-            _QWebEngineView_setUrl(&_webview, _qurl);
+            QWebEngineView_setUrl(&_webview, _qurl);
         }
 
         void terminate() override
@@ -1984,16 +2211,20 @@ static bool qtwebengine(const int qtVersion,
             {
                 running = false;
                 webview_wake(&_shmptr->client.sem);
-                _QApplication_quit();
+                QApplication_quit();
             }
         }
 
         void wake(WebViewRingBuffer*) override
         {
             // NOTE event pointer is deleted by Qt
+           #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+            QEvent* const qevent = new QEvent(QEvent::User);
+           #else
             QEvent* const qevent = new QEvent;
-            _QEvent__init(qevent, 1000 /* QEvent::User */);
-            _QApplication_postEvent(&_eventFilter, qevent, 1 /* Qt::HighEventPriority */);
+            QEvent__init(qevent, QEvent::User);
+           #endif
+            QApplication_postEvent(&_eventFilter, qevent, Qt::HighEventPriority);
         }
     };
 
@@ -2002,14 +2233,17 @@ static bool qtwebengine(const int qtVersion,
                                    qurl,
                                    page,
                                    webview,
-                                   eventFilter,
-                                   QString__init,
+                                   eventFilter
+                                #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+                                 , QString__init,
                                    QWebEnginePage_runJavaScript_compat,
                                    QWebEnginePage_runJavaScript,
                                    QWebEngineView_setUrl,
                                    QApplication_quit,
                                    QEvent__init,
-                                   QApplication_postEvent);
+                                   QApplication_postEvent
+                                #endif
+                                   );
 
     webFramework = &webFrameworkObj;
 
@@ -2022,7 +2256,9 @@ static bool qtwebengine(const int qtVersion,
 
     d_stdout("WebView Qt%d main loop quit", qtVersion);
 
+   #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
     dlclose(lib);
+   #endif
     return true;
 }
 
@@ -2062,8 +2298,7 @@ int dpf_webview_start(const int argc, char* argv[])
 
     d_stdout("starting... %d '%s' '%s'", argc, argv[1], argv[2]);
 
-    setenv("LC_ALL", "C.UTF8", 1);
-    uselocale(newlocale(LC_ALL_MASK, "C.UTF8", nullptr));
+    uselocale(newlocale(LC_NUMERIC_MASK, "C", nullptr));
 
     Display* const display = XOpenDisplay(nullptr);
     DISTRHO_SAFE_ASSERT_RETURN(display != nullptr, 1);
@@ -2137,8 +2372,10 @@ int dpf_webview_start(const int argc, char* argv[])
         sigemptyset(&sig.sa_mask);
         sigaction(SIGTERM, &sig, nullptr);
 
-       #ifdef WEB_VIEW_INCLUDE_GTK3_EXPLICITLY
+       #if defined(WEB_VIEW_INCLUDE_GTK3_EXPLICITLY)
         if (! gtk3(display, winId, x, y, width, height, scaleFactor, url, initJS, shmptr))
+       #elif defined(WEB_VIEW_INCLUDE_QTx_EXPLICITLY)
+        if (! qtwebengine(QT_VERSION_MAJOR, display, winId, x, y, width, height, scaleFactor, url, initJS, shmptr))
        #else
         if (! qtwebengine(5, display, winId, x, y, width, height, scaleFactor, url, initJS, shmptr) &&
             ! qtwebengine(6, display, winId, x, y, width, height, scaleFactor, url, initJS, shmptr) &&
