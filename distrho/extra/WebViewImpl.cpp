@@ -976,6 +976,7 @@ static_assert(sizeof(QWebEngineView) <= SIZEOF_QWebEngineView, "wrong size");
 #define QApplication_setAttribute(a, b) QApplication::setAttribute(a, b)
 #define QJsonObject_value(obj, a) static_cast<const QJsonObject*>(obj)->value(a)
 #define QJsonValue_toString(obj) static_cast<const QJsonValue*>(obj)->toString()
+#define QObject__startTimer(obj, a, b) static_cast<QObject*>(obj)->startTimer(a, b)
 #define QString_toUtf8(obj)  static_cast<QString*>(obj)->toUtf8()
 #define QWebChannel_registerObject(obj, a, b) static_cast<QWebChannel*>(obj)->registerObject(a, b)
 #define QWebEnginePage_runJavaScript(obj, a, b, c) static_cast<QWebEnginePage*>(obj)->runJavaScript(a, b, c)
@@ -1069,8 +1070,10 @@ struct QWebEngineUrlScheme {
         ViewSourceAllowed = 0x20,
         ContentSecurityPolicyIgnored = 0x40,
     };
-    enum Syntax {
-        Path = 3,
+    struct Syntax {
+        enum {
+            Path = 3,
+        };
     };
 };
 struct QWebEngineUrlSchemeHandler;
@@ -1085,6 +1088,9 @@ namespace Qt {
     };
     enum EventPriority {
         HighEventPriority = 1,
+    };
+    enum TimerType {
+        CoarseTimer = 1,
     };
 };
 
@@ -1639,18 +1645,55 @@ public:
 
 // -----------------------------------------------------------------------------------------------------------
 
+// HACK QObject subclass for forcing webview window position, needed for sub-menus
+class RepositionFixTimer : public QObject
+{
+    Display* const _display;
+    const Window _window;
+
+public:
+    RepositionFixTimer(Display* const display, const Window window)
+        : QObject(),
+          _display(display),
+          _window(window)
+    {
+       #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        static void (*QObject__startTimer)(const QObject*, int, Qt::TimerType) =
+            reinterpret_cast<typeof(QObject__startTimer)>(dlsym(nullptr, "_ZN7QObject10startTimerEiN2Qt9TimerTypeE"));
+       #endif
+        QObject__startTimer(this, 500, Qt::CoarseTimer);
+    }
+
+protected:
+    void timerEvent(QTimerEvent*) override
+    {
+        XWindowAttributes attrs;
+        XGetWindowAttributes(_display, _window, &attrs);
+
+        XMoveWindow(_display, _window, attrs.x + 1, attrs.y);
+        XMoveWindow(_display, _window, attrs.x, attrs.y);
+        XFlush(_display);
+    }
+};
+
+// -----------------------------------------------------------------------------------------------------------
+
 // QObject subclass for receiving events on main thread
 class EventFilterQObject : public QWebChannelAbstractTransport
 {
     QString qstrkey;
     WebViewRingBuffer* const _rb;
+   #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
     bool isQt5;
+   #endif
 
 public:
     EventFilterQObject(WebViewRingBuffer* const rb)
         : QWebChannelAbstractTransport(),
-          _rb(rb),
-          isQt5(false)
+          _rb(rb)
+       #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        , isQt5(false)
+       #endif
     {
        #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
         qstrkey = "m";
@@ -1669,6 +1712,7 @@ public:
        #endif
     }
 
+protected:
     void customEvent(QEvent*) override
     {
         web_wake_idle(_rb);
@@ -1838,7 +1882,7 @@ static bool qtwebengine(const int qtVersion,
     typedef void (*QWebEngineUrlScheme__init_t)(QWebEngineUrlScheme*, const QByteArray&);
     typedef void (*QWebEngineUrlScheme_registerScheme_t)(QWebEngineUrlScheme&);
     typedef void (*QWebEngineUrlScheme_setFlags_t)(QWebEngineUrlScheme*, QWebEngineUrlScheme::Flags);
-    typedef void (*QWebEngineUrlScheme_setSyntax_t)(QWebEngineUrlScheme*, QWebEngineUrlScheme::Syntax);
+    typedef void (*QWebEngineUrlScheme_setSyntax_t)(QWebEngineUrlScheme*, int /* QWebEngineUrlScheme::Syntax */);
     typedef void (*QWebEngineUrlSchemeHandler__init_t)(QObject*, QObject*);
     typedef void (*QWebEngineView__init_t)(QWebEngineView*, QObject*);
     typedef void (*QWebEngineView_move_t)(QWebEngineView*, const QPoint&);
@@ -2118,10 +2162,14 @@ static bool qtwebengine(const int qtVersion,
     QWebEngineView_setPage(&webview, &page);
     QWebEngineView_setUrl(&webview, qurl);
 
+    const uintptr_t webviewWinId = QWebEngineView_winId(&webview);
+
+    RepositionFixTimer repositionFixTimer(display, webviewWinId);
+
     // FIXME Qt6 seems to need some forcing..
     if (qtVersion >= 6)
     {
-        XReparentWindow(display, QWebEngineView_winId(&webview), winId, x, y);
+        XReparentWindow(display, webviewWinId, winId, x, y);
         XFlush(display);
     }
 
