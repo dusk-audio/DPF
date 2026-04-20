@@ -946,6 +946,7 @@ typedef int (*GSourceFunc)(void*);
 #define SIZEOF_QByteArray 24
 #define SIZEOF_QJsonValue 24
 #define SIZEOF_QMetaObject 56
+#define SIZEOF_QObject 16
 #define SIZEOF_QString 24
 #define SIZEOF_QUrl 8
 #define SIZEOF_QWebChannel 16
@@ -960,6 +961,7 @@ static_assert(sizeof(QApplication) == SIZEOF_QApplication, "wrong size");
 static_assert(sizeof(QByteArray) <= SIZEOF_QByteArray, "wrong size");
 static_assert(sizeof(QJsonValue) == SIZEOF_QJsonValue, "wrong size");
 static_assert(sizeof(QMetaObject) <= SIZEOF_QMetaObject, "wrong size");
+static_assert(sizeof(QObject) == SIZEOF_QObject, "wrong size");
 static_assert(sizeof(QString) <= SIZEOF_QString, "wrong size");
 static_assert(sizeof(QUrl) == SIZEOF_QUrl, "wrong size");
 static_assert(sizeof(QWebChannel) == SIZEOF_QWebChannel, "wrong size");
@@ -984,6 +986,7 @@ static_assert(sizeof(QWebEngineView) <= SIZEOF_QWebEngineView, "wrong size");
 #define QWebEngineProfile_defaultProfile() QWebEngineProfile::defaultProfile()
 #define QWebEngineProfile_installUrlSchemeHandler(obj, a, b) static_cast<QWebEngineProfile*>(obj)->installUrlSchemeHandler(a, b)
 #define QWebEngineProfile_scripts(obj) static_cast<QWebEngineProfile*>(obj)->scripts()
+#define QWebEngineProfile_setHttpCacheType(obj, a) static_cast<QWebEngineProfile*>(obj)->setHttpCacheType(a)
 #define QWebEngineProfile_settings(obj) static_cast<QWebEngineProfile*>(obj)->settings()
 #define QWebEngineScriptCollection_insert(obj, a) static_cast<QWebEngineScriptCollection*>(obj)->insert(a)
 #define QWebEngineScript_setInjectionPoint(obj, a) static_cast<QWebEngineScript*>(obj)->setInjectionPoint(a)
@@ -1032,7 +1035,11 @@ struct QUrl {
 };
 struct QWebChannel { uint8_t _[SIZEOF_QWebChannel]; };
 struct QWebEnginePage { uint8_t _[SIZEOF_QWebEnginePage]; };
-struct QWebEngineProfile;
+struct QWebEngineProfile {
+    enum HttpCacheType {
+        NoCache = 2,
+    };
+};
 struct QWebEngineScript {
     uint8_t _[SIZEOF_QWebEngineUrlScheme];
     enum InjectionPoint {
@@ -1600,7 +1607,7 @@ public:
     }
 
 private:
-    uint8_t _[8 * 2];
+    uint8_t _[SIZEOF_QObject];
 };
 
 class QWebChannelAbstractTransport : public QObject
@@ -1817,6 +1824,7 @@ static bool qtwebengine(const int qtVersion,
     typedef QWebChannel* (*QWebEnginePage_webChannel_t)(QWebEnginePage*);
     typedef QWebEngineProfile* (*QWebEngineProfile_defaultProfile_t)();
     typedef void (*QWebEngineProfile_installUrlSchemeHandler_t)(QWebEngineProfile*, const QByteArray&, QWebEngineUrlSchemeHandler*);
+    typedef void (*QWebEngineProfile_setHttpCacheType_t)(QWebEngineProfile*, QWebEngineProfile::HttpCacheType);
     typedef QWebEngineSettings* (*QWebEngineProfile_settings_t)(QWebEngineProfile*);
     typedef QWebEngineScriptCollection* (*QWebEngineProfile_scripts_t)(QWebEngineProfile*);
     typedef void (*QWebEngineScript__init_t)(QWebEngineScript*);
@@ -1859,6 +1867,7 @@ static bool qtwebengine(const int qtVersion,
     CPPSYM(QWebEnginePage_webChannel, _ZNK14QWebEnginePage10webChannelEv)
     CPPSYM(QWebEngineProfile_defaultProfile, _ZN17QWebEngineProfile14defaultProfileEv)
     CPPSYM(QWebEngineProfile_installUrlSchemeHandler, _ZN17QWebEngineProfile23installUrlSchemeHandlerERK10QByteArrayP26QWebEngineUrlSchemeHandler)
+    CPPSYM(QWebEngineProfile_setHttpCacheType, _ZN17QWebEngineProfile16setHttpCacheTypeENS_13HttpCacheTypeE)
     CPPSYM(QWebEngineProfile_settings, _ZNK17QWebEngineProfile8settingsEv)
     CPPSYM(QWebEngineProfile_scripts, _ZNK17QWebEngineProfile7scriptsEv)
     CPPSYM(QWebEngineScript__init, _ZN16QWebEngineScriptC1Ev)
@@ -2025,6 +2034,8 @@ static bool qtwebengine(const int qtVersion,
    #endif
 
     QWebEngineProfile* const profile = QWebEngineProfile_defaultProfile();
+    QWebEngineProfile_setHttpCacheType(profile, QWebEngineProfile::NoCache);
+
     QWebEngineScriptCollection* const scripts = QWebEngineProfile_scripts(profile);
     QWebEngineSettings* const settings = QWebEngineProfile_settings(profile);
 
@@ -2072,7 +2083,7 @@ static bool qtwebengine(const int qtVersion,
 
     QWebEngineSettings_setAttribute(settings, QWebEngineSettings::JavascriptCanAccessClipboard, true);
     QWebEngineSettings_setAttribute(settings, QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);
-    QWebEngineSettings_setAttribute(settings, QWebEngineSettings::PlaybackRequiresUserGesture, true);
+    QWebEngineSettings_setAttribute(settings, QWebEngineSettings::PlaybackRequiresUserGesture, false);
     QWebEngineSettings_setAttribute(settings, QWebEngineSettings::JavascriptCanPaste, true);
 
    #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
