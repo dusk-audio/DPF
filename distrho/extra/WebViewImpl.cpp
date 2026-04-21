@@ -976,7 +976,7 @@ static_assert(sizeof(QWebEngineView) <= SIZEOF_QWebEngineView, "wrong size");
 #define QApplication_setAttribute(a, b) QApplication::setAttribute(a, b)
 #define QJsonObject_value(obj, a) static_cast<const QJsonObject*>(obj)->value(a)
 #define QJsonValue_toString(obj) static_cast<const QJsonValue*>(obj)->toString()
-#define QObject__startTimer(obj, a, b) static_cast<QObject*>(obj)->startTimer(a, b)
+#define QObject_startTimer(obj, a, b) static_cast<QObject*>(obj)->startTimer(a, b)
 #define QString_toUtf8(obj)  static_cast<QString*>(obj)->toUtf8()
 #define QWebChannel_registerObject(obj, a, b) static_cast<QWebChannel*>(obj)->registerObject(a, b)
 #define QWebEnginePage_runJavaScript(obj, a, b, c) static_cast<QWebEnginePage*>(obj)->runJavaScript(a, b, c)
@@ -1658,10 +1658,10 @@ public:
           _window(window)
     {
        #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
-        static void (*QObject__startTimer)(const QObject*, int, Qt::TimerType) =
-            reinterpret_cast<typeof(QObject__startTimer)>(dlsym(nullptr, "_ZN7QObject10startTimerEiN2Qt9TimerTypeE"));
+        static void (*QObject_startTimer)(const QObject*, int, Qt::TimerType) =
+            reinterpret_cast<typeof(QObject_startTimer)>(dlsym(nullptr, "_ZN7QObject10startTimerEiN2Qt9TimerTypeE"));
        #endif
-        QObject__startTimer(this, 500, Qt::CoarseTimer);
+        QObject_startTimer(this, 500, Qt::CoarseTimer);
     }
 
 protected:
