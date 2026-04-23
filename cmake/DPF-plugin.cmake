@@ -346,7 +346,7 @@ function(dpf_add_executable NAME)
     dpf__add_dgl_external(${_dpf_plugin_USE_FILE_BROWSER}
                           ${_dpf_plugin_USE_WEB_VIEW})
     set(_dgl_library dgl-external)
-  else()
+  elseif(NOT _dpf_plugin_UI_TYPE STREQUAL "none")
     message(FATAL_ERROR "Unrecognized UI type for executable: ${_dpf_plugin_UI_TYPE}")
   endif()
 
