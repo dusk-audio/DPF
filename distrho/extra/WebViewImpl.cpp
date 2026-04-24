@@ -2329,7 +2329,8 @@ static void signalHandler(const int sig)
     switch (sig)
     {
     case SIGTERM:
-        webFramework->terminate();
+        if (webFramework != nullptr)
+            webFramework->terminate();
         break;
     }
 }
