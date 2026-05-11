@@ -722,71 +722,100 @@ public:
 
     const String& getParameterName(const uint32_t index) const noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, sFallbackString);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         sFallbackString);
 
         return fData->parameters[index].name;
     }
 
     const String& getParameterShortName(const uint32_t index) const noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, sFallbackString);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         sFallbackString);
 
         return fData->parameters[index].shortName;
     }
 
     const String& getParameterSymbol(const uint32_t index) const noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, sFallbackString);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         sFallbackString);
 
         return fData->parameters[index].symbol;
     }
 
     const String& getParameterUnit(const uint32_t index) const noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, sFallbackString);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         sFallbackString);
 
         return fData->parameters[index].unit;
     }
 
     const String& getParameterDescription(const uint32_t index) const noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, sFallbackString);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         sFallbackString);
 
         return fData->parameters[index].description;
     }
 
     const ParameterEnumerationValues& getParameterEnumValues(const uint32_t index) const noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, sFallbackEnumValues);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         sFallbackEnumValues);
 
         return fData->parameters[index].enumValues;
     }
 
     const ParameterRanges& getParameterRanges(const uint32_t index) const noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, sFallbackRanges);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         sFallbackRanges);
 
         return fData->parameters[index].ranges;
     }
 
     uint8_t getParameterMidiCC(const uint32_t index) const noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, 0);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         0);
 
         return fData->parameters[index].midiCC;
     }
 
     uint32_t getParameterGroupId(const uint32_t index) const noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, kPortGroupNone);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         kPortGroupNone);
 
         return fData->parameters[index].groupId;
     }
 
     float getParameterDefault(const uint32_t index) const
     {
-        DISTRHO_SAFE_ASSERT_RETURN(fPlugin != nullptr, 0.0f);
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, 0.0f);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         0.f);
 
         return fData->parameters[index].ranges.def;
     }
@@ -794,7 +823,10 @@ public:
     float getParameterValue(const uint32_t index) const
     {
         DISTRHO_SAFE_ASSERT_RETURN(fPlugin != nullptr, 0.0f);
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, 0.0f);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,
+                                         0.f);
 
         return fPlugin->getParameterValue(index);
     }
@@ -802,7 +834,9 @@ public:
     void setParameterValue(const uint32_t index, const float value)
     {
         DISTRHO_SAFE_ASSERT_RETURN(fPlugin != nullptr,);
-        DISTRHO_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount,);
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
+                                         index,
+                                         fData->parameterCount,);
 
         fPlugin->setParameterValue(index, value);
     }
