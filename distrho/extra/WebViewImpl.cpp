@@ -473,13 +473,8 @@ WebViewHandle webViewCreate(const char* const url,
     [prefs setValue:@YES forKey:@"javaScriptCanAccessClipboard"];
     [prefs setValue:@YES forKey:@"DOMPasteAllowed"];
 
-    // if (debug)
-    {
-        [prefs setValue:@YES forKey:@"developerExtrasEnabled"];
-        // TODO enable_write_console_messages_to_stdout
-    }
-
     WKWebViewConfiguration* const config = [[WKWebViewConfiguration alloc] init];
+    config.allowsAirPlayForMediaPlayback = false;
     config.limitsNavigationsToAppBoundDomains = false;
     config.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
     config.preferences = prefs;
@@ -494,8 +489,6 @@ WebViewHandle webViewCreate(const char* const url,
                                                   configuration:config];
     [webview setHidden:YES];
     [view addSubview:webview];
-
-    // TODO webkit_web_view_set_background_color
 
     WEB_VIEW_DELEGATE_CLASS_NAME* const delegate = [[WEB_VIEW_DELEGATE_CLASS_NAME alloc] init];
     delegate->callback = options.callback;
@@ -533,6 +526,14 @@ WebViewHandle webViewCreate(const char* const url,
         }
     }
 
+    // if (debug)
+    {
+        [webview setInspectable:true];
+        // TODO enable_write_console_messages_to_stdout
+    }
+
+    // themeColor NSColor
+    // NSColor * underPageBackgroundColor;
     [webview setNavigationDelegate:delegate];
     [webview setUIDelegate:delegate];
 
@@ -560,6 +561,7 @@ WebViewHandle webViewCreate(const char* const url,
         [webview loadRequest:urlreq];
     }
 
+#if 0
     d_stdout("waiting for load");
 
     if (! delegate->loaded)
@@ -590,6 +592,7 @@ WebViewHandle webViewCreate(const char* const url,
     }
 
     d_stdout("waiting done");
+#endif
 
     [webview setHidden:NO];
 
