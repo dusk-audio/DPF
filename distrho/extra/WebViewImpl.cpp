@@ -304,6 +304,19 @@ struct WebViewRingBuffer {
     bool valid;
 };
 
+struct WebViewInitOptions {
+    Window winId;
+    uint width;
+    uint height;
+    double scaleFactor = 0;
+    int x;
+    int y;
+    uint backgroundColor;
+    bool developerToolsEnabled;
+    char* url;
+    char* initialJS;
+};
+
 static void webview_wake(ipc_sem_t* const sem)
 {
    #ifdef __linux__
@@ -722,6 +735,8 @@ WebViewHandle webViewCreate(const char* const url,
     handle->rbctrl.writeDouble(scaleFactor) &&
     handle->rbctrl.writeInt(options.offset.x) &&
     handle->rbctrl.writeInt(options.offset.y) &&
+    handle->rbctrl.writeUInt(options.backgroundColor) &&
+    handle->rbctrl.writeBool(options.developerToolsEnabled) &&
     handle->rbctrl.writeUInt(urllen) &&
     handle->rbctrl.writeCustomData(url, urllen) &&
     handle->rbctrl.writeUInt(initjslen) &&
@@ -947,9 +962,12 @@ typedef int (*GSourceFunc)(void*);
 
 #define SIZEOF_QApplication 16
 #define SIZEOF_QByteArray 24
+#define SIZEOF_QColor 16
 #define SIZEOF_QJsonValue 24
 #define SIZEOF_QMetaObject 56
 #define SIZEOF_QObject 16
+#define SIZEOF_QPoint 8
+#define SIZEOF_QSize 8
 #define SIZEOF_QString 24
 #define SIZEOF_QUrl 8
 #define SIZEOF_QWebChannel 16
@@ -959,19 +977,6 @@ typedef int (*GSourceFunc)(void*);
 #define SIZEOF_QWebEngineView 56
 
 #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
-
-static_assert(sizeof(QApplication) == SIZEOF_QApplication, "wrong size");
-static_assert(sizeof(QByteArray) <= SIZEOF_QByteArray, "wrong size");
-static_assert(sizeof(QJsonValue) == SIZEOF_QJsonValue, "wrong size");
-static_assert(sizeof(QMetaObject) <= SIZEOF_QMetaObject, "wrong size");
-static_assert(sizeof(QObject) == SIZEOF_QObject, "wrong size");
-static_assert(sizeof(QString) <= SIZEOF_QString, "wrong size");
-static_assert(sizeof(QUrl) == SIZEOF_QUrl, "wrong size");
-static_assert(sizeof(QWebChannel) == SIZEOF_QWebChannel, "wrong size");
-static_assert(sizeof(QWebEnginePage) == SIZEOF_QWebEnginePage, "wrong size");
-static_assert(sizeof(QWebEngineScript) == SIZEOF_QWebEngineScript, "wrong size");
-static_assert(sizeof(QWebEngineUrlScheme) == SIZEOF_QWebEngineUrlScheme, "wrong size");
-static_assert(sizeof(QWebEngineView) <= SIZEOF_QWebEngineView, "wrong size");
 
 #define QApplication_exec() QApplication::exec()
 #define QApplication_postEvent(a, b, c) QApplication::postEvent(a, b, c)
@@ -1018,7 +1023,18 @@ struct QApplication { uint8_t _[SIZEOF_QApplication]; };
 struct QByteArray { public: uint8_t _[SIZEOF_QByteArray]; };
 struct QChar;
 struct QChildEvent;
-struct QColor;
+struct QColor {
+    int _spec;
+    uint16_t _a, _r, _g, _b, _pad;
+    QColor(int r, int g, int b, int a)
+        : _spec(1),
+          _a(a * 0x0101),
+          _r(r * 0x0101),
+          _g(g * 0x0101),
+          _b(b * 0x0101),
+          _pad(0)
+    {}
+};
 struct QEvent {
     enum Type {
         User = 1000,
@@ -1064,7 +1080,7 @@ struct QWebEngineSettings {
 };
 struct QWebEngineUrlRequestJob;
 struct QWebEngineUrlScheme {
-    uint8_t _[SIZEOF_QWebEngineView];
+    uint8_t _[SIZEOF_QWebEngineUrlScheme];
     enum Flags {
         SecureScheme = 0x1,
         LocalScheme = 0x2,
@@ -1080,7 +1096,7 @@ struct QWebEngineUrlScheme {
     };
 };
 struct QWebEngineUrlSchemeHandler;
-struct QWebEngineView { uint8_t _[56 * 2]; };
+struct QWebEngineView { uint8_t _[SIZEOF_QWebEngineView]; };
 struct QWindow;
 
 namespace Qt {
@@ -1210,16 +1226,7 @@ static int gtk3_js_cb(WebKitUserContentManager*, WebKitJavascriptResult* const r
     return 0;
 }
 
-static bool gtk3(Display* const display,
-                 const Window winId,
-                 const int x,
-                 const int y,
-                 const uint width,
-                 const uint height,
-                 double scaleFactor,
-                 const char* const url,
-                 const char* const initialJS,
-                 WebViewRingBuffer* const shmptr)
+static bool gtk3(Display* const display, const WebViewInitOptions& options, WebViewRingBuffer* const shmptr)
 {
    #ifndef WEB_VIEW_INCLUDE_GTK3_EXPLICITLY
     void* lib;
@@ -1329,6 +1336,8 @@ static bool gtk3(Display* const display,
     }
 
     // gtk3 does not support fractional scaling, so we round to next integer if fmod >= 0.75
+    double scaleFactor = options.scaleFactor;
+
     const int gdkScale = std::fmod(scaleFactor, 1.0) >= 0.75
                        ? static_cast<int>(scaleFactor + 0.5)
                        : static_cast<int>(scaleFactor);
@@ -1369,11 +1378,11 @@ static bool gtk3(Display* const display,
         return false;
     }
 
-    GtkWidget* const window = gtk_plug_new(winId);
+    GtkWidget* const window = gtk_plug_new(options.winId);
     DISTRHO_SAFE_ASSERT_RETURN(window != nullptr, false);
 
-    gtk_window_set_default_size(GTK_WINDOW(window), width / gdkScale, height / gdkScale);
-    gtk_window_move(GTK_WINDOW(window), x / gdkScale, y / gdkScale);
+    gtk_window_set_default_size(GTK_WINDOW(window), options.width / gdkScale, options.height / gdkScale);
+    gtk_window_move(GTK_WINDOW(window), options.x / gdkScale, options.y / gdkScale);
 
     WebKitSettings* const settings = webkit_settings_new();
     DISTRHO_SAFE_ASSERT_RETURN(settings != nullptr, false);
@@ -1385,11 +1394,8 @@ static bool gtk3(Display* const display,
     webkit_settings_set_media_playback_allows_inline(settings, true);
     webkit_settings_set_media_playback_requires_user_gesture(settings, false);
 
-    // if (debug)
-    {
-        webkit_settings_set_enable_developer_extras(settings, true);
-        webkit_settings_set_enable_write_console_messages_to_stdout(settings, true);
-    }
+    webkit_settings_set_enable_developer_extras(settings, options.developerToolsEnabled);
+    webkit_settings_set_enable_write_console_messages_to_stdout(settings, options.developerToolsEnabled);
 
     GtkWidget* const webview = webkit_web_view_new_with_settings(settings);
     DISTRHO_SAFE_ASSERT_RETURN(webview != nullptr, false);
@@ -1399,8 +1405,16 @@ static bool gtk3(Display* const display,
 
     webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER);
 
-    const double color[] = {49.0/255, 54.0/255, 59.0/255, 1};
-    webkit_web_view_set_background_color(WEBKIT_WEB_VIEW(webview), reinterpret_cast<const GdkRGBA*>(color));
+    if (options.backgroundColor != 0xffffffff)
+    {
+        const double color[] = {
+            static_cast<double>((options.backgroundColor >> 24) & 0xff) / 0xff,
+            static_cast<double>((options.backgroundColor >> 16) & 0xff) / 0xff,
+            static_cast<double>((options.backgroundColor >> 8) & 0xff) / 0xff,
+            static_cast<double>(options.backgroundColor & 0xff) / 0xff,
+        };
+        webkit_web_view_set_background_color(WEBKIT_WEB_VIEW(webview), reinterpret_cast<const GdkRGBA*>(color));
+    }
 
     if (WebKitUserContentManager* const manager = webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(webview)))
     {
@@ -1420,9 +1434,9 @@ static bool gtk3(Display* const display,
             nullptr);
         webkit_user_content_manager_add_script(manager, mscript);
 
-        if (initialJS != nullptr)
+        if (options.initialJS != nullptr)
         {
-            WebKitUserScript* const script = webkit_user_script_new(initialJS,
+            WebKitUserScript* const script = webkit_user_script_new(options.initialJS,
                                                                     WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
                                                                     WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
                                                                     nullptr,
@@ -1431,7 +1445,7 @@ static bool gtk3(Display* const display,
         }
     }
 
-    webkit_web_view_load_uri(WEBKIT_WEB_VIEW(webview), url);
+    webkit_web_view_load_uri(WEBKIT_WEB_VIEW(webview), options.url);
 
     gtk_container_add(GTK_CONTAINER(window), webview);
 
@@ -1509,7 +1523,7 @@ static bool gtk3(Display* const display,
         }
     };
 
-    Gtk3WebFramework webFrameworkObj(url,
+    Gtk3WebFramework webFrameworkObj(options.url,
                                      shmptr,
                                      webview
                                   #ifndef WEB_VIEW_INCLUDE_GTK3_EXPLICITLY
@@ -1616,7 +1630,7 @@ public:
     }
 
 private:
-    uint8_t _[SIZEOF_QObject];
+    uint8_t _[SIZEOF_QObject - sizeof(void*)];
 };
 
 class QWebChannelAbstractTransport : public QObject
@@ -1645,6 +1659,22 @@ public:
     virtual void sendMessage(const QJsonObject&) = 0;
 };
 #endif
+
+static_assert(sizeof(QApplication) == SIZEOF_QApplication, "wrong size");
+static_assert(sizeof(QByteArray) <= SIZEOF_QByteArray, "wrong size");
+static_assert(sizeof(QColor) == SIZEOF_QColor, "wrong size");
+static_assert(sizeof(QJsonValue) == SIZEOF_QJsonValue, "wrong size");
+static_assert(sizeof(QMetaObject) <= SIZEOF_QMetaObject, "wrong size");
+static_assert(sizeof(QObject) == SIZEOF_QObject, "wrong size");
+static_assert(sizeof(QPoint) == SIZEOF_QPoint, "wrong size");
+static_assert(sizeof(QSize) == SIZEOF_QSize, "wrong size");
+static_assert(sizeof(QString) <= SIZEOF_QString, "wrong size");
+static_assert(sizeof(QUrl) == SIZEOF_QUrl, "wrong size");
+static_assert(sizeof(QWebChannel) == SIZEOF_QWebChannel, "wrong size");
+static_assert(sizeof(QWebEnginePage) == SIZEOF_QWebEnginePage, "wrong size");
+static_assert(sizeof(QWebEngineScript) == SIZEOF_QWebEngineScript, "wrong size");
+static_assert(sizeof(QWebEngineUrlScheme) == SIZEOF_QWebEngineUrlScheme, "wrong size");
+static_assert(sizeof(QWebEngineView) <= SIZEOF_QWebEngineView, "wrong size");
 
 // -----------------------------------------------------------------------------------------------------------
 
@@ -1779,14 +1809,7 @@ protected:
 
 static bool qtwebengine(const int qtVersion,
                         Display* const display,
-                        const Window winId,
-                        const int x,
-                        const int y,
-                        const uint width,
-                        const uint height,
-                        double scaleFactor,
-                        const char* const url,
-                        const char* const initialJS,
+                        const WebViewInitOptions& options,
                         WebViewRingBuffer* const shmptr)
 {
    #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
@@ -1957,7 +1980,7 @@ static bool qtwebengine(const int qtVersion,
     }
 
     char scale[8] = {};
-    std::snprintf(scale, 7, "%.2f", scaleFactor);
+    std::snprintf(scale, 7, "%.2f", options.scaleFactor);
     setenv("QT_SCALE_FACTOR", scale, 1);
 
    #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
@@ -1967,16 +1990,13 @@ static bool qtwebengine(const int qtVersion,
     QByteArray__init(&urlSchemeName, "dpf", 3);
    #endif
 
-    // TODO
-    constexpr const bool debug = true;
-
-    constexpr const QWebEngineUrlScheme::Flags urlSchemeFlags = static_cast<QWebEngineUrlScheme::Flags>(0
+    const QWebEngineUrlScheme::Flags urlSchemeFlags = static_cast<QWebEngineUrlScheme::Flags>(0
         | QWebEngineUrlScheme::SecureScheme
         | QWebEngineUrlScheme::LocalScheme
         | QWebEngineUrlScheme::LocalAccessAllowed
         | QWebEngineUrlScheme::ServiceWorkersAllowed
         | QWebEngineUrlScheme::ContentSecurityPolicyIgnored
-        | (debug ? QWebEngineUrlScheme::ViewSourceAllowed : 0)
+        | (options.developerToolsEnabled ? QWebEngineUrlScheme::ViewSourceAllowed : 0)
         );
    #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
     QWebEngineUrlScheme urlScheme(urlSchemeName);
@@ -2057,13 +2077,13 @@ static bool qtwebengine(const int qtVersion,
     }
     {
        #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
-        qstrurl = url;
+        qstrurl = options.url;
        #else
-        const size_t url_len = std::strlen(url);
+        const size_t url_len = std::strlen(options.url);
         ushort* const url_qchar = new ushort[url_len + 1];
 
         for (size_t i = 0; i < url_len; ++i)
-            url_qchar[i] = url[i];
+            url_qchar[i] = options.url[i];
 
         url_qchar[url_len] = 0;
 
@@ -2098,18 +2118,18 @@ static bool qtwebengine(const int qtVersion,
         QWebEngineScriptCollection_insert(scripts, mscript);
     }
 
-    if (initialJS != nullptr)
+    if (options.initialJS != nullptr)
     {
         QString qstrcode;
         {
            #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
-            qstrcode = initialJS;
+            qstrcode = options.initialJS;
            #else
-            const size_t code_len = std::strlen(initialJS);
+            const size_t code_len = std::strlen(options.initialJS);
             ushort* const code_qchar = new ushort[code_len + 1];
 
             for (size_t i = 0; i < code_len; ++i)
-                code_qchar[i] = initialJS[i];
+                code_qchar[i] = options.initialJS[i];
 
             code_qchar[code_len] = 0;
 
@@ -2146,7 +2166,17 @@ static bool qtwebengine(const int qtVersion,
     QWebEnginePage page;
     QWebEnginePage__init(&page, profile, reinterpret_cast<QObject*>(&webview));
    #endif
-    // QWebEnginePage_setBackgroundColor(&page, QColor{0,0,0,0});
+
+    if (options.backgroundColor != 0xffffffff)
+    {
+        const QColor color(
+            (options.backgroundColor >> 24) & 0xff,
+            (options.backgroundColor >> 16) & 0xff,
+            (options.backgroundColor >> 8) & 0xff,
+            options.backgroundColor & 0xff
+        );
+        QWebEnginePage_setBackgroundColor(&page, color);
+    }
 
    #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
     QWebChannel channel(&webview);
@@ -2157,10 +2187,11 @@ static bool qtwebengine(const int qtVersion,
     QWebChannel_registerObject(&channel, qstrchannel, &eventFilter);
     QWebEnginePage_setWebChannel(&page, &channel, 0);
 
-    QWebEngineView_move(&webview, QPoint(x, y));
-    QWebEngineView_resize(&webview, QSize(static_cast<int>(width / scaleFactor), static_cast<int>(height / scaleFactor)));
+    QWebEngineView_move(&webview, QPoint(options.x, options.y));
+    QWebEngineView_resize(&webview, QSize(static_cast<int>(options.width / options.scaleFactor),
+                                          static_cast<int>(options.height / options.scaleFactor)));
     QWebEngineView_winId(&webview);
-    QWindow_setParent(QWebEngineView_windowHandle(&webview), QWindow_fromWinId(winId));
+    QWindow_setParent(QWebEngineView_windowHandle(&webview), QWindow_fromWinId(options.winId));
 
     QWebEngineView_setPage(&webview, &page);
     QWebEngineView_setUrl(&webview, qurl);
@@ -2172,7 +2203,7 @@ static bool qtwebengine(const int qtVersion,
     // FIXME Qt6 seems to need some forcing..
     if (qtVersion >= 6)
     {
-        XReparentWindow(display, webviewWinId, winId, x, y);
+        XReparentWindow(display, webviewWinId, options.winId, options.x, options.y);
         XFlush(display);
     }
 
@@ -2391,12 +2422,9 @@ int dpf_webview_start(const int argc, char* argv[])
 
     // fetch initial data
     bool hasInitialData = false;
-    Window winId = 0;
-    uint width = 0, height = 0;
-    double scaleFactor = 0;
-    int x = 0, y = 0;
-    char* url = nullptr;
-    char* initJS = nullptr;
+    WebViewInitOptions options;
+    options.url = nullptr;
+    options.initialJS = nullptr;
 
     while (shmptr->valid && webview_timedwait(&shmptr->client.sem))
     {
@@ -2405,21 +2433,23 @@ int dpf_webview_start(const int argc, char* argv[])
             DISTRHO_SAFE_ASSERT_RETURN(rbctrl.readUInt() == kWebViewMessageInitData, 1);
 
             hasInitialData = running = true;
-            winId = rbctrl.readULong();
-            width = rbctrl.readUInt();
-            height = rbctrl.readUInt();
-            scaleFactor = rbctrl.readDouble();
-            x = rbctrl.readInt();
-            y = rbctrl.readInt();
+            options.winId = rbctrl.readULong();
+            options.width = rbctrl.readUInt();
+            options.height = rbctrl.readUInt();
+            options.scaleFactor = rbctrl.readDouble();
+            options.x = rbctrl.readInt();
+            options.y = rbctrl.readInt();
+            options.backgroundColor = rbctrl.readUInt();
+            options.developerToolsEnabled = rbctrl.readBool();
 
             const uint urllen = rbctrl.readUInt();
-            url = static_cast<char*>(std::malloc(urllen));
-            rbctrl.readCustomData(url, urllen);
+            options.url = static_cast<char*>(std::malloc(urllen));
+            rbctrl.readCustomData(options.url, urllen);
 
             if (const uint initjslen = rbctrl.readUInt())
             {
-                initJS = static_cast<char*>(std::malloc(initjslen));
-                rbctrl.readCustomData(initJS, initjslen);
+                options.initialJS = static_cast<char*>(std::malloc(initjslen));
+                rbctrl.readCustomData(options.initialJS, initjslen);
             }
         }
     }
@@ -2436,13 +2466,13 @@ int dpf_webview_start(const int argc, char* argv[])
         sigaction(SIGTERM, &sig, nullptr);
 
        #if defined(WEB_VIEW_INCLUDE_GTK3_EXPLICITLY)
-        if (! gtk3(display, winId, x, y, width, height, scaleFactor, url, initJS, shmptr))
+        if (! gtk3(display, options, shmptr))
        #elif defined(WEB_VIEW_INCLUDE_QTx_EXPLICITLY)
-        if (! qtwebengine(QT_VERSION_MAJOR, display, winId, x, y, width, height, scaleFactor, url, initJS, shmptr))
+        if (! qtwebengine(QT_VERSION_MAJOR, display, options, shmptr))
        #else
-        if (! qtwebengine(5, display, winId, x, y, width, height, scaleFactor, url, initJS, shmptr) &&
-            ! qtwebengine(6, display, winId, x, y, width, height, scaleFactor, url, initJS, shmptr) &&
-            ! gtk3(display, winId, x, y, width, height, scaleFactor, url, initJS, shmptr))
+        if (! qtwebengine(5, display, options, shmptr) &&
+            ! qtwebengine(6, display, options, shmptr) &&
+            ! gtk3(display, options, shmptr))
        #endif
         {
             d_stderr("Failed to find usable WebView platform");
@@ -2456,7 +2486,9 @@ int dpf_webview_start(const int argc, char* argv[])
         d_stderr("Failed to setup WebView IPC");
     }
 
-    std::free(initJS);
+    std::free(options.url);
+    std::free(options.initialJS);
+
     munmap(shmptr, sizeof(WebViewRingBuffer));
     close(shmfd);
 
