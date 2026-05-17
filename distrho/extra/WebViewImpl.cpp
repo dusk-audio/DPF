@@ -483,8 +483,11 @@ WebViewHandle webViewCreate(const char* const url,
     NSView* const view = reinterpret_cast<NSView*>(windowId);
 
     WKPreferences* const prefs = [[WKPreferences alloc] init];
-    [prefs setValue:@YES forKey:@"javaScriptCanAccessClipboard"];
     [prefs setValue:@YES forKey:@"DOMPasteAllowed"];
+    [prefs setValue:@YES forKey:@"javaScriptCanAccessClipboard"];
+
+    if (options.developerToolsEnabled)
+        [prefs setValue:@YES forKey:@"developerExtrasEnabled"];
 
     WKWebViewConfiguration* const config = [[WKWebViewConfiguration alloc] init];
     config.allowsAirPlayForMediaPlayback = false;
@@ -539,14 +542,23 @@ WebViewHandle webViewCreate(const char* const url,
         }
     }
 
-    // if (debug)
+    if (options.backgroundColor != 0xffffffff)
     {
-        [webview setInspectable:true];
-        // TODO enable_write_console_messages_to_stdout
+        const double colorf[] = {
+            static_cast<double>((options.backgroundColor >> 24) & 0xff) / 0xff,
+            static_cast<double>((options.backgroundColor >> 16) & 0xff) / 0xff,
+            static_cast<double>((options.backgroundColor >> 8) & 0xff) / 0xff,
+            static_cast<double>(options.backgroundColor & 0xff) / 0xff,
+        };
+        NSColor* const color = [NSColor colorWithSRGBRed:colorf[0]
+                                                   green:colorf[1]
+                                                    blue:colorf[2]
+                                                   alpha:colorf[3]];
+        [webview setUnderPageBackgroundColor:color];
+
+        [webview setValue:@NO forKey:@"drawsBackground"];
     }
 
-    // themeColor NSColor
-    // NSColor * underPageBackgroundColor;
     [webview setNavigationDelegate:delegate];
     [webview setUIDelegate:delegate];
 
