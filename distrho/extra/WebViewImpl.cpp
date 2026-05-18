@@ -308,7 +308,7 @@ struct WebViewInitOptions {
     Window winId;
     uint width;
     uint height;
-    double scaleFactor = 0;
+    double scaleFactor;
     int x;
     int y;
     uint backgroundColor;
@@ -1672,6 +1672,7 @@ public:
 };
 #endif
 
+#if __cplusplus >= 201103L
 static_assert(sizeof(QApplication) == SIZEOF_QApplication, "wrong size");
 static_assert(sizeof(QByteArray) <= SIZEOF_QByteArray, "wrong size");
 static_assert(sizeof(QColor) == SIZEOF_QColor, "wrong size");
@@ -1687,6 +1688,7 @@ static_assert(sizeof(QWebEnginePage) == SIZEOF_QWebEnginePage, "wrong size");
 static_assert(sizeof(QWebEngineScript) == SIZEOF_QWebEngineScript, "wrong size");
 static_assert(sizeof(QWebEngineUrlScheme) == SIZEOF_QWebEngineUrlScheme, "wrong size");
 static_assert(sizeof(QWebEngineView) <= SIZEOF_QWebEngineView, "wrong size");
+#endif
 
 // -----------------------------------------------------------------------------------------------------------
 
