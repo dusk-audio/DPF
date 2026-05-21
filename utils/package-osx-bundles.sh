@@ -61,6 +61,11 @@ if [ -z "${MACOS_PKG_LICENSE_FILE}" ]; then
   SKIP_LICENSE_END="${SKIP_END}"
 fi
 
+ENABLE_APP=$(find . -maxdepth 1 -name '*.app' -print -quit | grep -q '.app' && echo 1 || echo)
+if [ -n "${ENABLE_APP}" ] && [ -n "${MACOS_APP_DEV_ID}" ]; then
+   codesign -s "${MACOS_APP_DEV_ID}" --deep --force --verbose --option=runtime *.app
+fi
+
 ENABLE_AU=$(find . -maxdepth 1 -name '*.component' -print -quit | grep -q '.component' && echo 1 || echo)
 if [ -n "${ENABLE_AU}" ]; then
   mkdir pkg/au
@@ -143,6 +148,27 @@ fi
 
 cd ..
 
+if [ -n "${ENABLE_APP}" ]; then
+  ditto -c -k --keepParent bin/*.app ${MACOS_PKG_SNAME}-macOS.zip
+
+  if [ -n "${MACOS_NOTARIZATION_USER}" ] && [ -n "${MACOS_NOTARIZATION_PASS}" ] && [ -n "${MACOS_NOTARIZATION_TEAM}" ]; then
+    # Notarize using credentials
+    xcrun notarytool submit ${MACOS_PKG_SNAME}-macOS.zip \
+      --apple-id ${MACOS_NOTARIZATION_USER} \
+      --password ${MACOS_NOTARIZATION_PASS} \
+      --team-id ${MACOS_NOTARIZATION_TEAM} \
+      --wait
+  elif [ -n "${MACOS_KEYCHAIN_PROFILE}" ]; then
+    # Notarize using keychain profile
+    xcrun notarytool submit ${MACOS_PKG_SNAME}-macOS.zip \
+      --keychain-profile ${MACOS_KEYCHAIN_PROFILE} \
+      --wait
+  fi
+
+  rm ${MACOS_PKG_SNAME}-macOS.zip
+fi
+
+# if [ -n "${ENABLE_AU}" ] || [ -n "${ENABLE_CLAP}" ] || [ -n "${ENABLE_LV2}" ] || [ -n "${ENABLE_VST2}" ] || [ -n "${ENABLE_VST3}" ]; then
 mkdir -p build
 sed -e "s|@name@|${MACOS_PKG_NAME}|" "${MACOS_PKG_WELCOME_TXT}" > build/welcome.txt
 sed -e "s|@builddir@|${PWD}/build|" \
@@ -171,6 +197,7 @@ productbuild \
   --version 0 \
   "${PKG_SIGN_ARGS[@]}" \
   ${MACOS_PKG_SNAME}-macOS.pkg
+# fi
 
 if [ -n "${MACOS_NOTARIZATION_USER}" ] && [ -n "${MACOS_NOTARIZATION_PASS}" ] && [ -n "${MACOS_NOTARIZATION_TEAM}" ]; then
   # Notarize using credentials
