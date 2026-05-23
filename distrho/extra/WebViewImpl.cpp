@@ -975,12 +975,15 @@ typedef int (*GSourceFunc)(void*);
 #define SIZEOF_QApplication 16
 #define SIZEOF_QByteArray 24
 #define SIZEOF_QColor 16
+#define SIZEOF_QContextMenuEvent 64
+#define SIZEOF_QEvent 24
 #define SIZEOF_QJsonValue 24
 #define SIZEOF_QMetaObject 56
 #define SIZEOF_QObject 16
 #define SIZEOF_QPoint 8
 #define SIZEOF_QSize 8
 #define SIZEOF_QString 24
+#define SIZEOF_QTimerEvent 24
 #define SIZEOF_QUrl 8
 #define SIZEOF_QWebChannel 16
 #define SIZEOF_QWebEnginePage 24
@@ -996,13 +999,19 @@ typedef int (*GSourceFunc)(void*);
 #define QApplication_setAttribute(a, b) QApplication::setAttribute(a, b)
 #define QJsonObject_value(obj, a) static_cast<const QJsonObject*>(obj)->value(a)
 #define QJsonValue_toString(obj) static_cast<const QJsonValue*>(obj)->toString()
+#define QMenu_exec(obj, a, b) static_cast<QMenu*>(obj)->exec(a, b)
+#define QObject_installEventFilter(obj, a) static_cast<QObject*>(obj)->installEventFilter(a)
+#define QObject_killTimer(obj, a) static_cast<QObject*>(obj)->killTimer(a)
 #define QObject_startTimer(obj, a, b) static_cast<QObject*>(obj)->startTimer(a, b)
 #define QString_toUtf8(obj)  static_cast<QString*>(obj)->toUtf8()
 #define QWebChannel_registerObject(obj, a, b) static_cast<QWebChannel*>(obj)->registerObject(a, b)
+#define QWebEnginePage_action(obj, a) static_cast<QWebEnginePage*>(obj)->action(a)
 #define QWebEnginePage_runJavaScript(obj, a, b, c) static_cast<QWebEnginePage*>(obj)->runJavaScript(a, b, c)
 #define QWebEnginePage_runJavaScript_compat(obj, a) static_cast<QWebEnginePage*>(obj)->runJavaScript(a)
 #define QWebEnginePage_setBackgroundColor(obj, a) static_cast<QWebEnginePage*>(obj)->setBackgroundColor(a)
+#define QWebEnginePage_setDevToolsPage(obj, a) static_cast<QWebEnginePage*>(obj)->setDevToolsPage(a)
 #define QWebEnginePage_setWebChannel(obj, a, b) static_cast<QWebEnginePage*>(obj)->setWebChannel(a, b)
+#define QWebEnginePage_triggerAction(obj, a) static_cast<QWebEnginePage*>(obj)->triggerAction(a)
 #define QWebEnginePage_webChannel(obj) static_cast<QWebEnginePage*>(obj)->webChannel()
 #define QWebEngineProfile_defaultProfile() QWebEngineProfile::defaultProfile()
 #define QWebEngineProfile_installUrlSchemeHandler(obj, a, b) static_cast<QWebEngineProfile*>(obj)->installUrlSchemeHandler(a, b)
@@ -1019,20 +1028,28 @@ typedef int (*GSourceFunc)(void*);
 #define QWebEngineUrlScheme_registerScheme(a) QWebEngineUrlScheme::registerScheme(a)
 #define QWebEngineUrlScheme_setFlags(obj, a) static_cast<QWebEngineUrlScheme*>(obj)->setFlags(a)
 #define QWebEngineUrlScheme_setSyntax(obj, a) static_cast<QWebEngineUrlScheme*>(obj)->setSyntax(a)
+#define QWebEngineView_createStandardContextMenu(obj) static_cast<QWebEngineView*>(obj)->createStandardContextMenu()
 #define QWebEngineView_move(obj, a) static_cast<QWebEngineView*>(obj)->move(a)
+#define QWebEngineView_page(obj) static_cast<QWebEngineView*>(obj)->page()
 #define QWebEngineView_resize(obj, a) static_cast<QWebEngineView*>(obj)->resize(a)
 #define QWebEngineView_setPage(obj, a) static_cast<QWebEngineView*>(obj)->setPage(a)
 #define QWebEngineView_setUrl(obj, a) static_cast<QWebEngineView*>(obj)->setUrl(a)
 #define QWebEngineView_show(obj) static_cast<QWebEngineView*>(obj)->show()
 #define QWebEngineView_winId(obj) static_cast<QWebEngineView*>(obj)->winId()
 #define QWebEngineView_windowHandle(obj) static_cast<QWebEngineView*>(obj)->windowHandle()
+#define QWidget_addAction(obj, a) static_cast<QWidget*>(obj)->addAction(a)
+#define QWidget_removeAction(obj, a) static_cast<QWidget*>(obj)->removeAction(a)
+#define QWidget_setAttribute(obj, a, b) static_cast<QWidget*>(obj)->setAttribute(a, b)
+#define QWidget_setContextMenuPolicy(obj, a) static_cast<QWidget*>(obj)->setContextMenuPolicy(a)
+#define QWidget_show(obj) static_cast<QWidget*>(obj)->show()
 #define QWindow_fromWinId(a) QWindow::fromWinId(a)
 #define QWindow_setParent(obj, a) static_cast<QWindow*>(obj)->setParent(a)
 
 #else
 
+struct QAction;
 struct QApplication { uint8_t _[SIZEOF_QApplication]; };
-struct QByteArray { public: uint8_t _[SIZEOF_QByteArray]; };
+struct QByteArray { uint8_t _[SIZEOF_QByteArray]; };
 struct QChar;
 struct QChildEvent;
 struct QColor {
@@ -1047,18 +1064,24 @@ struct QColor {
           _pad(0)
     {}
 };
+struct QContextMenuEvent;
 struct QEvent {
+    uint8_t _[SIZEOF_QEvent];
     enum Type {
+        Close = 19,
+        ContextMenu = 82,
         User = 1000,
     };
 };
+struct QContextMenuEvent { uint8_t _[SIZEOF_QContextMenuEvent]; };
 struct QIODevice;
 struct QJsonObject;
 struct QJsonValue { uint8_t _[SIZEOF_QJsonValue]; };
+struct QMenu;
 struct QMetaMethod;
 struct QMetaObject { uint8_t _[SIZEOF_QMetaObject]; };
 struct QString { uint8_t _[SIZEOF_QString]; };
-struct QTimerEvent;
+struct QTimerEvent { uint8_t _[SIZEOF_QTimerEvent]; };
 struct QUrl {
     uint8_t _[SIZEOF_QUrl];
     enum ParsingMode {
@@ -1066,7 +1089,26 @@ struct QUrl {
     };
 };
 struct QWebChannel { uint8_t _[SIZEOF_QWebChannel]; };
-struct QWebEnginePage { uint8_t _[SIZEOF_QWebEnginePage]; };
+struct QWebEnginePage {
+    uint8_t _[SIZEOF_QWebEnginePage];
+    enum WebAction {
+        Back = 0,
+        Forward,
+        Stop,
+        Reload,
+        ReloadAndBypassCache = 10,
+        OpenLinkInThisWindow = 12,
+        OpenLinkInNewWindow,
+        OpenLinkInNewTab,
+        DownloadLinkToDisk = 16,
+        DownloadImageToDisk = 19,
+        DownloadMediaToDisk = 25,
+        InspectElement,
+        SavePage = 30,
+        OpenLinkInNewBackgroundTab,
+        ViewSource,
+    };
+};
 struct QWebEngineProfile {
     enum HttpCacheType {
         NoCache = 2,
@@ -1109,6 +1151,7 @@ struct QWebEngineUrlScheme {
 };
 struct QWebEngineUrlSchemeHandler;
 struct QWebEngineView { uint8_t _[SIZEOF_QWebEngineView]; };
+struct QWidget;
 struct QWindow;
 
 namespace Qt {
@@ -1117,11 +1160,18 @@ namespace Qt {
         AA_UseHighDpiPixmaps = 13,
         AA_EnableHighDpiScaling = 20,
     };
+    enum ContextMenuPolicy {
+        DefaultContextMenu = 1,
+        CustomContextMenu = 3,
+    };
     enum EventPriority {
         HighEventPriority = 1,
     };
     enum TimerType {
         CoarseTimer = 1,
+    };
+    enum WidgetAttribute {
+        WA_DeleteOnClose = 55,
     };
 };
 
@@ -1676,12 +1726,15 @@ public:
 static_assert(sizeof(QApplication) == SIZEOF_QApplication, "wrong size");
 static_assert(sizeof(QByteArray) <= SIZEOF_QByteArray, "wrong size");
 static_assert(sizeof(QColor) == SIZEOF_QColor, "wrong size");
+static_assert(sizeof(QContextMenuEvent) <= SIZEOF_QContextMenuEvent, "wrong size");
+static_assert(sizeof(QEvent) <= SIZEOF_QEvent, "wrong size");
 static_assert(sizeof(QJsonValue) == SIZEOF_QJsonValue, "wrong size");
 static_assert(sizeof(QMetaObject) <= SIZEOF_QMetaObject, "wrong size");
 static_assert(sizeof(QObject) == SIZEOF_QObject, "wrong size");
 static_assert(sizeof(QPoint) == SIZEOF_QPoint, "wrong size");
 static_assert(sizeof(QSize) == SIZEOF_QSize, "wrong size");
 static_assert(sizeof(QString) <= SIZEOF_QString, "wrong size");
+static_assert(sizeof(QTimerEvent) <= SIZEOF_QTimerEvent, "wrong size");
 static_assert(sizeof(QUrl) == SIZEOF_QUrl, "wrong size");
 static_assert(sizeof(QWebChannel) == SIZEOF_QWebChannel, "wrong size");
 static_assert(sizeof(QWebEnginePage) == SIZEOF_QWebEnginePage, "wrong size");
@@ -1694,12 +1747,16 @@ static_assert(sizeof(QWebEngineView) <= SIZEOF_QWebEngineView, "wrong size");
 
 // QObject subclass for dealing with a few Qt details:
 // 1. opening context menu
-// 2. receiving js events for IPC
+// 2. opening developer tools
+// 3. receiving js events for IPC
 class WebViewEventFilter : public QWebChannelAbstractTransport
 {
     WebViewRingBuffer* const _rb;
     QWebEngineView* const _view;
     Display* const _display;
+    const bool _developerToolsEnabled;
+
+    QWebEngineView* _devToolsView;
 
     QPoint _menuPos;
     QString _qstrkey;
@@ -1710,15 +1767,21 @@ class WebViewEventFilter : public QWebChannelAbstractTransport
     Window _winId;
 
 public:
-    WebViewEventFilter(WebViewRingBuffer* const rb, QWebEngineView* const view, Display* const display)
-        : QWebChannelAbstractTransport(view),
-          _view(view),
+    WebViewEventFilter(WebViewRingBuffer* const rb,
+                       QWebEngineView* const view,
+                       Display* const display,
+                       const bool developerToolsEnabled)
+        : QWebChannelAbstractTransport(reinterpret_cast<QObject*>(view)),
           _rb(rb),
+          _view(view),
           _display(display),
+          _developerToolsEnabled(developerToolsEnabled),
+          _devToolsView(nullptr),
+          _menuPos(0, 0),
          #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
           isQt5(false),
          #endif
-          _timerId(0),
+          _timerId(-1),
           _winId(0)
     {
        #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
@@ -1744,14 +1807,23 @@ public:
     }
 
 protected:
-    void customEvent(QEvent* const event) override
+    void customEvent(QEvent*) override
     {
         web_wake_idle(_rb);
     }
 
-    bool eventFilter(QObject* const watched, QEvent* const event)
+    bool eventFilter(QObject* const watched, QEvent* const event) override
     {
-        if (event->type() == QEvent::ContextMenu)
+       #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        const QEvent::Type type = event->type();
+       #else
+        static int (*QObject_startTimer)(QObject*, int, Qt::TimerType) =
+            reinterpret_cast<typeof(QObject_startTimer)>(dlsym(nullptr, "_ZN7QObject10startTimerEiN2Qt9TimerTypeE"));
+
+        const QEvent::Type type = static_cast<QEvent::Type>(*reinterpret_cast<uint16_t*>(event->_ + (isQt5 ? 16 : 8)));
+       #endif
+
+        if (type == QEvent::ContextMenu && watched == reinterpret_cast<QObject*>(_view))
         {
             // HACK forcing webview window position, needed for sub-menus
             if (_winId != 0)
@@ -1763,37 +1835,100 @@ protected:
                 XFlush(_display);
             }
 
-            // show menu on next cycle
-           #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
-            static void (*QObject_startTimer)(const QObject*, int, Qt::TimerType) =
-                reinterpret_cast<typeof(QObject_startTimer)>(dlsym(nullptr, "_ZN7QObject10startTimerEiN2Qt9TimerTypeE"));
-           #endif
-            if (_timerId == 0)
-                _timerId = QObject_startTimer(this, 1, Qt::CoarseTimer);
+            // show context menu "soon"
+            // if timer is too quick, createStandardContextMenu() will refer to old objects
+            if (_timerId == -1)
+            {
+               #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+                _menuPos = static_cast<QContextMenuEvent*>(event)->globalPos();
+               #else
+                _menuPos = *reinterpret_cast<QPoint*>(event->_ + (isQt5 ? 40 : 48));
+               #endif
+                _timerId = QObject_startTimer(this, 10, Qt::CoarseTimer);
+            }
 
-            // save position for showing the menu
-            _menuPos = static_cast<QContextMenuEvent*>(event)->globalPos();
-
-            event->accept();
             return true;
         }
+
+        if (type == QEvent::Close && watched != nullptr && watched == reinterpret_cast<QObject*>(_devToolsView))
+            _devToolsView = nullptr;
 
         return QObject::eventFilter(watched, event);
     }
 
     void timerEvent(QTimerEvent* const event) override
     {
-        if (event->timerId() != _timerId)
+       #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+        const int timerId = event->timerId();
+       #else
+        static QAction* (*QAction_setVisible)(QAction*, bool) =
+            reinterpret_cast<typeof(QAction_setVisible)>(dlsym(nullptr, "_ZN7QAction10setVisibleEb"));
+
+        static QAction* (*QMenu_exec)(QMenu*, const QPoint&, QAction*) =
+            reinterpret_cast<typeof(QMenu_exec)>(dlsym(nullptr, "_ZN5QMenu4execERK6QPointP7QAction"));
+
+        static void (*QObject_installEventFilter)(QObject*, QObject*) =
+            reinterpret_cast<typeof(QObject_installEventFilter)>(dlsym(nullptr, "_ZN7QObject18installEventFilterEPS_"));
+
+        static void (*QObject_killTimer)(QObject*, int) =
+            reinterpret_cast<typeof(QObject_killTimer)>(dlsym(nullptr, "_ZN7QObject9killTimerEi"));
+
+        static QAction* (*QWebEnginePage_action)(QWebEnginePage*, QWebEnginePage::WebAction) =
+            reinterpret_cast<typeof(QWebEnginePage_action)>(dlsym(nullptr, "_ZNK14QWebEnginePage6actionENS_9WebActionE"));
+
+        static QMenu* (*QWebEnginePage_createStandardContextMenu)(QWebEnginePage*) =
+            reinterpret_cast<typeof(QWebEnginePage_createStandardContextMenu)>(dlsym(nullptr, "_ZN14QWebEnginePage25createStandardContextMenuEv"));
+
+        static void (*QWebEnginePage_setDevToolsPage)(QWebEnginePage*, QWebEnginePage*) =
+            reinterpret_cast<typeof(QWebEnginePage_setDevToolsPage)>(dlsym(nullptr, "_ZN14QWebEnginePage15setDevToolsPageEPS_"));
+
+        static void (*QWebEnginePage_triggerAction)(QWebEnginePage*, QWebEnginePage::WebAction) =
+            reinterpret_cast<typeof(QWebEnginePage_triggerAction)>(dlsym(nullptr, "_ZN14QWebEnginePage13triggerActionENS_9WebActionEb"));
+
+        static QMenu* (*QWebEngineView_createStandardContextMenu)(QWebEngineView*) =
+            reinterpret_cast<typeof(QWebEngineView_createStandardContextMenu)>(dlsym(nullptr, "_ZN14QWebEngineView25createStandardContextMenuEv"));
+
+        static void (*QWebEngineView__init)(QWebEngineView*, QObject*) =
+            reinterpret_cast<typeof(QWebEngineView__init)>(dlsym(nullptr, "_ZN14QWebEngineViewC1EP7QWidget"));
+
+        static QWebEnginePage* (*QWebEngineView_page)(QWebEngineView*) =
+            reinterpret_cast<typeof(QWebEngineView_page)>(dlsym(nullptr, "_ZNK14QWebEngineView4pageEv"));
+
+        static void (*QWidget_addAction)(QWidget*, QAction*) =
+            reinterpret_cast<typeof(QWidget_addAction)>(dlsym(nullptr, "_ZN7QWidget9addActionEP7QAction"));
+
+        static void (*QWidget_removeAction)(QWidget*, QAction*) =
+            reinterpret_cast<typeof(QWidget_removeAction)>(dlsym(nullptr, "_ZN7QWidget12removeActionEP7QAction"));
+
+        static void (*QWidget_setAttribute)(QWidget*, Qt::WidgetAttribute, bool) =
+            reinterpret_cast<typeof(QWidget_setAttribute)>(dlsym(nullptr, "_ZN7QWidget12setAttributeEN2Qt15WidgetAttributeEb"));
+
+        static void (*QWidget_show)(QWidget*) =
+            reinterpret_cast<typeof(QWidget_show)>(dlsym(nullptr, "_ZN7QWidget4showEv"));
+
+        const int timerId = *reinterpret_cast<int*>(event->_ + (isQt5 ? 20 : 16));
+       #endif
+
+        if (_timerId != timerId)
             return QObject::timerEvent(event);
 
-        killTimer(_timerId);
-        _timerId = 0;
+        QObject_killTimer(this, _timerId);
+        _timerId = -1;
 
-        d_stdout("timerEvent %p", event);
+        QWebEnginePage* const page = QWebEngineView_page(_view);
 
-        QWebEnginePage* const page = _view->page();
-
-        QMenu *menu = _view->createStandardContextMenu();
+      #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+       #if QT_VERSION_MAJOR == 5
+        QMenu* const menu = page->createStandardContextMenu();
+       #else
+        QMenu* const menu = _view->createStandardContextMenu();
+       #endif
+      #else
+        QMenu* const menu = QWebEngineView_createStandardContextMenu != nullptr
+                          ? QWebEngineView_createStandardContextMenu(_view)
+                          : QWebEnginePage_createStandardContextMenu(page);
+      #endif
+        DISTRHO_SAFE_ASSERT_RETURN(menu != nullptr,);
 
         static constexpr const QWebEnginePage::WebAction unwantedActions[] = {
             QWebEnginePage::Back,
@@ -1811,36 +1946,49 @@ protected:
         };
 
         for (uint i = 0; i < ARRAY_SIZE(unwantedActions); ++i)
-            if (auto action = page->action(unwantedActions[i]))
-                menu->removeAction(action);
+            if (QAction* const action = QWebEnginePage_action(page, unwantedActions[i]))
+                QWidget_removeAction(reinterpret_cast<QWidget*>(menu), action);
 
-        QAction* devTools = nullptr;
-        if (true)
+        QAction* inspectAction = nullptr;
+        if (_developerToolsEnabled)
         {
-            menu->addSeparator();
-            devTools = menu->addAction("Open inspector in new window");
+            inspectAction = QWebEnginePage_action(page, QWebEnginePage::InspectElement);
+
+            if (inspectAction != nullptr && _devToolsView == nullptr)
+                QWidget_addAction(reinterpret_cast<QWidget*>(menu), inspectAction);
         }
         else
         {
-            if (auto action = page->action(QWebEnginePage::Reload))
-                menu->removeAction(action);
-            if (auto action = page->action(QWebEnginePage::ReloadAndBypassCache))
-                menu->removeAction(action);
-            if (auto action = page->action(QWebEnginePage::InspectElement))
-                menu->removeAction(action);
+            if (QAction* const action = QWebEnginePage_action(page, QWebEnginePage::Reload))
+                QWidget_removeAction(reinterpret_cast<QWidget*>(menu), action);
+            if (QAction* const action = QWebEnginePage_action(page, QWebEnginePage::ReloadAndBypassCache))
+                QWidget_removeAction(reinterpret_cast<QWidget*>(menu), action);
+            if (QAction* const action = QWebEnginePage_action(page, QWebEnginePage::InspectElement))
+                QWidget_removeAction(reinterpret_cast<QWidget*>(menu), action);
         }
 
-        QAction* const chosen = menu->exec(_menuPos);
+        QAction* const chosen = QMenu_exec(menu, _menuPos, nullptr);
 
-        if (chosen == devTools && devTools != nullptr)
+        if (chosen == nullptr || chosen != inspectAction)
+            return;
+
+        if (_devToolsView == nullptr)
         {
-            d_stdout("timerEvent %p DEV TOOLS!", event);
+           #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+            _devToolsView = new QWebEngineView(static_cast<QWidget*>(nullptr));
+           #else
+            _devToolsView = new QWebEngineView;
+            QWebEngineView__init(_devToolsView, nullptr);
+           #endif
+            QWidget_setAttribute(reinterpret_cast<QWidget*>(_devToolsView), Qt::WA_DeleteOnClose, true);
 
-            auto window = new QWebEngineView();
-            page->setDevToolsPage(window->page());
-            page->triggerAction(QWebEnginePage::InspectElement);
-            window->show();
+            QWebEnginePage_setDevToolsPage(page, QWebEngineView_page(_devToolsView));
+            QWebEnginePage_triggerAction(page, QWebEnginePage::InspectElement);
+
+            QObject_installEventFilter(reinterpret_cast<QObject*>(_devToolsView), this);
         }
+
+        QWidget_show(reinterpret_cast<QWidget*>(_devToolsView));
     }
 
     void sendMessage(const QJsonObject& obj) override
@@ -1975,9 +2123,9 @@ static bool qtwebengine(const int qtVersion,
     typedef void (*QApplication_postEvent_t)(QObject*, QEvent*, Qt::EventPriority);
     typedef void (*QApplication_quit_t)();
     typedef void (*QApplication_setAttribute_t)(Qt::ApplicationAttribute, bool);
-    typedef void (*QEvent__init_t)(QEvent*, QEvent::Type);
     typedef QJsonValue (*QJsonObject_value_t)(const QJsonObject*, const QString &);
     typedef QString (*QJsonValue_toString_t)(const QJsonValue*);
+    typedef void (*QObject_installEventFilter_t)(QObject*, QObject*);
     typedef void (*QUrl__init_t)(QUrl*, const QString&, QUrl::ParsingMode);
     typedef void (*QWebChannel__init_t)(QWebChannel*, QObject*);
     typedef void (*QWebChannel_registerObject_t)(QWebChannel*, const QString&, QObject*);
@@ -2010,6 +2158,7 @@ static bool qtwebengine(const int qtVersion,
     typedef void (*QWebEngineView_show_t)(QWebEngineView*);
     typedef ulonglong (*QWebEngineView_winId_t)(QWebEngineView*);
     typedef QWindow* (*QWebEngineView_windowHandle_t)(QWebEngineView*);
+    typedef void (*QWidget_setContextMenuPolicy_t)(QWidget*, Qt::ContextMenuPolicy);
     typedef QWindow* (*QWindow_fromWinId_t)(ulonglong);
     typedef void (*QWindow_setParent_t)(QWindow*, void*);
 
@@ -2018,9 +2167,9 @@ static bool qtwebengine(const int qtVersion,
     CPPSYM(QApplication_postEvent, _ZN16QCoreApplication9postEventEP7QObjectP6QEventi)
     CPPSYM(QApplication_quit, _ZN16QCoreApplication4quitEv)
     CPPSYM(QApplication_setAttribute, _ZN16QCoreApplication12setAttributeEN2Qt20ApplicationAttributeEb)
-    CPPSYM(QEvent__init, _ZN6QEventC1ENS_4TypeE)
     CPPSYM(QJsonObject_value, _ZNK11QJsonObject5valueERK7QString)
     CPPSYM(QJsonValue_toString, _ZNK10QJsonValue8toStringEv)
+    CPPSYM(QObject_installEventFilter, _ZN7QObject18installEventFilterEPS_)
     CPPSYM(QUrl__init, _ZN4QUrlC1ERK7QStringNS_11ParsingModeE)
     CPPSYM(QWebChannel__init, _ZN11QWebChannelC1EP7QObject)
     CPPSYM(QWebChannel_registerObject, _ZN11QWebChannel14registerObjectERK7QStringP7QObject)
@@ -2053,6 +2202,7 @@ static bool qtwebengine(const int qtVersion,
     CPPSYM(QWebEngineView_show, _ZN7QWidget4showEv)
     CPPSYM(QWebEngineView_winId, _ZNK7QWidget5winIdEv)
     CPPSYM(QWebEngineView_windowHandle, _ZNK7QWidget12windowHandleEv)
+    CPPSYM(QWidget_setContextMenuPolicy, _ZN7QWidget20setContextMenuPolicyEN2Qt17ContextMenuPolicyE)
     CPPSYM(QWindow_fromWinId, _ZN7QWindow9fromWinIdEy)
     CPPSYM(QWindow_setParent, _ZN7QWindow9setParentEPS_)
    #endif
@@ -2268,9 +2418,9 @@ static bool qtwebengine(const int qtVersion,
         QWebEnginePage_setBackgroundColor(&page, color);
     }
 
-    WebViewEventFilter eventFilter(shmptr, &webview, display);
-    webview.installEventFilter(&eventFilter);
-    webview.setContextMenuPolicy(Qt::CustomContextMenu);
+    WebViewEventFilter eventFilter(shmptr, &webview, display, options.developerToolsEnabled);
+    QObject_installEventFilter(reinterpret_cast<QObject*>(&webview), &eventFilter);
+    QWidget_setContextMenuPolicy(reinterpret_cast<QWidget*>(&webview), Qt::CustomContextMenu);
 
    #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
     QWebChannel channel(&webview);
@@ -2315,7 +2465,6 @@ static bool qtwebengine(const int qtVersion,
         const QWebEnginePage_runJavaScript_t QWebEnginePage_runJavaScript;
         const QWebEngineView_setUrl_t QWebEngineView_setUrl;
         const QApplication_quit_t QApplication_quit;
-        const QEvent__init_t QEvent__init;
         const QApplication_postEvent_t QApplication_postEvent;
        #endif
 
@@ -2331,7 +2480,6 @@ static bool qtwebengine(const int qtVersion,
                        const QWebEnginePage_runJavaScript_t _QWebEnginePage_runJavaScript,
                        const QWebEngineView_setUrl_t _QWebEngineView_setUrl,
                        const QApplication_quit_t _QApplication_quit,
-                       const QEvent__init_t _QEvent__init,
                        const QApplication_postEvent_t _QApplication_postEvent
                     #endif
                        )
@@ -2347,7 +2495,6 @@ static bool qtwebengine(const int qtVersion,
               QWebEnginePage_runJavaScript(_QWebEnginePage_runJavaScript),
               QWebEngineView_setUrl(_QWebEngineView_setUrl),
               QApplication_quit(_QApplication_quit),
-              QEvent__init(_QEvent__init),
               QApplication_postEvent(_QApplication_postEvent)
            #endif
         {
@@ -2407,6 +2554,8 @@ static bool qtwebengine(const int qtVersion,
            #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
             QEvent* const qevent = new QEvent(QEvent::User);
            #else
+            static void (*QEvent__init)(QEvent*, QEvent::Type)
+                = reinterpret_cast<typeof(QEvent__init)>(dlsym(nullptr, "_ZN6QEventC1ENS_4TypeE"));
             QEvent* const qevent = new QEvent;
             QEvent__init(qevent, QEvent::User);
            #endif
@@ -2426,7 +2575,6 @@ static bool qtwebengine(const int qtVersion,
                                    QWebEnginePage_runJavaScript,
                                    QWebEngineView_setUrl,
                                    QApplication_quit,
-                                   QEvent__init,
                                    QApplication_postEvent
                                 #endif
                                    );
