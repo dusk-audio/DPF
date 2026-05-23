@@ -1690,60 +1690,39 @@ static_assert(sizeof(QWebEngineUrlScheme) == SIZEOF_QWebEngineUrlScheme, "wrong 
 static_assert(sizeof(QWebEngineView) <= SIZEOF_QWebEngineView, "wrong size");
 #endif
 
-// -----------------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------------------
 
-// HACK QObject subclass for forcing webview window position, needed for sub-menus
-class RepositionFixTimer : public QObject
+// QObject subclass for dealing with a few Qt details:
+// 1. opening context menu
+// 2. receiving js events for IPC
+class WebViewEventFilter : public QWebChannelAbstractTransport
 {
-    Display* const _display;
-    const Window _window;
-
-public:
-    RepositionFixTimer(Display* const display, const Window window)
-        : QObject(),
-          _display(display),
-          _window(window)
-    {
-       #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
-        static void (*QObject_startTimer)(const QObject*, int, Qt::TimerType) =
-            reinterpret_cast<typeof(QObject_startTimer)>(dlsym(nullptr, "_ZN7QObject10startTimerEiN2Qt9TimerTypeE"));
-       #endif
-        QObject_startTimer(this, 500, Qt::CoarseTimer);
-    }
-
-protected:
-    void timerEvent(QTimerEvent*) override
-    {
-        XWindowAttributes attrs;
-        XGetWindowAttributes(_display, _window, &attrs);
-
-        XMoveWindow(_display, _window, attrs.x + 1, attrs.y);
-        XMoveWindow(_display, _window, attrs.x, attrs.y);
-        XFlush(_display);
-    }
-};
-
-// -----------------------------------------------------------------------------------------------------------
-
-// QObject subclass for receiving events on main thread
-class EventFilterQObject : public QWebChannelAbstractTransport
-{
-    QString qstrkey;
     WebViewRingBuffer* const _rb;
+    QWebEngineView* const _view;
+    Display* const _display;
+
+    QPoint _menuPos;
+    QString _qstrkey;
    #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
     bool isQt5;
    #endif
+    int _timerId;
+    Window _winId;
 
 public:
-    EventFilterQObject(WebViewRingBuffer* const rb)
-        : QWebChannelAbstractTransport(),
-          _rb(rb)
-       #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
-        , isQt5(false)
-       #endif
+    WebViewEventFilter(WebViewRingBuffer* const rb, QWebEngineView* const view, Display* const display)
+        : QWebChannelAbstractTransport(view),
+          _view(view),
+          _rb(rb),
+          _display(display),
+         #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+          isQt5(false),
+         #endif
+          _timerId(0),
+          _winId(0)
     {
        #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
-        qstrkey = "m";
+        _qstrkey = "m";
        #else
         void (*QString__init)(QString*, const QChar*, int) =
             reinterpret_cast<typeof(QString__init)>(dlsym(nullptr, "_ZN7QStringC2EPK5QCharx"));
@@ -1755,14 +1734,113 @@ public:
         }
 
         constexpr const ushort key_qchar[] = { 'm', 0 };
-        QString__init(&qstrkey, reinterpret_cast<const QChar*>(key_qchar), 1);
+        QString__init(&_qstrkey, reinterpret_cast<const QChar*>(key_qchar), 1);
        #endif
     }
 
+    void setWinId(const Window winId)
+    {
+        _winId = winId;
+    }
+
 protected:
-    void customEvent(QEvent*) override
+    void customEvent(QEvent* const event) override
     {
         web_wake_idle(_rb);
+    }
+
+    bool eventFilter(QObject* const watched, QEvent* const event)
+    {
+        if (event->type() == QEvent::ContextMenu)
+        {
+            // HACK forcing webview window position, needed for sub-menus
+            if (_winId != 0)
+            {
+                XWindowAttributes attrs;
+                XGetWindowAttributes(_display, _winId, &attrs);
+                XMoveWindow(_display, _winId, attrs.x + 1, attrs.y);
+                XMoveWindow(_display, _winId, attrs.x, attrs.y);
+                XFlush(_display);
+            }
+
+            // show menu on next cycle
+           #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
+            static void (*QObject_startTimer)(const QObject*, int, Qt::TimerType) =
+                reinterpret_cast<typeof(QObject_startTimer)>(dlsym(nullptr, "_ZN7QObject10startTimerEiN2Qt9TimerTypeE"));
+           #endif
+            if (_timerId == 0)
+                _timerId = QObject_startTimer(this, 1, Qt::CoarseTimer);
+
+            // save position for showing the menu
+            _menuPos = static_cast<QContextMenuEvent*>(event)->globalPos();
+
+            event->accept();
+            return true;
+        }
+
+        return QObject::eventFilter(watched, event);
+    }
+
+    void timerEvent(QTimerEvent* const event) override
+    {
+        if (event->timerId() != _timerId)
+            return QObject::timerEvent(event);
+
+        killTimer(_timerId);
+        _timerId = 0;
+
+        d_stdout("timerEvent %p", event);
+
+        QWebEnginePage* const page = _view->page();
+
+        QMenu *menu = _view->createStandardContextMenu();
+
+        static constexpr const QWebEnginePage::WebAction unwantedActions[] = {
+            QWebEnginePage::Back,
+            QWebEnginePage::Forward,
+            QWebEnginePage::Stop,
+            QWebEnginePage::OpenLinkInThisWindow,
+            QWebEnginePage::OpenLinkInNewWindow,
+            QWebEnginePage::OpenLinkInNewTab,
+            QWebEnginePage::OpenLinkInNewBackgroundTab,
+            QWebEnginePage::DownloadLinkToDisk,
+            QWebEnginePage::DownloadImageToDisk,
+            QWebEnginePage::DownloadMediaToDisk,
+            QWebEnginePage::SavePage,
+            QWebEnginePage::ViewSource,
+        };
+
+        for (uint i = 0; i < ARRAY_SIZE(unwantedActions); ++i)
+            if (auto action = page->action(unwantedActions[i]))
+                menu->removeAction(action);
+
+        QAction* devTools = nullptr;
+        if (true)
+        {
+            menu->addSeparator();
+            devTools = menu->addAction("Open inspector in new window");
+        }
+        else
+        {
+            if (auto action = page->action(QWebEnginePage::Reload))
+                menu->removeAction(action);
+            if (auto action = page->action(QWebEnginePage::ReloadAndBypassCache))
+                menu->removeAction(action);
+            if (auto action = page->action(QWebEnginePage::InspectElement))
+                menu->removeAction(action);
+        }
+
+        QAction* const chosen = menu->exec(_menuPos);
+
+        if (chosen == devTools && devTools != nullptr)
+        {
+            d_stdout("timerEvent %p DEV TOOLS!", event);
+
+            auto window = new QWebEngineView();
+            page->setDevToolsPage(window->page());
+            page->triggerAction(QWebEnginePage::InspectElement);
+            window->show();
+        }
     }
 
     void sendMessage(const QJsonObject& obj) override
@@ -1787,7 +1865,7 @@ protected:
             reinterpret_cast<typeof(QString_toUtf8)>(dlsym(nullptr, "_ZN7QString13toUtf8_helperERKS_"));
        #endif
 
-        const QJsonValue json = QJsonObject_value(&obj, qstrkey);
+        const QJsonValue json = QJsonObject_value(&obj, _qstrkey);
         QString qstrvalue = QJsonValue_toString(&json);
         QByteArray data = QString_toUtf8(&qstrvalue);
 
@@ -2042,8 +2120,6 @@ static bool qtwebengine(const int qtVersion,
     QApplication__init(&app, argc, argv, 0);
    #endif
 
-    EventFilterQObject eventFilter(shmptr);
-
     QString qstrchannel, qstrmcode, qstrurl;
     {
         static constexpr const char* channel_src = "external";
@@ -2192,6 +2268,10 @@ static bool qtwebengine(const int qtVersion,
         QWebEnginePage_setBackgroundColor(&page, color);
     }
 
+    WebViewEventFilter eventFilter(shmptr, &webview, display);
+    webview.installEventFilter(&eventFilter);
+    webview.setContextMenuPolicy(Qt::CustomContextMenu);
+
    #ifdef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
     QWebChannel channel(&webview);
    #else
@@ -2211,8 +2291,7 @@ static bool qtwebengine(const int qtVersion,
     QWebEngineView_setUrl(&webview, qurl);
 
     const uintptr_t webviewWinId = QWebEngineView_winId(&webview);
-
-    RepositionFixTimer repositionFixTimer(display, webviewWinId);
+    eventFilter.setWinId(webviewWinId);
 
     // FIXME Qt6 seems to need some forcing..
     if (qtVersion >= 6)
@@ -2229,7 +2308,7 @@ static bool qtwebengine(const int qtVersion,
         const QUrl& _qurl;
         QWebEnginePage& _page;
         QWebEngineView& _webview;
-        EventFilterQObject& _eventFilter;
+        WebViewEventFilter& _eventFilter;
        #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
         const QString__init_t QString__init;
         const QWebEnginePage_runJavaScript_compat_t QWebEnginePage_runJavaScript_compat;
@@ -2245,7 +2324,7 @@ static bool qtwebengine(const int qtVersion,
                        const QUrl& qurl,
                        QWebEnginePage& page,
                        QWebEngineView& webview,
-                       EventFilterQObject& eventFilter
+                       WebViewEventFilter& eventFilter
                     #ifndef WEB_VIEW_INCLUDE_QTx_EXPLICITLY
                      , const QString__init_t _QString__init,
                        const QWebEnginePage_runJavaScript_compat_t _QWebEnginePage_runJavaScript_compat,
