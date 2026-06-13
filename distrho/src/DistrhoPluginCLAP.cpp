@@ -1181,7 +1181,7 @@ public:
                 const PortGroupWithId& portGroup(fPlugin.getPortGroupById(groupId));
                 d_strncpy(info->module, portGroup.name, CLAP_PATH_SIZE / 2);
                 for (char* sep = std::strchr(info->module, '/'); sep != nullptr; sep = std::strchr(sep, '/'))
-                    *sep++ = '\0';
+                    *sep++ = '\\';
                 wrtn = std::strlen(info->module);
                 info->module[wrtn++] = '/';
             }
