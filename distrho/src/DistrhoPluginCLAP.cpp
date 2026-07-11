@@ -101,7 +101,7 @@ struct ClapEventQueue
 
         ~Queue()
         {
-            delete[] events;
+            std::free(events);
         }
 
         void addEventFromUI(const Event& event)
