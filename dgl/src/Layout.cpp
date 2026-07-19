@@ -1,6 +1,6 @@
 /*
  * DISTRHO Plugin Framework (DPF)
- * Copyright (C) 2012-2025 Filipe Coelho <falktx@falktx.com>
+ * Copyright (C) 2012-2026 Filipe Coelho <falktx@falktx.com>
  *
  * Permission to use, copy, modify, and/or distribute this software for any purpose with
  * or without fee is hereby granted, provided that the above copyright notice and this
@@ -25,14 +25,16 @@ typedef std::list<VerticalLayout*>::iterator VerticalLayoutIterator;
 
 // --------------------------------------------------------------------------------------------------------------------
 
-template<> // horizontal
-uint Layout<true>::setAbsolutePos(int x, int y, const uint padding)
+uint HorizontalLayout::setAbsolutePos(int x, int y, const uint padding, uint margin)
 {
-    uint maxHeight = 0;
-    y += padding;
-    x += padding;
+    if (margin == UINT_MAX)
+        margin = padding;
 
-    for (SubWidgetWithSizeHintIterator it=widgets.begin(), end=widgets.end(); it != end; ++it)
+    uint maxHeight = 0;
+    y += margin;
+    x += margin;
+
+    for (SubWidgetWithSizeHintIterator it = widgets.begin(), end=widgets.end(); it != end; ++it)
     {
         SubWidgetWithSizeHint& s(*it);
         maxHeight = std::max(maxHeight, s.widget->getHeight());
@@ -44,14 +46,16 @@ uint Layout<true>::setAbsolutePos(int x, int y, const uint padding)
     return maxHeight;
 }
 
-template<> // vertical
-uint Layout<false>::setAbsolutePos(int x, int y, const uint padding)
+uint VerticalLayout::setAbsolutePos(int x, int y, const uint padding, uint margin)
 {
-    uint maxWidth = 0;
-    y += padding;
-    x += padding;
+    if (margin == UINT_MAX)
+        margin = padding;
 
-    for (SubWidgetWithSizeHintIterator it=widgets.begin(), end=widgets.end(); it != end; ++it)
+    uint maxWidth = 0;
+    y += margin;
+    x += margin;
+
+    for (SubWidgetWithSizeHintIterator it = widgets.begin(), end=widgets.end(); it != end; ++it)
     {
         SubWidgetWithSizeHint& s(*it);
         maxWidth = std::max(maxWidth, s.widget->getWidth());
@@ -63,11 +67,13 @@ uint Layout<false>::setAbsolutePos(int x, int y, const uint padding)
     return maxWidth;
 }
 
-template<> // horizontal
-void Layout<true>::setSize(const uint width, const uint padding)
+void HorizontalLayout::setWidth(const uint width, const uint padding, uint margin)
 {
+    if (margin == UINT_MAX)
+        margin = padding;
+
     uint maxHeight = 0;
-    uint nonFixedWidth = width - padding * 2;
+    uint nonFixedWidth = width - margin * 2;
     uint numDynamiclySizedWidgets = 0;
 
     for (SubWidgetWithSizeHintIterator it = widgets.begin(), end = widgets.end(); it != end; ++it)
@@ -96,14 +102,16 @@ void Layout<true>::setSize(const uint width, const uint padding)
     }
 }
 
-template<> // vertical
-void Layout<false>::setSize(const uint height, const uint padding)
+void VerticalLayout::setHeight(const uint height, const uint padding, uint margin)
 {
+    if (margin == UINT_MAX)
+        margin = padding;
+
     uint biggestWidth = 0;
-    uint nonFixedHeight = height - padding * 2;
+    uint nonFixedHeight = height - margin * 2;
     uint numDynamiclySizedWidgets = 0;
 
-    for (SubWidgetWithSizeHintIterator it=widgets.begin(), end=widgets.end(); it != end; ++it)
+    for (SubWidgetWithSizeHintIterator it = widgets.begin(), end=widgets.end(); it != end; ++it)
     {
         SubWidgetWithSizeHint& s(*it);
         biggestWidth = std::max(biggestWidth, s.widget->getWidth());
@@ -184,7 +192,7 @@ Size<uint> VerticallyStackedHorizontalLayout::adjustSize(const uint padding)
     for (HorizontalLayoutIterator it=items.begin(), end=items.end(); it != end; ++it)
     {
         HorizontalLayout* const l(*it);
-        l->setSize(biggestWidth, padding);
+        l->setWidth(biggestWidth, padding);
     }
 
     return Size<uint>(biggestWidth, totalHeight);
