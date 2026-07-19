@@ -108,6 +108,16 @@ public:
     Size<uint> getSize() const noexcept;
 
    /**
+      Get width.
+    */
+    uint getWidth() const noexcept;
+
+   /**
+      Get height.
+    */
+    uint getHeight() const noexcept;
+
+   /**
       Get the OpenGL texture handle.
     */
     GLuint getTextureHandle() const;
