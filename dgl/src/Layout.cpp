@@ -84,8 +84,13 @@ void HorizontalLayout::setWidth(const uint width, const uint padding, uint margi
         if (s.sizeHint == Fixed)
             nonFixedWidth -= s.widget->getWidth();
         else
-             ++numDynamiclySizedWidgets;
+            ++numDynamiclySizedWidgets;
     }
+
+    if (maxHeight > margin * 2)
+        maxHeight -= margin * 2;
+    else
+        maxHeight = 1;
 
     if (const size_t numWidgets = widgets.size())
         nonFixedWidth -= padding * static_cast<uint>(numWidgets - 1);
@@ -119,8 +124,13 @@ void VerticalLayout::setHeight(const uint height, const uint padding, uint margi
         if (s.sizeHint == Fixed)
             nonFixedHeight -= s.widget->getHeight();
         else
-             ++numDynamiclySizedWidgets;
+            ++numDynamiclySizedWidgets;
     }
+
+    if (biggestWidth > margin * 2)
+        biggestWidth -= margin * 2;
+    else
+        biggestWidth = 1;
 
     if (const size_t numWidgets = widgets.size())
         nonFixedHeight -= padding * static_cast<uint>(numWidgets - 1);
