@@ -44,6 +44,14 @@ jobs:
       run: |
         make clean >/dev/null
         make -j ${{ env.JOBS }}
+    - name: Without any warnings + -fsingle-precision-constant
+      if: ${{ runner.os == 'Linux' }}
+      env:
+        CFLAGS: -Werror -fsingle-precision-constant
+        CXXFLAGS: -Werror -fsingle-precision-constant
+      run: |
+        make clean >/dev/null
+        make -j ${{ env.JOBS }}
     - name: Run tests
       if: ${{ runner.os == 'Linux' }}
       run: |
