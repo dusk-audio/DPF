@@ -67,6 +67,31 @@
 # define DPF_CLAP_TIMER_INTERVAL 16 /* ~60 fps */
 #endif
 
+/* Whether this build can only ever hand the host a plugin-created (floating) window.
+ *
+ * DGL links against exactly one windowing backend, picked at build time: X11 whenever the X11
+ * development files are present, the native Wayland backend only when they are not. See the policy
+ * comment in dgl/src/pugl.hpp for why the choice works that way.
+ *
+ * CLAP_WINDOW_API_WAYLAND has no embedding contract at all -- clap/ext/gui.h says outright that
+ * embed is not supported for it -- and DGL's Wayland backend matches: puglSetParent() is accepted
+ * and ignored, every window is an xdg toplevel. So a Wayland-backed build offers floating only.
+ *
+ * A build that found *both* X11 and Wayland still advertises X11 alone. It is tempting to list
+ * CLAP_WINDOW_API_WAYLAND as an extra floating-only API there, but an X11-built DGL has no
+ * wl_surface to hand over: that would be advertising an API it cannot honour. Supporting both at
+ * once needs runtime backend dispatch inside DGL, which is deliberately out of scope.
+ *
+ * HAVE_X11 and HAVE_WAYLAND reach this file through DGL_FLAGS, which Makefile.plugins.mk folds into
+ * BASE_FLAGS (and which cmake/DPF-plugin.cmake exposes via dgl-system-libs-definitions), so the
+ * wrapper sees exactly the backend decision DGL itself was compiled with.
+ */
+#if defined(HAVE_WAYLAND) && ! defined(HAVE_X11) && ! defined(DISTRHO_OS_MAC) && ! defined(DISTRHO_OS_WINDOWS)
+# define DPF_CLAP_GUI_FLOATING_ONLY 1
+#else
+# define DPF_CLAP_GUI_FLOATING_ONLY 0
+#endif
+
 START_NAMESPACE_DISTRHO
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -228,6 +253,7 @@ public:
           fCallbackRegistered(false),
          #endif
           fIsFloating(isFloating),
+          fFloatingWindowShown(false),
           fScaleFactor(0.0),
           fParentWindow(0),
           fTransientWindow(0)
@@ -239,13 +265,7 @@ public:
 
     ~ClapUI() override
     {
-       #if DPF_CLAP_USING_HOST_TIMER
-        if (fTimerId != 0)
-            fHostTimer->unregister_timer(fHost, fTimerId);
-       #else
-        if (fCallbackRegistered && fUI != nullptr)
-            fUI->removeIdleCallbackForNativeIdle(this);
-       #endif
+        stopIdleTimer();
     }
 
    #ifndef DISTRHO_OS_MAC
@@ -301,8 +321,15 @@ public:
         return true;
     }
 
+    // NOTE: can_resize, get_resize_hints, adjust_size, set_size and set_parent are all documented
+    // "[main-thread & !floating]" in clap/ext/gui.h: a floating window belongs to the plugin, so the
+    // host neither sizes it nor embeds it. Should a host call them anyway, the honest answer is that
+    // the operation is unsupported. get_size stays valid in both modes and is left alone.
     bool canResize() const noexcept
     {
+        if (fIsFloating)
+            return false;
+
        #if DISTRHO_UI_USER_RESIZABLE
         if (UIExporter* const ui = fUI.get())
             return ui->isResizable();
@@ -314,7 +341,7 @@ public:
 
     bool getResizeHints(clap_gui_resize_hints_t* const hints) const
     {
-        if (fUI != nullptr && fUI->isResizable())
+        if (! fIsFloating && fUI != nullptr && fUI->isResizable())
         {
             uint minimumWidth, minimumHeight;
             bool keepAspectRatio;
@@ -346,7 +373,7 @@ public:
 
     bool adjustSize(uint32_t* const width, uint32_t* const height) const
     {
-        if (fUI != nullptr && fUI->isResizable())
+        if (! fIsFloating && fUI != nullptr && fUI->isResizable())
         {
             uint minimumWidth, minimumHeight;
             bool keepAspectRatio;
@@ -392,6 +419,9 @@ public:
 
     bool setSizeFromHost(uint32_t width, uint32_t height)
     {
+        if (fIsFloating)
+            return false;
+
         if (UIExporter* const ui = fUI.get())
         {
            #ifdef DISTRHO_OS_MAC
@@ -427,6 +457,20 @@ public:
         if (! fIsFloating)
             return false;
 
+        DISTRHO_SAFE_ASSERT_RETURN(window != nullptr, false);
+
+        // NOTE: on a Wayland build this is effectively a no-op that reports success.
+        //
+        // clap_window_t has no wayland member (see clap/ext/gui.h) and, more fundamentally, the only
+        // thing a compositor accepts as an xdg_toplevel parent is another toplevel of the *same*
+        // client -- a wl_surface pointer means nothing across a process boundary. Making the plugin
+        // window stay above the host window would need the host to export its toplevel through
+        // xdg-foreign and pass the resulting handle as a string, which CLAP has no way to express.
+        //
+        // puglSetTransientParent() already implements exactly this rule: a handle belonging to a view
+        // of this process becomes a real xdg_toplevel parent, anything else is ignored with a debug
+        // message. So passing the value straight through is both harmless and correct, and it keeps
+        // the in-process case (host and plugin in one binary) working.
         fTransientWindow = window->uptr;
 
         if (UIExporter* const ui = fUI.get())
@@ -451,18 +495,20 @@ public:
         if (fUI == nullptr)
         {
             createUI();
-            fHostGui->resize_hints_changed(fHost);
+
+            // resize_hints_changed is documented "[thread-safe & !floating]"; a floating window is
+            // sized by the plugin, so the host has no hints to re-read.
+            if (! fIsFloating)
+                fHostGui->resize_hints_changed(fHost);
         }
 
         if (fIsFloating)
+        {
             fUI->setWindowVisible(true);
+            fFloatingWindowShown = true;
+        }
 
-       #if DPF_CLAP_USING_HOST_TIMER
-        fHostTimer->register_timer(fHost, DPF_CLAP_TIMER_INTERVAL, &fTimerId);
-       #else
-        fCallbackRegistered = true;
-        fUI->addIdleCallbackForNativeIdle(this, DPF_CLAP_TIMER_INTERVAL);
-       #endif
+        startIdleTimer();
         return true;
     }
 
@@ -470,14 +516,9 @@ public:
     {
         if (UIExporter* const ui = fUI.get())
         {
+            fFloatingWindowShown = false;
             ui->setWindowVisible(false);
-           #if DPF_CLAP_USING_HOST_TIMER
-            fHostTimer->unregister_timer(fHost, fTimerId);
-            fTimerId = 0;
-           #else
-            ui->removeIdleCallbackForNativeIdle(this);
-            fCallbackRegistered = false;
-           #endif
+            stopIdleTimer();
         }
 
         return true;
@@ -487,22 +528,39 @@ public:
 
     void idleCallback() override
     {
-        if (UIExporter* const ui = fUI.get())
-        {
-           #if DPF_CLAP_USING_HOST_TIMER
-            ui->plugin_idle();
-           #else
-            ui->idleFromNativeIdle();
-           #endif
+        UIExporter* const ui = fUI.get();
 
-            for (uint i=0; i<fCachedParameters.numParams; ++i)
+        if (ui == nullptr)
+            return;
+
+       #if DPF_CLAP_USING_HOST_TIMER
+        ui->plugin_idle();
+       #else
+        ui->idleFromNativeIdle();
+       #endif
+
+        for (uint i=0; i<fCachedParameters.numParams; ++i)
+        {
+            if (fCachedParameters.changed[i])
             {
-                if (fCachedParameters.changed[i])
-                {
-                    fCachedParameters.changed[i] = false;
-                    ui->parameterChanged(i, fCachedParameters.values[i]);
-                }
+                fCachedParameters.changed[i] = false;
+                ui->parameterChanged(i, fCachedParameters.values[i]);
             }
+        }
+
+        // A floating window belongs to the plugin, so the host never sees the user closing it.
+        // Without this the host's "editor is open" state stays stuck on forever.
+        if (fFloatingWindowShown && ! ui->isVisible())
+        {
+            fFloatingWindowShown = false;
+            stopIdleTimer();
+
+            // MUST be the last thing this function does. The host is allowed to call hide() or even
+            // destroy() from inside closed(), and destroy() deletes this very object, so no member
+            // may be touched afterwards. was_destroyed is false: the UI resources are still alive
+            // and a later show() reuses them.
+            fHostGui->closed(fHost, false);
+            return;
         }
     }
 
@@ -560,6 +618,9 @@ private:
     ScopedPointer<UIExporter> fUI;
 
     const bool fIsFloating;
+    // true between a successful floating show() and the window going away again, whether that is a
+    // host-side hide() or the user clicking the window's close button. Only ever set when floating.
+    bool fFloatingWindowShown;
 
     // Temporary data
     double fScaleFactor;
@@ -568,6 +629,43 @@ private:
     String fWindowTitle;
 
     // ----------------------------------------------------------------------------------------------------------------
+
+    // Idling is identical for embedded and floating windows: on Unix (X11 and Wayland alike) the
+    // host timer extension drives it, everywhere else the native window idle callback does. A
+    // floating window is still pumped through UIExporter::plugin_idle(), which runs the pugl event
+    // loop, so the plugin-owned toplevel gets its events either way.
+    void startIdleTimer()
+    {
+        DISTRHO_SAFE_ASSERT_RETURN(fUI != nullptr,);
+
+       #if DPF_CLAP_USING_HOST_TIMER
+        if (fTimerId == 0)
+            fHostTimer->register_timer(fHost, DPF_CLAP_TIMER_INTERVAL, &fTimerId);
+       #else
+        if (! fCallbackRegistered)
+        {
+            fCallbackRegistered = true;
+            fUI->addIdleCallbackForNativeIdle(this, DPF_CLAP_TIMER_INTERVAL);
+        }
+       #endif
+    }
+
+    void stopIdleTimer()
+    {
+       #if DPF_CLAP_USING_HOST_TIMER
+        if (fTimerId != 0)
+        {
+            fHostTimer->unregister_timer(fHost, fTimerId);
+            fTimerId = 0;
+        }
+       #else
+        if (fCallbackRegistered && fUI != nullptr)
+        {
+            fUI->removeIdleCallbackForNativeIdle(this);
+            fCallbackRegistered = false;
+        }
+       #endif
+    }
 
     void createUI()
     {
@@ -664,6 +762,14 @@ private:
     void setSizeFromPlugin(const uint width, const uint height)
     {
         DISTRHO_SAFE_ASSERT_RETURN(fUI != nullptr,);
+
+        // request_resize is documented "[thread-safe & !floating]". A floating window is the
+        // plugin's own, so there is nobody to ask -- just resize it.
+        if (fIsFloating)
+        {
+            fUI->setWindowSizeFromHost(width, height);
+            return;
+        }
 
        #ifdef DISTRHO_OS_MAC
         const double scaleFactor = fUI->getScaleFactor();
@@ -2189,45 +2295,70 @@ static ScopedPointer<PluginExporter> sPlugin;
 
 #if DISTRHO_PLUGIN_HAS_UI
 
+// The single window API this build is able to honour; see DPF_CLAP_GUI_FLOATING_ONLY above.
 static const char* const kSupportedAPIs[] = {
 #if defined(DISTRHO_OS_WINDOWS)
     CLAP_WINDOW_API_WIN32,
 #elif defined(DISTRHO_OS_MAC)
     CLAP_WINDOW_API_COCOA,
+#elif DPF_CLAP_GUI_FLOATING_ONLY
+    CLAP_WINDOW_API_WAYLAND,
 #else
     CLAP_WINDOW_API_X11,
 #endif
 };
 
 // TODO DPF external UI
-static bool CLAP_ABI clap_gui_is_api_supported(const clap_plugin_t*, const char* const api, bool)
+static bool CLAP_ABI clap_gui_is_api_supported(const clap_plugin_t*, const char* const api, const bool is_floating)
 {
-    for (size_t i=0; i<ARRAY_SIZE(kSupportedAPIs); ++i)
+   #if DPF_CLAP_GUI_FLOATING_ONLY
+    // Wayland cannot embed, so only the floating variant of the advertised API is real.
+    if (! is_floating)
+        return false;
+   #endif
+
+    if (api != nullptr)
     {
-        if (std::strcmp(kSupportedAPIs[i], api) == 0)
-            return true;
+        for (size_t i=0; i<ARRAY_SIZE(kSupportedAPIs); ++i)
+        {
+            if (std::strcmp(kSupportedAPIs[i], api) == 0)
+                return true;
+        }
     }
 
     return false;
+
+    // might be unused
+    (void)is_floating;
 }
 
 // TODO DPF external UI
 static bool CLAP_ABI clap_gui_get_preferred_api(const clap_plugin_t*, const char** const api, bool* const is_floating)
 {
     *api = kSupportedAPIs[0];
-    *is_floating = false;
+    *is_floating = DPF_CLAP_GUI_FLOATING_ONLY != 0;
     return true;
 }
 
 static bool CLAP_ABI clap_gui_create(const clap_plugin_t* const plugin, const char* const api, const bool is_floating)
 {
+   #if DPF_CLAP_GUI_FLOATING_ONLY
+    if (! is_floating)
+        return false;
+   #endif
+
+    PluginCLAP* const instance = static_cast<PluginCLAP*>(plugin->plugin_data);
+
+    // "api may be null or blank for floating window", as per clap/ext/gui.h
+    if (is_floating && (api == nullptr || api[0] == '\0'))
+        return instance->createUI(true);
+
+    DISTRHO_SAFE_ASSERT_RETURN(api != nullptr, false);
+
     for (size_t i=0; i<ARRAY_SIZE(kSupportedAPIs); ++i)
     {
         if (std::strcmp(kSupportedAPIs[i], api) == 0)
-        {
-            PluginCLAP* const instance = static_cast<PluginCLAP*>(plugin->plugin_data);
             return instance->createUI(is_floating);
-        }
     }
 
     return false;

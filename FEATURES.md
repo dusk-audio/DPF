@@ -93,6 +93,36 @@ VST2 program support requires saving state of all programs in memory, which is v
 Although VST3 officially supports CV (Control Voltage) tagged audio ports,
 at the moment no host supports such feature and thus it is not possible to validate it.
 
+## Wayland support
+
+DGL links against a single windowing backend chosen at build time.
+X11 is used whenever the X11 development files are present; the native Wayland backend is selected
+only on a machine without them (`HAVE_X11` unset, `HAVE_WAYLAND` set).
+There is no runtime switch, and a dual-stack machine always builds X11.
+
+What a Wayland build gives you:
+
+| | Wayland build | X11 build on a Wayland session |
+|---|---|---|
+| JACK/Standalone | Native, plugin window is an xdg toplevel | Via XWayland |
+| CLAP            | Native, floating window only (see below)  | Via XWayland, embedded |
+| LV2/VST2/VST3/AU | Not usable, these formats can only embed | Via XWayland, embedded |
+| File dialogs    | xdg-desktop-portal only, no libsofd fallback | Portal, else libsofd |
+| Web view UIs    | Not available                             | Available |
+
+CLAP is the only format DPF targets that has a Wayland window API at all, and even there the CLAP
+specification states that embedding is not supported for it: hosts must use floating windows.
+A Wayland build therefore advertises `CLAP_WINDOW_API_WAYLAND` with `is_floating = true` and refuses
+embedded creation, while an X11 build keeps advertising `CLAP_WINDOW_API_X11` exactly as before.
+Every other plugin format is embed-only, so on a Wayland build those simply have no way to show a UI.
+
+Two known limitations of the Wayland backend, both inherent to the protocol rather than to DPF:
+
+- File dialogs open centred on screen rather than over the plugin window. The portal wants a parent
+  handle exported through xdg-foreign, which the current file-browser API has no way to carry.
+- `clap_plugin_gui->set_transient()` only takes effect when host and plugin share a process. A
+  `wl_surface` cannot cross a process boundary, and CLAP has no way to pass an xdg-foreign handle.
+
 ## Work in progress
 
 Feature is possible, just not implemented yet in DPF.

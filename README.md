@@ -19,6 +19,9 @@ It uses the same format as the JACK Transport API, making porting some code easi
 
 Provided features and implementation status for specific plugin formats can be seen in [FEATURES.md](FEATURES.md).
 
+On Linux, DPF builds against X11 by default and against Wayland natively when the X11 development
+files are absent; see [Wayland support](FEATURES.md#wayland-support) for what each build can do.
+
 ## Licensing
 
 DPF is released under ISC, which basically means you can do whatever you want as long as you credit the original authors.  
