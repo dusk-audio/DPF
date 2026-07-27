@@ -234,6 +234,24 @@ UNIX = true
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Set default macOS deployment target, unless the user already picked one
+#
+# Without this, the toolchain defaults to the SDK version of the build machine, making binaries
+# refuse to load on anything older. The environment variable (rather than -mmacosx-version-min) is
+# used on purpose: the compiler driver honors it per architecture slice, so universal builds passing
+# `-arch x86_64 -arch arm64` still get a sane per-slice minimum.
+#
+# To override, either set MACOSX_DEPLOYMENT_TARGET in the environment / on the make command line,
+# or pass -mmacosx-version-min=... yourself in CFLAGS/CXXFLAGS (as the macos-* rules below do).
+
+ifeq ($(MACOS),true)
+ifeq (,$(findstring -mmacosx-version-min=,$(CFLAGS)$(CXXFLAGS)$(LDFLAGS)))
+MACOSX_DEPLOYMENT_TARGET ?= 10.15
+export MACOSX_DEPLOYMENT_TARGET
+endif
+endif
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Compatibility checks
 
 ifeq ($(FILE_BROWSER_DISABLED),true)
@@ -288,7 +306,12 @@ BASE_OPTS += -msse -msse2 -msse3 -msimd128
 else ifeq ($(CPU_ARM32),true)
 BASE_OPTS += -mfpu=neon-vfpv4 -mfloat-abi=hard
 else ifeq ($(CPU_I386_OR_X86_64),true)
+# Skipped on macOS: universal builds pass several -arch flags at once and these x86-only options
+# would also be applied to the arm64 slice. Redundant there anyway, as macOS x86_64 has an SSE2
+# baseline and clang already defaults to -mfpmath=sse on it.
+ifneq ($(MACOS),true)
 BASE_OPTS += -mtune=generic -msse -msse2 -mfpmath=sse
+endif
 endif
 
 ifeq ($(MACOS),true)
@@ -760,6 +783,12 @@ else ifeq ($(WINDOWS)$(CPU_I386),truetrue)
 VST3_BINARY_DIR = Contents/x86-win
 else ifeq ($(WINDOWS)$(CPU_X86_64),truetrue)
 VST3_BINARY_DIR = Contents/x86_64-win
+else ifeq ($(WINDOWS)$(CPU_ARM64),truetrue)
+# NOTE the folder is "arm64-win" even for an aarch64-* toolchain triplet,
+# matching both the VST3 locations spec and dpf__determine_vst3_package_architecture in cmake/
+VST3_BINARY_DIR = Contents/arm64-win
+else ifeq ($(WINDOWS)$(CPU_ARM32),truetrue)
+VST3_BINARY_DIR = Contents/arm-win
 else
 VST3_BINARY_DIR =
 endif
@@ -957,6 +986,17 @@ mingw64:
 		CC=x86_64-w64-mingw32-gcc \
 		CXX=x86_64-w64-mingw32-g++ \
 		EXE_WRAPPER=wine \
+		PKG_CONFIG=/usr/bin/false \
+		PKG_CONFIG_PATH=/NOT
+
+# NOTE requires an aarch64-w64-mingw32 toolchain, as provided by llvm-mingw.
+# EXE_WRAPPER is deliberately not set to wine here, since an x86 host cannot run arm64 PE binaries;
+# set EXE_WRAPPER yourself when building on a machine where that does work.
+mingw64-arm64:
+	$(MAKE) \
+		AR=aarch64-w64-mingw32-ar \
+		CC=aarch64-w64-mingw32-gcc \
+		CXX=aarch64-w64-mingw32-g++ \
 		PKG_CONFIG=/usr/bin/false \
 		PKG_CONFIG_PATH=/NOT
 

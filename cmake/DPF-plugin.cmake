@@ -436,7 +436,11 @@ function(dpf__build_jack NAME HAS_UI FORCE_NATIVE_AUDIO_FALLBACK SKIP_NATIVE_AUD
 
   if(NOT FORCE_NATIVE_AUDIO_FALLBACK)
     target_compile_definitions("${NAME}" PUBLIC "HAVE_JACK")
-    target_compile_definitions("${NAME}-jack" PRIVATE "HAVE_GETTIMEOFDAY")
+    if(NOT MSVC)
+      # RtAudio uses this to include <sys/time.h> and call gettimeofday(), neither of which MSVC has.
+      # It only refines RtAudio's stream-time bookkeeping, so leaving it off there is harmless.
+      target_compile_definitions("${NAME}-jack" PRIVATE "HAVE_GETTIMEOFDAY")
+    endif()
   endif()
 
   if(SKIP_NATIVE_AUDIO_FALLBACK)
@@ -490,8 +494,16 @@ function(dpf__build_jack NAME HAS_UI FORCE_NATIVE_AUDIO_FALLBACK SKIP_NATIVE_AUD
       "${APPLE_COREMIDI_FRAMEWORK}")
   elseif(WIN32)
     target_link_libraries("${NAME}-jack" PRIVATE "ksuser" "mfplat" "mfuuid" "ole32" "winmm" "wmcodecdspuuid")
-    if(HAS_UI AND MINGW)
+    if(HAS_UI)
+      # a standalone with a UI must not spawn a console window alongside it
       set_target_properties("${NAME}-jack" PROPERTIES WIN32_EXECUTABLE TRUE)
+      if(MSVC)
+        # WIN32_EXECUTABLE selects /SUBSYSTEM:WINDOWS, whose default entry point is
+        # WinMainCRTStartup and thus requires a WinMain(). DPF standalones define a regular main(),
+        # so point the linker at the console startup routine instead.
+        # (MinGW needs no equivalent, its crt entry points all funnel into main().)
+        target_link_options("${NAME}-jack" PRIVATE "/ENTRY:mainCRTStartup")
+      endif()
     endif()
   endif()
 endfunction()
@@ -1551,18 +1563,10 @@ function(dpf__add_dgl_system_libs)
    endif()
 
    if(MSVC)
-     file(MAKE_DIRECTORY "${DPF_ROOT_DIR}/khronos/GL")
-     foreach(_gl_header "glext.h")
-       if(NOT EXISTS "${DPF_ROOT_DIR}/khronos/GL/${_gl_header}")
-         file(DOWNLOAD "https://www.khronos.org/registry/OpenGL/api/GL/${_gl_header}" "${DPF_ROOT_DIR}/khronos/GL/${_gl_header}" SHOW_PROGRESS)
-       endif()
-     endforeach()
-     foreach(_khr_header "khrplatform.h")
-       if(NOT EXISTS "${DPF_ROOT_DIR}/khronos/KHR/${_khr_header}")
-         file(DOWNLOAD "https://www.khronos.org/registry/EGL/api/KHR/${_khr_header}" "${DPF_ROOT_DIR}/khronos/KHR/${_khr_header}" SHOW_PROGRESS)
-       endif()
-     endforeach()
-     target_include_directories(dgl-system-libs-definitions INTERFACE "${DPF_ROOT_DIR}/khronos")
+     # The MSVC toolchain has no GL/glext.h nor KHR/khrplatform.h, so use the copies vendored in
+     # dgl/src/khronos (see the README there). These used to be downloaded at configure time, which
+     # made the build depend on the network and on whatever the registry happened to serve that day.
+     target_include_directories(dgl-system-libs-definitions INTERFACE "${DPF_ROOT_DIR}/dgl/src/khronos")
    endif()
 
   target_link_libraries(dgl-system-libs INTERFACE dgl-system-libs-definitions)
