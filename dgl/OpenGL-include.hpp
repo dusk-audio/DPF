@@ -52,13 +52,15 @@
 // OpenGL includes
 
 #ifdef DISTRHO_OS_MAC
+// There is no OpenGL ES on macOS: Apple ships no desktop GLES implementation and no <GLES2/gl2.h>, so there is
+// nothing to include here for a GLES build. This used to silently #undef DGL_USE_GLES/GLES2/GLES3 and fall
+// through to the desktop gl3.h path below, which meant a UI_TYPE=gles2 or gles3 build on macOS quietly produced
+// an ordinary desktop GL3 binary -- the build succeeded, the CI leg went green, and nothing GLES was ever
+// compiled or tested. Fail loudly instead, so the build says what it cannot do.
+# ifdef DGL_USE_GLES
+#  error OpenGL ES is not supported on macOS, use UI_TYPE=opengl3 (desktop GL3 core profile) instead
+# endif
 # ifdef DGL_USE_OPENGL3
-// NOTE GLES with macOS is not supported
-#  ifdef DGL_USE_GLES
-#   undef DGL_USE_GLES
-#   undef DGL_USE_GLES2
-#   undef DGL_USE_GLES3
-#  endif
 #  include <OpenGL/gl3.h>
 #  include <OpenGL/gl3ext.h>
 # else

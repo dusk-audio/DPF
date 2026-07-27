@@ -126,7 +126,28 @@ jobs:
       run: |
         make clean >/dev/null
         env UI_TYPE=generic make -j ${{ env.JOBS }} -C examples/Parameters jack
+    # Linux only, deliberately. These two legs used to run on macos-15 as well, where they proved nothing:
+    # dgl/OpenGL-include.hpp silently #undef'd DGL_USE_GLES/GLES2/GLES3 for DISTRHO_OS_MAC and fell through to
+    # <OpenGL/gl3.h>, so both legs compiled as an ordinary desktop GL3 build and went green without a single
+    # GLES code path being touched. Apple ships no GLES implementation, so there was never anything to test.
+    # That header now #errors instead of #undef'ing, which would turn these legs red on macOS for a
+    # configuration the fork does not support -- so they are scoped to Linux.
+    #
+    # What they DO check on Linux: the GLES source paths compile. -DDGL_USE_GLES{,2,3} selects NANOVG_GLES2 /
+    # NANOVG_GLES3 in dgl/src/NanoVG.cpp, the "#version 100" / "#version 300 es" shader headers and the
+    # BGR/BGRA-less image format handling in dgl/src/OpenGL3.cpp, none of which the opengl/opengl3 legs build.
+    # That is real compile coverage of ~three otherwise-unbuilt #ifdef branches.
+    #
+    # What they do NOT check, on Linux or anywhere in this CI: an actual GLES runtime. These runners build the
+    # X11 backend, whose Makefile.base.mk arm gives `pkg-config --libs gl x11` -- never glesv2 (the Wayland
+    # arm does select glesv2 for GLES builds, but no job here combines Wayland with UI_TYPE=gles*) -- and
+    # dgl/OpenGL-include.hpp includes <GL/gl.h> + <GL/glext.h> on Linux regardless of DGL_USE_GLES. Verified
+    # locally: a UI_TYPE=gles2 or gles3 build of examples/Parameters has DT_NEEDED libGL.so.1 + libX11.so.6 and
+    # no libGLESv2 at all. The only DPF configuration that reaches a genuine GLES driver is the wasm/emscripten
+    # target (Makefile.base.mk forces USE_GLES2 there and maps it to -sMIN_WEBGL_VERSION), which this fork does
+    # not build in CI. Treat these as build guards for the #ifdef branches, not as GLES conformance.
     - name: With UI_TYPE=gles2
+      if: ${{ runner.os == 'Linux' }}
       env:
         CFLAGS: -Werror
         CXXFLAGS: -Werror
@@ -134,12 +155,16 @@ jobs:
         make clean >/dev/null
         env UI_TYPE=gles2 make -j ${{ env.JOBS }} -C examples/Parameters jack
     - name: With UI_TYPE=gles3
+      if: ${{ runner.os == 'Linux' }}
       env:
         CFLAGS: -Werror
         CXXFLAGS: -Werror
       run: |
         make clean >/dev/null
         env UI_TYPE=gles3 make -j ${{ env.JOBS }} -C examples/Parameters jack
+    # Still runs on macOS: `opengl` stays a valid explicit choice everywhere, it just is no longer the macOS
+    # default (Makefile.plugins.mk). This leg is what keeps the legacy 2.1 immediate-mode renderer compiling on
+    # macOS for as long as Apple still hands out NSOpenGLProfileVersionLegacy.
     - name: With UI_TYPE=opengl
       env:
         CFLAGS: -Werror
