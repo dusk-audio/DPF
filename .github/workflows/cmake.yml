@@ -1,12 +1,16 @@
 name: cmake
 
 on:
+  # Push-only, on every branch. This fork takes same-repo PRs exclusively, and
+  # GitHub surfaces a branch's push checks on the PR opened from that branch, so
+  # a pull_request trigger only duplicates every run on PR branches.
+  #
+  # '**' rather than '*': in GitHub filter patterns '*' does not match '/', so
+  # '*' would silently skip every dusk/... branch this fork works on.
   push:
     branches:
-      - '*'
-  pull_request:
-    branches:
-      - '*'
+      - '**'
+  workflow_dispatch:
 
 jobs:
   ubuntu-22-04:
@@ -37,23 +41,9 @@ jobs:
           suffix: _22_04
           target: ${{ matrix.target }}
 
-  ubuntu-24-04:
-    strategy:
-      matrix:
-        # See the ubuntu-22-04 note: ARM is native (ubuntu-arm job), armhf
-        # dropped, pluginval moved to wayland.yml. Plugin validation runs once,
-        # on 22.04 (the product floor); a second copy here would add no coverage.
-        target: [linux-x86_64]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: distrho/dpf-cmake-action@v1
-        with:
-          dpf_path: .
-          suffix: _24_04
-          target: ${{ matrix.target }}
+  # No ubuntu-24-04 job: the new-toolchain canary lives in build.yml, which
+  # builds the whole tree on ubuntu-24.04 under -Werror across every C++ std
+  # mode. Rebuilding the same sources here through cmake added no coverage.
 
   # ---------------------------------------------------------------------------
   # Linux arm64, built NATIVELY on GitHub's ARM runners.
@@ -134,27 +124,14 @@ jobs:
       - name: Show built files
         run: ls -l bin/
 
-  # No macos-13 job: GitHub is deprecating the image, and the macos-intel /
-  # macos-universal targets below already exercise the x86_64 slices.
-  macos-14:
-    strategy:
-      matrix:
-        target: [macos-intel, macos-universal, macos-10.15]
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: distrho/dpf-cmake-action@v1
-        with:
-          dpf_path: .
-          suffix: _14
-          target: ${{ matrix.target }}
-
+  # No macos-13 or macos-14 job: GitHub is deprecating the 13 image, and
+  # macos-15 covers the newer-SDK risk that 14 merely duplicated.
   macos-15:
     strategy:
       matrix:
-        target: [macos-intel, macos-universal, macos-10.15]
+        # macos-intel dropped: macos-universal already builds the x86_64 slice,
+        # so a separate intel-only leg adds nothing.
+        target: [macos-universal, macos-10.15]
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4

@@ -2,26 +2,30 @@ name: wayland
 
 # Fork-specific CI for dusk-audio/DPF.
 #
-# Upstream CI (build.yml, cmake.yml, example-plugins.yml) always runs on machines that have the X11
+# The other CI here (build.yml, cmake.yml) always runs on machines that have the X11
 # development files installed, so it only ever exercises the X11 arm of the DGL backend selection.
 # The jobs below cover the two things that arm hides:
 #   - wayland-only          the Wayland backend actually compiles when X11 dev files are absent
 #   - wayland-x11-regression  a dual-stack machine still picks X11, exactly as it did before
 # plus two conformance gates that load the built plugins instead of only compiling them:
 #   - clap-validation       CLAP, which upstream does not run at all
-#   - plugin-validation     VST3 + LV2, replacing the `pluginval` matrix target that cmake.yml and
-#                           example-plugins.yml used to hand to upstream's dpf actions. That target
+#   - plugin-validation     VST3 + LV2, replacing the `pluginval` matrix target that cmake.yml used
+#                           to hand to upstream's dpf action. That target
 #                           pulled the KXStudio archive off launchpad.net and installed carla-git,
 #                           lv2lint and the mod/darkglass extensions from it; the job below needs
 #                           nothing but the Ubuntu archives and one pinned GitHub release asset.
 
 on:
+  # Push-only, on every branch. This fork takes same-repo PRs exclusively, and
+  # GitHub surfaces a branch's push checks on the PR opened from that branch, so
+  # a pull_request trigger only duplicates every run on PR branches.
+  #
+  # '**' rather than '*': in GitHub filter patterns '*' does not match '/', so
+  # '*' would silently skip every dusk/... branch this fork works on.
   push:
     branches:
-      - '*'
-  pull_request:
-    branches:
-      - '*'
+      - '**'
+  workflow_dispatch:
 
 # Every job here only builds and validates, so nothing needs write access to the repository.
 permissions:
@@ -279,7 +283,7 @@ jobs:
 
   # -------------------------------------------------------------------------------------------------------------------
   # Load the VST3 and LV2 examples with third-party validators. This replaces the `pluginval` target that
-  # used to sit in the ubuntu-22-04 matrix of cmake.yml and example-plugins.yml.
+  # used to sit in the ubuntu-22-04 matrix of cmake.yml.
   #
   # Everything here comes from either the Ubuntu archives or a pinned, checksummed GitHub release, so there
   # is no launchpad.net fetch and no KXStudio package set to go stale. What that costs is lv2lint, which

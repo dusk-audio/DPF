@@ -1,7 +1,7 @@
 # DPF - DISTRHO Plugin Framework
-[![build](https://github.com/DISTRHO/DPF/actions/workflows/build.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/build.yml)
-[![cmake](https://github.com/DISTRHO/DPF/actions/workflows/cmake.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/cmake.yml)
-[![example-plugins](https://github.com/DISTRHO/DPF/actions/workflows/example-plugins.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/example-plugins.yml)
+[![build](https://github.com/dusk-audio/DPF/actions/workflows/build.yml/badge.svg)](https://github.com/dusk-audio/DPF/actions/workflows/build.yml)
+[![cmake](https://github.com/dusk-audio/DPF/actions/workflows/cmake.yml/badge.svg)](https://github.com/dusk-audio/DPF/actions/workflows/cmake.yml)
+[![wayland](https://github.com/dusk-audio/DPF/actions/workflows/wayland.yml/badge.svg)](https://github.com/dusk-audio/DPF/actions/workflows/wayland.yml)
 
 DPF is designed to make development of new plugins an easy and enjoyable task.  
 It allows developers to create plugins with custom UIs using a simple C++ API.  
