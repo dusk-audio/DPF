@@ -1774,7 +1774,21 @@ public:
             DISTRHO_SAFE_ASSERT_INT_RETURN(read >= 0, read, false);
 
             if (read == 0)
+            {
+                // stateSave() has a fast path for plugins with no parameters and no states:
+                // it writes a single null byte and never emits the '\xfe' terminator.
+                // Accept exactly that stream here, that is a lone empty key and nothing else
+                // parsed; a genuinely truncated state still fails.
+                if (paramCount == 0 && stateCount == 0
+                    && queryingType == 'i'
+                    && ! fillingKey
+                    && ! hasValue
+                    && key.isEmpty()
+                    && value.isEmpty())
+                    break;
+
                 return false;
+            }
 
             for (int32_t i = 0; i < read; ++i)
             {
