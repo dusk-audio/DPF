@@ -48,6 +48,13 @@
 # endif
 #endif
 
+// NOTE __PRETTY_FUNCTION__ is a GCC/Clang builtin, MSVC spells the same thing __FUNCSIG__.
+#ifdef _MSC_VER
+# define RTAUDIO_BRIDGE_FUNC_NAME __FUNCSIG__
+#else
+# define RTAUDIO_BRIDGE_FUNC_NAME __PRETTY_FUNCTION__
+#endif
+
 #ifdef RTAUDIO_API_TYPE
 # include "rtaudio/RtAudio.h"
 # include "rtmidi/RtMidi.h"
@@ -178,7 +185,7 @@ struct RtAudioBridge : NativeBridge {
 
     bool requestMIDI() override
     {
-        d_stdout("%s %d", __PRETTY_FUNCTION__, __LINE__);
+        d_stdout("%s %d", RTAUDIO_BRIDGE_FUNC_NAME, __LINE__);
         // clear ports in use first
        #if defined(RTMIDI_API_TYPE) && DISTRHO_PLUGIN_WANT_MIDI_INPUT
         if (!midiIns.empty())
