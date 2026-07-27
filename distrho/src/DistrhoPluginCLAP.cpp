@@ -43,18 +43,18 @@
 # include "../extra/RingBuffer.hpp"
 #endif
 
+#include <atomic>
 #include <map>
 #include <vector>
 
 #include "clap/entry.h"
-#include "clap/plugin-factory.h"
+#include "clap/factory/plugin-factory.h"
 #include "clap/ext/audio-ports.h"
 #include "clap/ext/latency.h"
 #include "clap/ext/gui.h"
 #include "clap/ext/note-ports.h"
 #include "clap/ext/params.h"
 #include "clap/ext/state.h"
-#include "clap/ext/thread-check.h"
 #include "clap/ext/timer-support.h"
 
 #if defined(DISTRHO_OS_MAC) || defined(DISTRHO_OS_WINDOWS)
@@ -760,7 +760,11 @@ public:
          #endif
          #if DISTRHO_PLUGIN_WANT_LATENCY
           fLatencyChanged(false),
-          fLastKnownLatency(0),
+          // seed both from the plugin so a nonzero construction-time latency is not
+          // mistaken for a change on the very first activate()
+          fLastKnownLatency(fPlugin.getLatency()),
+          fLatencyRestartRequests(0),
+          fReportedLatency(fPlugin.getLatency()),
          #endif
          #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
           fMidiEventCount(0),
@@ -826,14 +830,27 @@ public:
         fPlugin.setSampleRate(sampleRate, true);
         fPlugin.setBufferSize(maxFramesCount, true);
         fPlugin.activate();
+       #if DISTRHO_PLUGIN_WANT_LATENCY
+        // The new sample rate and buffer size can change the latency, and activation
+        // is the only place where clap_host_latency::changed may be called.
+        //
+        // NOTE: canRequestRestart is false even though the plugin is active by now:
+        // asking the host to restart us from inside activate() would tear down the
+        // activation currently in progress -- exactly the activate/request_restart
+        // loop clap-validator detects.
+        checkForLatencyChanges(false);
+        // publishes the value the host is about to read back, then tells it to look
+        reportLatencyChangeIfNeeded();
+       #endif
     }
 
     void deactivate()
     {
         fPlugin.deactivate();
        #if DISTRHO_PLUGIN_WANT_LATENCY
-        checkForLatencyChanges(false, true);
-        reportLatencyChangeIfNeeded();
+        // NOTE: not reported here, it is announced on the next activate(). No restart
+        // request either, the host is already tearing the activation down.
+        checkForLatencyChanges(false);
        #endif
     }
 
@@ -1121,17 +1138,20 @@ public:
         }
 
        #if DISTRHO_PLUGIN_WANT_LATENCY
-        checkForLatencyChanges(true, false);
+        // exactly once per block, and also for blocks with no frames at all: the
+        // parameter events above are enough to move the latency on their own.
+        // flushParameters() deliberately does not check, see flushParametersFromHost.
+        checkForLatencyChanges(true);
        #endif
 
         return true;
     }
 
+    // Intentionally empty. Latency reporting used to be deferred to here, but
+    // clap_host_latency::changed is [main-thread & being-activated], so it now happens
+    // in activate() and nothing else needs a main-thread callback.
     void onMainThread()
     {
-       #if DISTRHO_PLUGIN_WANT_LATENCY
-        reportLatencyChangeIfNeeded();
-       #endif
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -1308,10 +1328,17 @@ public:
                 }
             }
         }
+    }
+
+    // clap_plugin_params::flush entry point. Runs on the audio thread while the plugin
+    // is active and on the main thread while it is deactivated, so unlike process()
+    // this one cannot assume a restart may be requested.
+    void flushParametersFromHost(const clap_input_events_t* const in, const clap_output_events_t* const out)
+    {
+        flushParameters(in, out, 0);
 
        #if DISTRHO_PLUGIN_WANT_LATENCY
-        const bool active = fPlugin.isActive();
-        checkForLatencyChanges(active, !active);
+        checkForLatencyChanges(fPlugin.isActive());
        #endif
     }
 
@@ -1400,53 +1427,113 @@ public:
     // latency
 
    #if DISTRHO_PLUGIN_WANT_LATENCY
+    // clap_plugin_latency::get. Deliberately serves the value snapshotted at
+    // activation rather than the plugin's live latency: "Once activated the latency
+    // and port configuration must remain constant, until deactivation"
+    // (clap/plugin.h), so a host polling this while active must not observe a change
+    // that is still waiting for the restart below to apply it.
+    //
+    // Thread safety: fReportedLatency is written only by the constructor and by
+    // reportLatencyChangeIfNeeded(), which activate() alone calls, and read only here.
+    // clap_plugin_latency::get is [main-thread & (being-activated | active)] and
+    // clap_plugin::activate is [main-thread], so the two cannot overlap and this needs
+    // no atomic -- unlike the latch fields below, which the audio thread also touches.
     uint32_t getLatency() const noexcept
     {
-        return fPlugin.getLatency();
+        return fReportedLatency;
     }
 
-    void checkForLatencyChanges(const bool isActive, const bool fromMainThread)
+    // how many process cycles to wait before re-asking a host that dropped a
+    // request_restart. The check runs once per block, so at 128 frames and 48 kHz this
+    // is 512 * 128 / 48000 ~= 1.4 seconds. The exact value is not critical, it only has
+    // to be long enough not to spam a host that is deliberately deferring the restart.
+    static constexpr uint32_t kLatencyRestartRetryBlocks = 512;
+
+    // Records a latency change, but never announces it to the host from here.
+    //
+    // The CLAP spec pins the reported latency to the active period:
+    //   "Once activated the latency and port configuration must remain constant,
+    //    until deactivation." -- clap/plugin.h, clap_plugin::activate
+    //   "The latency is only allowed to change during plugin->activate.
+    //    If the plugin is activated, call host->request_restart()
+    //    [main-thread & being-activated]"
+    //                                     -- clap/ext/latency.h, clap_host_latency::changed
+    //
+    // So the only point at which a new latency both exists and may be published is
+    // activation. clap-validator enforces exactly that, rejecting any call made from
+    // another entry point with "clap_host_latency::changed / Must only be called
+    // within 'clap_plugin::activate'".
+    //
+    // Therefore: while active we only ask the host for a restart, and in every case
+    // we just latch the pending change. It is announced from activate(), which is
+    // where the host re-reads clap_plugin_latency::get. A change detected while the
+    // plugin is deactivated is likewise held until the next activate() -- the host
+    // cannot act on a new latency before activating anyway.
+    //
+    // canRequestRestart says whether clap_host::request_restart may be called from the
+    // calling context, not whether the plugin happens to be active. activate() and
+    // deactivate() pass false: the host is already changing the activation state there,
+    // and asking it to restart mid-transition is what triggers the loop described above.
+    void checkForLatencyChanges(const bool canRequestRestart)
     {
         const uint32_t latency = fPlugin.getLatency();
 
-        if (fLastKnownLatency == latency)
-            return;
-
-        fLastKnownLatency = latency;
-
-        if (fHostExtensions.latency == nullptr)
-            return;
-
-        if (isActive)
+        // Read-modify-write in one step. process() and clap_plugin_params::flush run
+        // on the audio thread, while clap_plugin_state::load runs on the main thread
+        // and is legal while the plugin is active, so two threads can reach this
+        // concurrently. A plain load/compare/store could lose the update and with it
+        // both the latch and the restart request below.
+        //
+        // The latch is set regardless of whether the host implements clap.latency: the
+        // restart request below is what actually applies the new value, and a host
+        // without the extension still needs it. Only the changed() notification in
+        // reportLatencyChangeIfNeeded() depends on the extension being there.
+        if (fLastKnownLatency.exchange(latency) != latency)
         {
             fLatencyChanged = true;
+            // ask again straight away now that the value has moved
+            fLatencyRestartRequests = 0;
+        }
+
+        if (! canRequestRestart)
+            return;
+
+        // The host has to deactivate us before the new latency can take effect, and
+        // the latch stays set until activate() consumes it. A host that drops the
+        // request would otherwise serve a stale latency forever, since
+        // fLastKnownLatency has already advanced and nothing would re-request, so
+        // keep asking while the change is pending.
+        //
+        // This cannot become the activate/request_restart loop clap-validator watches
+        // for: a host that does restart clears the latch in activate() before
+        // processing resumes, so it only ever sees the one request. The interval
+        // merely keeps a host that deliberately defers from being spammed every block.
+        if (fLatencyChanged && (fLatencyRestartRequests++ % kLatencyRestartRetryBlocks) == 0)
             fHost->request_restart(fHost);
-        }
-        else
-        {
-            // if this is main-thread we can report latency change directly
-            if (fromMainThread || (fHostExtensions.threadCheck != nullptr && fHostExtensions.threadCheck->is_main_thread(fHost)))
-            {
-                fLatencyChanged = false;
-                fHostExtensions.latency->changed(fHost);
-            }
-            // otherwise we need to request a main-thread callback
-            else
-            {
-                fLatencyChanged = true;
-                fHost->request_callback(fHost);
-            }
-        }
     }
 
-    // called from main thread
+    // must only be called from within clap_plugin::activate, see above
     void reportLatencyChangeIfNeeded()
     {
-        if (fLatencyChanged)
-        {
-            fLatencyChanged = false;
+        // publish the value the host is about to read back, before telling it to look
+        const uint32_t latency = fLastKnownLatency;
+        const uint32_t previousLatency = fReportedLatency;
+        fReportedLatency = latency;
+
+        if (! fLatencyChanged.exchange(false))
+            return;
+
+        fLatencyRestartRequests = 0;
+
+        // The latch only says the latency moved at some point since the last
+        // activation, not that it ended up somewhere new. An A -> B -> A round trip
+        // between two activations leaves the host with the value it already has, so
+        // do not wake it up for that.
+        if (latency == previousLatency)
+            return;
+
+        if (fHostExtensions.latency != nullptr && fHostExtensions.latency->changed != nullptr)
             fHostExtensions.latency->changed(fHost);
-        }
     }
    #endif
 
@@ -1745,8 +1832,8 @@ public:
             fHostExtensions.params->rescan(fHost, CLAP_PARAM_RESCAN_VALUES|CLAP_PARAM_RESCAN_TEXT);
 
        #if DISTRHO_PLUGIN_WANT_LATENCY
-        checkForLatencyChanges(fPlugin.isActive(), true);
-        reportLatencyChangeIfNeeded();
+        // NOTE: not reported here, it is announced on the next activate()
+        checkForLatencyChanges(fPlugin.isActive());
        #endif
 
        #if DISTRHO_PLUGIN_HAS_UI
@@ -1835,8 +1922,13 @@ private:
     bool fUsingCV;
    #endif
    #if DISTRHO_PLUGIN_WANT_LATENCY
-    bool fLatencyChanged;
-    uint32_t fLastKnownLatency;
+    // reachable from both the audio thread (process, params flush) and the main
+    // thread (state load), see checkForLatencyChanges
+    std::atomic<bool> fLatencyChanged;
+    std::atomic<uint32_t> fLastKnownLatency;
+    std::atomic<uint32_t> fLatencyRestartRequests;
+    // main-thread only, see getLatency
+    uint32_t fReportedLatency;
    #endif
   #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
     uint32_t fMidiEventCount;
@@ -1854,7 +1946,6 @@ private:
         const clap_host_params_t* params;
        #if DISTRHO_PLUGIN_WANT_LATENCY
         const clap_host_latency_t* latency;
-        const clap_host_thread_check_t* threadCheck;
        #endif
 
         HostExtensions(const clap_host_t* const host)
@@ -1862,7 +1953,6 @@ private:
               params(nullptr)
            #if DISTRHO_PLUGIN_WANT_LATENCY
             , latency(nullptr)
-            , threadCheck(nullptr)
            #endif
         {}
 
@@ -1871,9 +1961,7 @@ private:
             params = static_cast<const clap_host_params_t*>(host->get_extension(host, CLAP_EXT_PARAMS));
            #if DISTRHO_PLUGIN_WANT_LATENCY
             DISTRHO_SAFE_ASSERT_RETURN(host->request_restart != nullptr, false);
-            DISTRHO_SAFE_ASSERT_RETURN(host->request_callback != nullptr, false);
             latency = static_cast<const clap_host_latency_t*>(host->get_extension(host, CLAP_EXT_LATENCY));
-            threadCheck = static_cast<const clap_host_thread_check_t*>(host->get_extension(host, CLAP_EXT_THREAD_CHECK));
            #endif
             return true;
         }
@@ -2397,7 +2485,7 @@ static bool CLAP_ABI clap_plugin_params_text_to_value(const clap_plugin_t* plugi
 static void CLAP_ABI clap_plugin_params_flush(const clap_plugin_t* plugin, const clap_input_events_t* in, const clap_output_events_t* out)
 {
     PluginCLAP* const instance = static_cast<PluginCLAP*>(plugin->plugin_data);
-    return instance->flushParameters(in, out, 0);
+    return instance->flushParametersFromHost(in, out);
 }
 
 static const clap_plugin_params_t clap_plugin_params = {
