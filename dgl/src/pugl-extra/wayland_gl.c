@@ -239,7 +239,7 @@ puglWaylandGlCreate(PuglView* const view)
 
   /* Likewise for the version, except that here zero is not a legal value either: version 1.0 is
      what EGL defines as the "any version" default, so that is what PUGL_DONT_CARE becomes. */
-  const EGLint majorVersion = view->hints[PUGL_CONTEXT_VERSION_MAJOR] < 0
+  const EGLint majorVersion = view->hints[PUGL_CONTEXT_VERSION_MAJOR] <= 0
                                 ? 1
                                 : (EGLint)view->hints[PUGL_CONTEXT_VERSION_MAJOR];
 
