@@ -13,7 +13,8 @@ jobs:
     strategy:
       matrix:
         os:
-          - macos-13
+          # macos-13 dropped: GitHub is deprecating the image, and macos-14/15
+          # already cover the same x86_64 code paths.
           - macos-14
           - macos-15
           # webgui failure

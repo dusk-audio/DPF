@@ -15,7 +15,8 @@ jobs:
         # No linux-arm64 / linux-armhf here: arm64 is built natively by the
         # ubuntu-arm job below (see the rationale there), and this fork ships
         # arm64 only — there is no 32-bit ARM (armhf) product to build.
-        target: [linux-i686, linux-x86_64, win32, win64, pluginval]
+        # linux-i686 dropped for the same reason: no 32-bit Linux product.
+        target: [linux-x86_64, win32, win64, pluginval]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +32,10 @@ jobs:
     strategy:
       matrix:
         # See the ubuntu-22-04 note: ARM is native (ubuntu-arm job), armhf dropped.
-        target: [linux-x86_64, pluginval]
+        # Plugin validation runs once, on ubuntu-22-04: a second copy here adds
+        # no coverage, only another kxstudio/launchpad fetch (flakiest step on
+        # the board).
+        target: [linux-x86_64]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -74,11 +78,10 @@ jobs:
   # serve, so `apt-get update` 404s and the step dies before any build happens.
   # ---------------------------------------------------------------------------
   ubuntu-arm:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04-arm, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.os }}
+    # Single runner, so no matrix (and no fail-fast knob) to carry: 22.04-arm is
+    # the product glibc floor, and 24.04-arm only rebuilt the same sources
+    # against a newer libc.
+    runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
@@ -118,21 +121,8 @@ jobs:
       - name: Show built files
         run: ls -l bin/
 
-  macos-13:
-    strategy:
-      matrix:
-        target: [macos-intel, macos-universal, macos-10.15]
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: distrho/dpf-makefile-action@v1
-        with:
-          dpf_path: .
-          suffix: _13
-          target: ${{ matrix.target }}
-
+  # No macos-13 job: GitHub is deprecating the image, and the macos-intel /
+  # macos-universal targets below already exercise the x86_64 slices.
   macos-14:
     strategy:
       matrix:
