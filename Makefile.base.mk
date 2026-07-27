@@ -920,10 +920,14 @@ macos-intel-10.8:
 		PKG_CONFIG=/usr/bin/false \
 		PKG_CONFIG_PATH=/NOT
 
+# NOTE the arm64 slice requires macOS 10.15 or later, so the deployment target of this
+# "oldest supported universal" build is 10.15 even though the source is kept 10.8 compatible.
+# MAX_ALLOWED must match the deployment target actually passed via -mmacosx-version-min,
+# otherwise every post-10.8 API is hidden from a binary that is built for 10.15.
 macos-universal-10.8:
 	$(MAKE) \
-		CFLAGS="$(CFLAGS) -arch x86_64 -arch arm64 -DMAC_OS_X_VERSION_MAX_ALLOWED=MAC_OS_X_VERSION_10_8 -DMAC_OS_X_VERSION_MIN_REQUIRED=MAC_OS_X_VERSION_10_8 -mmacosx-version-min=10.15" \
-		CXXFLAGS="$(CXXFLAGS) -arch x86_64 -arch arm64 -DMAC_OS_X_VERSION_MAX_ALLOWED=MAC_OS_X_VERSION_10_8 -DMAC_OS_X_VERSION_MIN_REQUIRED=MAC_OS_X_VERSION_10_8 -mmacosx-version-min=10.15 -stdlib=libc++" \
+		CFLAGS="$(CFLAGS) -arch x86_64 -arch arm64 -DMAC_OS_X_VERSION_MAX_ALLOWED=MAC_OS_X_VERSION_10_15 -DMAC_OS_X_VERSION_MIN_REQUIRED=MAC_OS_X_VERSION_10_8 -mmacosx-version-min=10.15" \
+		CXXFLAGS="$(CXXFLAGS) -arch x86_64 -arch arm64 -DMAC_OS_X_VERSION_MAX_ALLOWED=MAC_OS_X_VERSION_10_15 -DMAC_OS_X_VERSION_MIN_REQUIRED=MAC_OS_X_VERSION_10_8 -mmacosx-version-min=10.15 -stdlib=libc++" \
 		LDFLAGS="$(LDFLAGS) -stdlib=libc++" \
 		PKG_CONFIG=/usr/bin/false \
 		PKG_CONFIG_PATH=/NOT

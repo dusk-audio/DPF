@@ -600,17 +600,19 @@ FileBrowserHandle fileBrowserCreate(const bool isEmbed,
                                                                       "org.freedesktop.portal.FileChooser",
                                                                       options.saving ? "SaveFile" : "OpenFile"))
             {
-               #ifdef HAVE_X11
+                // NOTE the portal method signature is (s parent_window, s title, a{sv} options),
+                // so the parent window argument must always be sent.
+                // An empty string means "no parent window", as per the portal spec.
                 char windowIdStr[32];
                 memset(windowIdStr, 0, sizeof(windowIdStr));
-                snprintf(windowIdStr, sizeof(windowIdStr)-1, "x11:%llx", (ulonglong)windowId);
-                const char* windowIdStrPtr = windowIdStr;
+               #ifdef HAVE_X11
+                if (windowId != 0)
+                    snprintf(windowIdStr, sizeof(windowIdStr)-1, "x11:%llx", (ulonglong)windowId);
                #endif
+                const char* windowIdStrPtr = windowIdStr;
 
                 dbus_message_append_args(msg,
-                                        #ifdef HAVE_X11
                                          DBUS_TYPE_STRING, &windowIdStrPtr,
-                                        #endif
                                          DBUS_TYPE_STRING, &windowTitle,
                                          DBUS_TYPE_INVALID);
 
