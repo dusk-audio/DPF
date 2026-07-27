@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,6 +46,7 @@ typedef struct {
   int                 stride;
   int                 index;
   int                 lastIndex;
+  bool                entered; ///< Whether the matching enter() got as far as succeeding
 } PuglWaylandCairoSurface;
 
 static void
@@ -73,16 +75,19 @@ puglWaylandCairoCreateShmFile(const size_t size)
       return -1;
     }
 
-    char path[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/pugl-shm-XXXXXX", dir);
+    char      path[PATH_MAX];
+    const int n = snprintf(path, sizeof(path), "%s/pugl-shm-XXXXXX", dir);
 
-    fd = mkstemp(path);
+    if (n < 0 || (size_t)n >= sizeof(path)) {
+      return -1; // XDG_RUNTIME_DIR is absurdly long, the template got truncated
+    }
+
+    fd = mkostemp(path, O_CLOEXEC);
     if (fd < 0) {
       return -1;
     }
 
     unlink(path);
-    fcntl(fd, F_SETFD, FD_CLOEXEC);
   }
 
   if (ftruncate(fd, (off_t)size) != 0) {
@@ -144,8 +149,14 @@ puglWaylandCairoOpenPool(PuglView* const view, const PuglArea size)
     return PUGL_BAD_CONFIGURATION;
   }
 
-  const size_t bufferSize = (size_t)stride * size.height;
+  const size_t bufferSize = (size_t)stride * (size_t)size.height;
   const size_t poolSize   = bufferSize * PUGL_WAYLAND_CAIRO_NUM_BUFFERS;
+
+  /* wl_shm_create_pool and wl_shm_pool_create_buffer take int32_t, so an extreme size times an
+     extreme scale could silently wrap into a negative size or offset. */
+  if (poolSize > (size_t)INT32_MAX) {
+    return PUGL_BAD_CONFIGURATION;
+  }
 
   const int fd = puglWaylandCairoCreateShmFile(poolSize);
   if (fd < 0) {
@@ -258,6 +269,11 @@ puglWaylandCairoEnter(PuglView* const view, const PuglExposeEvent* const expose)
     return PUGL_SUCCESS;
   }
 
+  /* Every failure below leaves this false, which is what stops leave() from committing a buffer
+     that was never drawn into.  wayland.c re-arms needsRedisplay for a failed enter(), so the frame
+     is retried rather than lost. */
+  surface->entered = false;
+
   const PuglArea size = puglWaylandGetBufferSize(view);
 
   if (!puglIsValidArea(size)) {
@@ -272,7 +288,7 @@ puglWaylandCairoEnter(PuglView* const view, const PuglExposeEvent* const expose)
     }
   }
 
-  // Pick a buffer the compositor is not holding, falling back to reuse rather than stalling
+  // Pick a buffer the compositor is not holding
   int index = -1;
   for (int i = 0; i < PUGL_WAYLAND_CAIRO_NUM_BUFFERS; ++i) {
     if (!surface->busy[i]) {
@@ -282,7 +298,11 @@ puglWaylandCairoEnter(PuglView* const view, const PuglExposeEvent* const expose)
   }
 
   if (index < 0) {
-    index = 0;
+    /* Both buffers are still owned by the compositor.  Drawing into one anyway would scribble over
+       a frame that is on screen, and attaching it a second time would leave the busy flags
+       permanently out of step with reality (two attaches, one release).  Skip this frame instead
+       and let wayland.c retry it once a release arrives. */
+    return PUGL_FAILURE;
   }
 
   surface->index = index;
@@ -308,6 +328,7 @@ puglWaylandCairoEnter(PuglView* const view, const PuglExposeEvent* const expose)
     surface->cr, expose->x, expose->y, expose->width, expose->height);
   cairo_clip(surface->cr);
 
+  surface->entered = true;
   return PUGL_SUCCESS;
 }
 
@@ -326,6 +347,14 @@ puglWaylandCairoLeave(PuglView* const view, const PuglExposeEvent* const expose)
     cairo_destroy(surface->cr);
     surface->cr = NULL;
   }
+
+  if (!surface->entered) {
+    /* The matching enter() failed, so the buffer holds either nothing or a frame the compositor is
+       still showing.  Committing it would put garbage (or a duplicate attach) on screen. */
+    return PUGL_FAILURE;
+  }
+
+  surface->entered = false;
 
   const int index = surface->index;
 

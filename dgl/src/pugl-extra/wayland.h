@@ -76,6 +76,18 @@ typedef struct {
   bool     failed;   ///< Whether the buffer could not be grown
 } PuglWaylandPipeRecv;
 
+/**
+   Data this client has put on the clipboard, kept alive for wl_data_source.send.
+
+   Owned by the wl_data_source it is attached to as listener data, and normally freed by the
+   wl_data_source.cancelled handler.  The world keeps a pointer to the live one as well, because at
+   teardown there is nobody left to deliver that cancelled event.
+*/
+typedef struct {
+  PuglBlob            data;
+  PuglWorldInternals* wimpl; ///< Owning world, for reaching a receive in progress
+} PuglWaylandSourceData;
+
 /// Everything needed to turn wl_keyboard events into Pugl key and text events
 typedef struct {
   struct xkb_context*       context;
@@ -105,6 +117,12 @@ typedef struct {
 } PuglWaylandScroll;
 
 struct PuglWorldInternalsImpl {
+  /* The world these internals belong to.  puglInitWorldInternals() is not given it, so it is filled
+     in as soon as anything that has it runs (see puglInitViewInternals and
+     puglWaylandDispatchEvents).  Only needed by listeners that have to reach across every view, such
+     as wl_registry.global_remove dropping a wl_output; those can only fire once views exist. */
+  PuglWorld* world;
+
   // Core globals
   struct wl_display*    display;
   struct wl_registry*   registry;
@@ -153,6 +171,12 @@ struct PuglWorldInternalsImpl {
   // Clipboard, plus the drag-and-drop offer we decline but still have to clean up after
   PuglWaylandOffer* selectionOffer;
   PuglWaylandOffer* dndOffer;
+
+  /* The selection this client currently owns, if any.  Ordinarily the wl_data_source.cancelled
+     handler destroys these, but that event never arrives if the world is torn down while we still
+     own the selection, so they are tracked here and freed by puglWaylandDestroyWorldInternals(). */
+  struct wl_data_source* dataSource;
+  PuglWaylandSourceData* dataSourceData;
 
   /// Set only for the duration of puglAcceptOffer(), see PuglWaylandPipeRecv
   PuglWaylandPipeRecv* activeRecv;
