@@ -136,12 +136,21 @@
    Pulling it into the DGL namespace would declare a second, namespaced set of the former that could
    never resolve at link time.
 
-   It is also included *before* the matching client headers on purpose: the definitions carry
-   WL_PRIVATE (hidden visibility) so a plugin cannot collide with a host that links its own copy of
-   the same protocol, and that only takes effect if the definition is the first declaration the
-   compiler sees.  Where the generated code does not forward declare its own interface, C++ gives
-   the const definition internal linkage instead, which is even better -- but makes the visibility
-   attribute meaningless, hence -Wattributes off for this block. */
+   It is also included *before* the matching client headers on purpose: the generated code declares
+   the interfaces it defines, and seeing a later `extern` declaration from the client header first
+   would make those definitions extern too.
+
+   What the generated code does *not* do is give those definitions hidden visibility.  wayland-
+   scanner emits its own forward declarations without WL_PRIVATE, so by the time the attribute
+   appears on the definition it is too late to apply and the compiler ignores it -- which is exactly
+   the warning that -Wattributes is silenced for here.  The enclosing extern "C" block keeps the
+   linkage external as well, so nothing in this file stops a symbol from being exported.
+
+   Isolation from a host that links its own copy of the same protocol therefore comes entirely from
+   the build's global -fvisibility=hidden (see Makefile.base.mk), which release builds set.  DEBUG
+   builds do not, so a debug plugin loaded into a host that also uses xdg-shell can have its
+   xdg_*_interface symbols interposed by the host's copies. The layouts are generated from the same
+   protocol XML, so in practice this is benign, but it is worth knowing when debugging one. */
 # if defined(__GNUC__)
 #  pragma GCC diagnostic push
 #  pragma GCC diagnostic ignored "-Wattributes"
@@ -167,9 +176,8 @@ extern "C" {
 #  include <EGL/eglext.h>
 #  include <wayland-egl.h>
 # endif
-# ifdef DGL_VULKAN
-#  include <vulkan/vulkan_wayland.h>
-# endif
+// NOTE: no vulkan/vulkan_wayland.h here on purpose. There is no wayland_vulkan backend to include
+// below, so the header would only be dead weight ahead of the diagnostic in the backend arm.
 #endif
 
 #ifdef DGL_USE_FILE_BROWSER
@@ -284,6 +292,12 @@ START_NAMESPACE_DGL
 # endif
 # ifdef DGL_OPENGL
 #  include "pugl-extra/wayland_gl.c"
+# endif
+# ifdef DGL_VULKAN
+// There is no wayland_vulkan.c, but puglSetMatchingBackendForCurrentBuild below calls
+// puglVulkanBackend() whenever DGL_VULKAN is set. Say so here rather than leaving the build to fail
+// at link time with an undefined reference. Reachable via the CMake UI_TYPE vulkan option.
+#  error "Vulkan is not implemented on the DGL Wayland backend"
 # endif
 #endif
 

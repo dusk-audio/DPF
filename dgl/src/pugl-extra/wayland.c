@@ -37,6 +37,8 @@
 #include <limits.h>
 #include <math.h>
 #include <poll.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -89,6 +91,13 @@
 
 /// One wl_pointer axis unit is conventionally a tenth of a "line"
 #define PUGL_WAYLAND_AXIS_PER_LINE 10.0
+
+/* Clipboard transfers happen over a pipe shared with another (possibly hostile or simply wedged)
+   process, and both ends are serviced from the GUI thread.  Every wait is therefore bounded: the
+   receiving side gives up after this long with no progress, and the sending side after this long
+   without the requester draining the pipe. */
+#define PUGL_WAYLAND_CLIPBOARD_RECV_TIMEOUT_MS 1000
+#define PUGL_WAYLAND_CLIPBOARD_SEND_TIMEOUT_MS 1000
 
 // --------------------------------------------------------------------------------------------
 // Small helpers
@@ -149,6 +158,18 @@ puglWaylandTime(const PuglWorld* const world)
 
   return ((double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0) -
          world->startTime;
+}
+
+/// Monotonic milliseconds, for bounding waits that have no PuglWorld at hand
+static int64_t
+puglWaylandMonotonicMs(void)
+{
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts)) {
+    return 0;
+  }
+
+  return (int64_t)ts.tv_sec * 1000 + (int64_t)ts.tv_nsec / 1000000;
 }
 
 /// Return the view a wl_surface belongs to, or NULL if it is not ours (or gone)
@@ -1797,14 +1818,97 @@ static const struct wl_data_device_listener puglWaylandDataDeviceListener = {
 
 /// The data we have most recently put on the clipboard, kept alive for wl_data_source.send
 typedef struct {
-  PuglBlob data;
+  PuglBlob            data;
+  PuglWorldInternals* wimpl; ///< Owning world, for reaching a receive in progress
 } PuglWaylandSourceData;
+
+/// Append whatever is readable to a receive in progress; sets done at end of stream
+static void
+puglWaylandRecvRead(PuglWaylandPipeRecv* const recv)
+{
+  if (recv->done || recv->failed) {
+    return;
+  }
+
+  if (recv->len == recv->capacity) {
+    const size_t   capacity = recv->capacity * 2U;
+    uint8_t* const grown    = (uint8_t*)realloc(recv->buffer, capacity);
+
+    if (!grown) {
+      recv->failed = true;
+      recv->done   = true;
+      return;
+    }
+
+    recv->buffer   = grown;
+    recv->capacity = capacity;
+  }
+
+  const ssize_t n =
+    read(recv->fd, recv->buffer + recv->len, recv->capacity - recv->len);
+
+  if (n > 0) {
+    recv->len += (size_t)n;
+  } else if (n == 0) {
+    recv->done = true; // Writer closed the pipe, transfer complete
+  } else if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+    recv->done = true;
+  }
+}
 
 static void
 puglWaylandDataSourceTarget(void* const                  PUGL_UNUSED(data),
                             struct wl_data_source* const PUGL_UNUSED(source),
                             const char* const            PUGL_UNUSED(mimeType))
 {
+}
+
+/**
+   Scoped SIGPIPE suppression for a clipboard write.
+
+   Writing into a pipe whose reader has gone away raises SIGPIPE, which by default kills the process
+   -- and this code runs inside somebody else's host, so taking the process down is not an option.
+   A library must not install a global SIGPIPE handler either, since that is the application's to
+   own.  The portable middle ground (what glib and other libraries do) is to block the signal on
+   this thread only for the duration of the writes, consume any instance that went pending, then put
+   the old mask back.  EPIPE is then reported through errno as an ordinary write error.
+*/
+typedef struct {
+  sigset_t oldMask;
+  bool     blocked;
+} PuglWaylandSigpipeGuard;
+
+static void
+puglWaylandBlockSigpipe(PuglWaylandSigpipeGuard* const guard)
+{
+  sigset_t mask;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGPIPE);
+
+  guard->blocked = pthread_sigmask(SIG_BLOCK, &mask, &guard->oldMask) == 0;
+}
+
+static void
+puglWaylandUnblockSigpipe(PuglWaylandSigpipeGuard* const guard,
+                          const bool                     pending)
+{
+  if (!guard->blocked) {
+    return;
+  }
+
+  /* Only drain when a write actually failed with EPIPE, and only when the caller was not already
+     blocking SIGPIPE -- in that case the signal belongs to them and must be left alone. */
+  if (pending && !sigismember(&guard->oldMask, SIGPIPE)) {
+    const struct timespec zero = {0, 0};
+    sigset_t              pipeOnly;
+    sigemptyset(&pipeOnly);
+    sigaddset(&pipeOnly, SIGPIPE);
+
+    while (sigtimedwait(&pipeOnly, NULL, &zero) < 0 && errno == EINTR) {
+    }
+  }
+
+  pthread_sigmask(SIG_SETMASK, &guard->oldMask, NULL);
 }
 
 static void
@@ -1815,23 +1919,92 @@ puglWaylandDataSourceSend(void* const                  data,
 {
   const PuglWaylandSourceData* const sd = (const PuglWaylandSourceData*)data;
 
-  if (sd && sd->data.data && sd->data.len) {
-    const char* pos       = (const char*)sd->data.data;
-    size_t      remaining = sd->data.len;
+  if (!sd || !sd->data.data || !sd->data.len) {
+    close(fd);
+    return;
+  }
 
-    while (remaining > 0) {
-      const ssize_t written = write(fd, pos, remaining);
-      if (written <= 0) {
-        if (written < 0 && errno == EINTR) {
+  /* The requester might never read, might read slowly, or might be this very client pasting from
+     itself.  A blocking write would wedge the GUI thread as soon as the payload outgrows the pipe
+     buffer, so the fd goes non-blocking and every wait is bounded. */
+  const int flags = fcntl(fd, F_GETFL, 0);
+  if (flags >= 0) {
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  }
+
+  PuglWaylandSigpipeGuard guard;
+  puglWaylandBlockSigpipe(&guard);
+
+  const int64_t deadline =
+    puglWaylandMonotonicMs() + PUGL_WAYLAND_CLIPBOARD_SEND_TIMEOUT_MS;
+
+  const char* pos        = (const char*)sd->data.data;
+  size_t      remaining  = sd->data.len;
+  bool        gotSigpipe = false;
+
+  while (remaining > 0) {
+    const ssize_t written = write(fd, pos, remaining);
+
+    if (written > 0) {
+      pos += (size_t)written;
+      remaining -= (size_t)written;
+      continue;
+    }
+
+    if (written < 0 && errno == EINTR) {
+      continue;
+    }
+
+    if (written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      const int64_t now = puglWaylandMonotonicMs();
+      if (now >= deadline) {
+        break; // Requester is not draining the pipe, abort rather than hang
+      }
+
+      /* If a paste of our own is in flight, this handler was reached from inside its read loop and
+         that loop is not going to run again until we return.  Drain its end of the pipe here, or a
+         payload larger than the pipe buffer could never get through. */
+      PuglWaylandPipeRecv* const recv =
+        sd->wimpl ? sd->wimpl->activeRecv : NULL;
+      const bool alsoRecv = recv && !recv->done;
+
+      struct pollfd pfds[2];
+      pfds[0].fd      = fd;
+      pfds[0].events  = POLLOUT;
+      pfds[0].revents = 0;
+      if (alsoRecv) {
+        pfds[1].fd      = recv->fd;
+        pfds[1].events  = POLLIN;
+        pfds[1].revents = 0;
+      }
+
+      const int ret = poll(pfds, alsoRecv ? 2 : 1, (int)(deadline - now));
+
+      if (ret < 0) {
+        if (errno == EINTR) {
           continue;
         }
         break;
       }
 
-      pos += written;
-      remaining -= (size_t)written;
+      if (alsoRecv && (pfds[1].revents & (POLLIN | POLLERR | POLLHUP))) {
+        puglWaylandRecvRead(recv);
+      }
+
+      if (ret > 0 && !(pfds[0].revents & POLLOUT) &&
+          (pfds[0].revents & (POLLERR | POLLHUP))) {
+        break; // The reader is gone
+      }
+
+      continue;
     }
+
+    // Any other error (EPIPE in particular) means the transfer is over
+    gotSigpipe = written < 0 && errno == EPIPE;
+    break;
   }
+
+  puglWaylandUnblockSigpipe(&guard, gotSigpipe);
 
   close(fd);
 }
@@ -1987,23 +2160,94 @@ puglWaylandSetClipboardFormats(PuglWaylandClipboard* const board,
   return PUGL_SUCCESS;
 }
 
-/// Read everything from a pipe the clipboard owner is writing into
-static PuglStatus
-puglWaylandReadPipe(const int fd, PuglBlob* const out)
-{
-  size_t   capacity = 4096U;
-  size_t   len      = 0U;
-  uint8_t* buffer   = (uint8_t*)malloc(capacity);
+/**
+   Read everything from a pipe the clipboard owner is writing into.
 
-  if (!buffer) {
+   The display connection is pumped alongside the pipe, which is not an optimisation but a
+   correctness requirement: when this client owns the selection (pasting from itself, the common
+   case for a plugin UI's own copy/paste) the compositor routes the wl_data_source.send request
+   straight back to us.  Nobody else is going to dispatch it -- the GUI thread is right here -- so
+   blocking on the pipe alone would deadlock until the timeout, hand back nothing, and leave a
+   doomed write to a closed pipe queued up for the next dispatch.
+*/
+static PuglStatus
+puglWaylandReadPipe(PuglWorldInternals* const impl,
+                    const int                 fd,
+                    PuglBlob* const           out)
+{
+  struct wl_display* const display = impl->display;
+
+  PuglWaylandPipeRecv recv;
+  recv.fd       = fd;
+  recv.capacity = 4096U;
+  recv.len      = 0U;
+  recv.done     = false;
+  recv.failed   = false;
+  recv.buffer   = (uint8_t*)malloc(recv.capacity);
+
+  if (!recv.buffer) {
     return PUGL_NO_MEMORY;
   }
 
-  for (;;) {
-    struct pollfd pfd = {fd, POLLIN, 0};
-    const int     ret = poll(&pfd, 1, 1000);
+  /* Two places drain this fd now -- the loop below and, for a self-paste, the send handler it
+     dispatches -- so a read that races the other one must not block. */
+  const int flags = fcntl(fd, F_GETFL, 0);
+  if (flags >= 0) {
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  }
+
+  // Publish it so our own wl_data_source.send handler can drain this end while it writes
+  PuglWaylandPipeRecv* const previousRecv = impl->activeRecv;
+  impl->activeRecv                        = &recv;
+
+  const int displayFd = wl_display_get_fd(display);
+
+  /* Bounded by inactivity rather than total time, so a large but healthy transfer is not truncated
+     while a stalled peer (or a compositor event storm) still cannot spin here forever. */
+  int64_t deadline =
+    puglWaylandMonotonicMs() + PUGL_WAYLAND_CLIPBOARD_RECV_TIMEOUT_MS;
+
+  while (!recv.done) {
+    // Same prepare_read/poll/read_events dance as puglWaylandDispatchEvents, plus the pipe
+    if (wl_display_dispatch_pending(display) < 0) {
+      break;
+    }
+
+    bool readPrepared = true;
+    while (wl_display_prepare_read(display) != 0) {
+      if (wl_display_dispatch_pending(display) < 0) {
+        readPrepared = false;
+        break;
+      }
+    }
+
+    if (!readPrepared) {
+      break;
+    }
+
+    if (wl_display_flush(display) < 0 && errno != EAGAIN) {
+      wl_display_cancel_read(display);
+      break;
+    }
+
+    const int64_t now = puglWaylandMonotonicMs();
+    if (now >= deadline) {
+      wl_display_cancel_read(display);
+      break; // Timed out, take what we have
+    }
+
+    struct pollfd pfds[2];
+    pfds[0].fd      = fd;
+    pfds[0].events  = POLLIN;
+    pfds[0].revents = 0;
+    pfds[1].fd      = displayFd;
+    pfds[1].events  = POLLIN;
+    pfds[1].revents = 0;
+
+    const int ret = poll(pfds, 2, (int)(deadline - now));
 
     if (ret < 0) {
+      wl_display_cancel_read(display);
       if (errno == EINTR) {
         continue;
       }
@@ -2011,36 +2255,46 @@ puglWaylandReadPipe(const int fd, PuglBlob* const out)
     }
 
     if (ret == 0) {
+      wl_display_cancel_read(display);
       break; // Timed out, take what we have
     }
 
-    if (len == capacity) {
-      capacity *= 2U;
-      uint8_t* const grown = (uint8_t*)realloc(buffer, capacity);
-      if (!grown) {
-        free(buffer);
-        return PUGL_NO_MEMORY;
+    if (pfds[1].revents & (POLLIN | POLLERR | POLLHUP)) {
+      // On failure read_events releases the read intent itself, so no cancel here
+      if (wl_display_read_events(display) < 0) {
+        break;
       }
-      buffer = grown;
+    } else {
+      wl_display_cancel_read(display);
     }
 
-    const ssize_t n = read(fd, buffer + len, capacity - len);
-    if (n < 0) {
-      if (errno == EINTR || errno == EAGAIN) {
-        continue;
-      }
+    const size_t lenBeforeDispatch = recv.len;
+
+    /* This is what lets a self-paste complete: our own wl_data_source.send handler runs from here,
+       and for anything bigger than the pipe buffer it drains recv itself as it goes. */
+    if (wl_display_dispatch_pending(display) < 0) {
       break;
     }
 
-    if (n == 0) {
-      break; // Owner closed the pipe, transfer complete
+    if (pfds[0].revents & (POLLIN | POLLERR | POLLHUP)) {
+      puglWaylandRecvRead(&recv);
     }
 
-    len += (size_t)n;
+    if (recv.failed) {
+      free(recv.buffer);
+      impl->activeRecv = previousRecv;
+      return PUGL_NO_MEMORY;
+    }
+
+    if (recv.len != lenBeforeDispatch) {
+      deadline = puglWaylandMonotonicMs() + PUGL_WAYLAND_CLIPBOARD_RECV_TIMEOUT_MS;
+    }
   }
 
-  const PuglStatus st = puglSetBlob(out, buffer, len);
-  free(buffer);
+  impl->activeRecv = previousRecv;
+
+  const PuglStatus st = puglSetBlob(out, recv.buffer, recv.len);
+  free(recv.buffer);
   return st;
 }
 
@@ -3462,7 +3716,7 @@ puglAcceptOffer(PuglView* const                 view,
   close(fds[1]);
   wl_display_flush(wimpl->display);
 
-  const PuglStatus st = puglWaylandReadPipe(fds[0], &board->data);
+  const PuglStatus st = puglWaylandReadPipe(wimpl, fds[0], &board->data);
   close(fds[0]);
 
   if (st) {
@@ -3528,6 +3782,8 @@ puglSetClipboard(PuglView* const   view,
   if (!sd) {
     return PUGL_NO_MEMORY;
   }
+
+  sd->wimpl = wimpl;
 
   const PuglStatus st = puglSetBlob(&sd->data, data, len);
   if (st) {
