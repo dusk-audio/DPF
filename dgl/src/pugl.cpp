@@ -108,6 +108,28 @@
 # ifdef DGL_VULKAN
 #  include <vulkan/vulkan_xlib.h>
 # endif
+// NOTE: reachable only when HAVE_X11 is undefined -- see the backend policy comment in pugl.hpp.
+// The arm ordering here must stay identical to the one there, or the headers pulled in would stop
+// matching the backend that gets compiled below.
+#elif defined(HAVE_WAYLAND)
+# include <dlfcn.h>
+# include <limits.h>
+# include <unistd.h>
+# include <sys/select.h>
+# include <wayland-client.h>
+# include <wayland-cursor.h>
+# include <xkbcommon/xkbcommon.h>
+# include <xkbcommon/xkbcommon-compose.h>
+# ifdef DGL_CAIRO
+#  include <cairo.h>
+# endif
+# ifdef DGL_OPENGL
+#  include <EGL/egl.h>
+#  include <wayland-egl.h>
+# endif
+# ifdef DGL_VULKAN
+#  include <vulkan/vulkan_wayland.h>
+# endif
 #endif
 
 #ifdef DGL_USE_FILE_BROWSER
@@ -212,6 +234,20 @@ START_NAMESPACE_DGL
 # ifdef DGL_VULKAN
 #  include "pugl-upstream/src/x11_vulkan.c"
 # endif
+#elif defined(HAVE_WAYLAND)
+// The build system will only ever define HAVE_WAYLAND without HAVE_X11 (see pugl.hpp), so reaching
+// this point means a genuine Wayland-only build was requested. The backend sources do not exist
+// yet; this #error is the intended Phase 3 end state and is what Phase 4 replaces with the include
+// block sketched below.
+# error "DGL Wayland backend not yet implemented, see dgl/src/pugl-extra/README.wayland"
+// # include "pugl-extra/wayland.c"
+// # include "pugl-extra/wayland_stub.c"
+// # ifdef DGL_CAIRO
+// #  include "pugl-extra/wayland_cairo.c"
+// # endif
+// # ifdef DGL_OPENGL
+// #  include "pugl-extra/wayland_gl.c"
+// # endif
 #endif
 
 #include "pugl-upstream/src/common.c"
@@ -667,7 +703,33 @@ void puglX11SetWindowType(const PuglView* const view, const bool isStandalone)
 
 // --------------------------------------------------------------------------------------------------------------------
 
-#endif // HAVE_X11
+#elif defined(HAVE_WAYLAND)
+
+// --------------------------------------------------------------------------------------------------------------------
+// Wayland specific, update world without triggering exposure events
+//
+// Phase 4 owns the real bodies of these two. They are declared in pugl.hpp so that the Wayland arm
+// there has the same shape as the X11 one, and defined here as stubs so this file stays
+// syntactically complete; the #error further up means nothing in this arm is compiled yet.
+
+PuglStatus puglWaylandUpdateWithoutExposures(PuglWorld* const world)
+{
+    (void)world;
+    return PUGL_FAILURE;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// Wayland specific, set the xdg-shell application id
+
+void puglWaylandSetAppId(PuglView* const view, const char* const appId)
+{
+    (void)view;
+    (void)appId;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+#endif // HAVE_X11 / HAVE_WAYLAND
 
 #ifndef DISTRHO_OS_MAC
 END_NAMESPACE_DGL

@@ -1540,25 +1540,49 @@ function(dpf__add_dgl_system_libs)
       target_include_directories(dgl-system-libs INTERFACE "${DBUS_INCLUDE_DIRS}")
       target_link_libraries(dgl-system-libs INTERFACE "${DBUS_LIBRARIES}")
     endif()
-    find_package(X11 REQUIRED)
-    target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_X11")
-    target_include_directories(dgl-system-libs INTERFACE "${X11_INCLUDE_DIR}")
-    target_link_libraries(dgl-system-libs INTERFACE "${X11_X11_LIB}")
-    if(X11_Xcursor_FOUND)
-      target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_XCURSOR")
-      target_link_libraries(dgl-system-libs INTERFACE "${X11_Xcursor_LIB}")
+    # X11 is no longer REQUIRED on its own: a Wayland-only system (no libx11-dev) is a valid target.
+    # Note that X11 and Wayland are commonly both installed, and in that case X11 still wins -- it is
+    # the backend DGL compiles against, because plugin hosts embed UIs via X11 and standalones can
+    # fall back to XWayland. See dgl/src/pugl.hpp for the same policy expressed in the preprocessor.
+    find_package(X11)
+    pkg_check_modules(WAYLAND "wayland-client" "wayland-egl" "wayland-cursor" "xkbcommon" "egl")
+    if(NOT X11_FOUND AND NOT WAYLAND_FOUND)
+      message(FATAL_ERROR
+        "DGL needs a windowing backend, but neither was found.\n"
+        "  X11     : install the X11 development files (e.g. libx11-dev / libX11-devel).\n"
+        "  Wayland : install wayland-client, wayland-egl, wayland-cursor, xkbcommon and egl "
+        "development files (e.g. libwayland-dev, libxkbcommon-dev, libegl-dev).\n"
+        "Installing either one is enough; X11 is preferred when both are present.")
     endif()
-    if(X11_Xext_FOUND)
-      target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_XEXT")
-      target_link_libraries(dgl-system-libs INTERFACE "${X11_Xext_LIB}")
-    endif()
-    if(X11_Xrandr_FOUND)
-      target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_XRANDR")
-      target_link_libraries(dgl-system-libs INTERFACE "${X11_Xrandr_LIB}")
-    endif()
-    if(X11_XSync_FOUND)
-      target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_XSYNC")
-      target_link_libraries(dgl-system-libs INTERFACE "${X11_XSync_LIB}")
+    if(X11_FOUND)
+      target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_X11")
+      target_include_directories(dgl-system-libs INTERFACE "${X11_INCLUDE_DIR}")
+      target_link_libraries(dgl-system-libs INTERFACE "${X11_X11_LIB}")
+      if(X11_Xcursor_FOUND)
+        target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_XCURSOR")
+        target_link_libraries(dgl-system-libs INTERFACE "${X11_Xcursor_LIB}")
+      endif()
+      if(X11_Xext_FOUND)
+        target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_XEXT")
+        target_link_libraries(dgl-system-libs INTERFACE "${X11_Xext_LIB}")
+      endif()
+      if(X11_Xrandr_FOUND)
+        target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_XRANDR")
+        target_link_libraries(dgl-system-libs INTERFACE "${X11_Xrandr_LIB}")
+      endif()
+      if(X11_XSync_FOUND)
+        target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_XSYNC")
+        target_link_libraries(dgl-system-libs INTERFACE "${X11_XSync_LIB}")
+      endif()
+      message(STATUS "DGL windowing backend: X11")
+    else()
+      # Only reached when X11 is absent, so this is the mirror of the Makefile's
+      # DGL_BACKEND_WAYLAND gate: never wire Wayland in on a system that builds against X11,
+      # otherwise every existing dual-stack build would start dragging in unused libraries.
+      target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_WAYLAND")
+      target_include_directories(dgl-system-libs INTERFACE "${WAYLAND_INCLUDE_DIRS}")
+      target_link_libraries(dgl-system-libs INTERFACE "${WAYLAND_LIBRARIES}")
+      message(STATUS "DGL windowing backend: Wayland (X11 not found)")
     endif()
    endif()
 

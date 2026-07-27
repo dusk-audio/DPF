@@ -1,0 +1,86 @@
+DGL Wayland backend -- planned, not yet implemented
+===================================================
+
+This file is a placeholder. The Wayland backend sources do not exist yet, and
+dgl/src/pugl.cpp deliberately raises
+
+    #error "DGL Wayland backend not yet implemented, see dgl/src/pugl-extra/README.wayland"
+
+when a build selects the Wayland arm. Hitting that #error is the correct,
+intended behaviour for now: it means the build system probed the Wayland
+development files, found them, and dispatched to a backend that has not landed.
+It is not a build-system bug.
+
+
+When is the Wayland arm selected?
+---------------------------------
+
+Only when X11 is absent from the build machine entirely. X11 and Wayland
+development files coexist on most desktop systems, and DGL prefers X11 whenever
+it is present, because hosts embed plugin UIs through the X11 embedding
+contract (of the formats DPF targets, only CLAP has a Wayland window API) and
+standalone builds work fine on a Wayland session via XWayland.
+
+That policy is expressed in three places, which must be kept in agreement:
+
+  * dgl/src/pugl.hpp      -- `#elif defined(HAVE_X11)` before
+                             `#elif defined(HAVE_WAYLAND)`, plus the long
+                             rationale comment. This is the canonical statement.
+  * Makefile.base.mk      -- `DGL_BACKEND_WAYLAND`, set only when HAVE_WAYLAND
+                             is true and HAVE_X11 is not. Only this variable
+                             gates -DHAVE_WAYLAND and the Wayland libraries.
+  * cmake/DPF-plugin.cmake -- the `if(X11_FOUND) ... else()` split inside
+                             `dpf__add_dgl_system_libs`.
+
+To exercise the Wayland arm on a machine that has X11 installed:
+
+    make -C dgl HAVE_X11= HAVE_WAYLAND=true DGL_BACKEND_WAYLAND=true
+    cmake -DCMAKE_DISABLE_FIND_PACKAGE_X11=ON ...
+
+
+Build requirements already probed for
+-------------------------------------
+
+The build system treats the Wayland backend as all-or-nothing. HAVE_WAYLAND is
+true only when every one of these is present:
+
+  Libraries (pkg-config, probed together as HAVE_WAYLAND_LIBS):
+    wayland-client, wayland-egl, wayland-cursor, xkbcommon, egl
+
+  Tooling (probed together as HAVE_WAYLAND_TOOLS):
+    wayland-protocols (pkg-config), wayland-scanner (in PATH)
+
+`make features` prints all three so a partial installation is easy to diagnose.
+The tooling half is needed because the xdg-shell protocol bindings are
+generated at build time from the XML in wayland-protocols' datadir.
+
+
+What Phase 4 adds
+-----------------
+
+Source files, mirroring the naming that pugl-extra already uses for the Haiku
+and wasm backends, and matching the commented-out include block in pugl.cpp:
+
+  wayland.h          shared internals: PuglWorldInternals / PuglInternals for
+                     Wayland, registry and seat state, xkb keyboard state,
+                     cursor theme handle
+  wayland.c          core backend: registry bind, xdg-shell surface lifecycle,
+                     frame callbacks, input (pointer / keyboard / touch),
+                     clipboard, timers, the event loop feeding puglDispatchEvent
+  wayland_stub.c     the no-graphics-API backend (PUGL_STUB), as x11_stub.c is
+  wayland_cairo.c    Cairo backend over a wl_shm buffer pool
+  wayland_gl.c       OpenGL backend over EGL + wl_egl_window
+
+Generated at build time (hence the wayland-scanner requirement):
+
+  xdg-shell-client-protocol.h / xdg-shell-protocol.c
+  and likely xdg-decoration and viewporter alongside them
+
+Phase 4 also replaces the #error in dgl/src/pugl.cpp with the real include
+block, fills in the two stubs at the bottom of that file
+(puglWaylandUpdateWithoutExposures, puglWaylandSetAppId), and adds the
+DGL_USING_WAYLAND counterparts to the `#ifdef DGL_USING_X11` sites in
+dgl/src/WindowPrivateData.cpp.
+
+No further build-system work should be required: the probes, the gates, the
+flag/library wiring and the preprocessor dispatch arms all already exist.
