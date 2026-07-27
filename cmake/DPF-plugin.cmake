@@ -1544,6 +1544,9 @@ function(dpf__add_dgl_system_libs)
     # Note that X11 and Wayland are commonly both installed, and in that case X11 still wins -- it is
     # the backend DGL compiles against, because plugin hosts embed UIs via X11 and standalones can
     # fall back to XWayland. See dgl/src/pugl.hpp for the same policy expressed in the preprocessor.
+    # Only the client libraries are probed: the xdg-shell, xdg-decoration, viewporter and
+    # fractional-scale bindings are pre-generated and vendored in dgl/src/pugl-extra/wayland-protocols,
+    # so neither the wayland-protocols data package nor wayland-scanner has to be installed.
     find_package(X11)
     pkg_check_modules(WAYLAND "wayland-client" "wayland-egl" "wayland-cursor" "xkbcommon" "egl")
     if(NOT X11_FOUND AND NOT WAYLAND_FOUND)
