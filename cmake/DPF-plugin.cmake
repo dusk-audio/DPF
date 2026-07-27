@@ -910,7 +910,7 @@ function(dpf__add_dgl_cairo SHARED_RESOURCES USE_FILE_BROWSER USE_WEB_VIEW)
   endif()
 
   if(USE_WEB_VIEW)
-    target_compile_definitions(dgl-cairo PUBLIC "DGL_USE_FILE_BROWSER")
+    target_compile_definitions(dgl-cairo PUBLIC "DGL_USE_WEB_VIEW")
     if(APPLE)
       find_library(APPLE_WEBKIT_FRAMEWORK "WebKit")
       target_link_libraries(dgl-cairo PRIVATE "${APPLE_WEBKIT_FRAMEWORK}")
@@ -1426,7 +1426,7 @@ function(dpf__add_dgl_vulkan SHARED_RESOURCES USE_FILE_BROWSER USE_WEB_VIEW)
     "${DPF_ROOT_DIR}/dgl/src/Window.cpp"
     "${DPF_ROOT_DIR}/dgl/src/WindowPrivateData.cpp"
     "${DPF_ROOT_DIR}/dgl/src/Vulkan.cpp")
-  if(NO_SHARED_RESOURCES)
+  if(SHARED_RESOURCES)
     target_sources(dgl-vulkan PRIVATE "${DPF_ROOT_DIR}/dgl/src/Resources.cpp")
   else()
     target_compile_definitions(dgl-vulkan PUBLIC "DGL_NO_SHARED_RESOURCES")

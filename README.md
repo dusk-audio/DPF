@@ -1,5 +1,5 @@
 # DPF - DISTRHO Plugin Framework
-[![makefile](https://github.com/DISTRHO/DPF/actions/workflows/makefile.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/makefile.yml)
+[![build](https://github.com/DISTRHO/DPF/actions/workflows/build.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/build.yml)
 [![cmake](https://github.com/DISTRHO/DPF/actions/workflows/cmake.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/cmake.yml)
 [![example-plugins](https://github.com/DISTRHO/DPF/actions/workflows/example-plugins.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/example-plugins.yml)
 
