@@ -16,7 +16,16 @@ jobs:
         # ubuntu-arm job below (see the rationale there), and this fork ships
         # arm64 only — there is no 32-bit ARM (armhf) product to build.
         # linux-i686 dropped for the same reason: no 32-bit Linux product.
-        target: [linux-x86_64, win32, win64, pluginval]
+        #
+        # pluginval dropped: replaced by the self-contained plugin-validation
+        # job in wayland.yml. The action's `pluginval` target wgets the KXStudio
+        # repository package from launchpad.net and installs carla-git, lv2lint
+        # and the mod/darkglass LV2 extensions from it — third-party infra this
+        # fork does not want to depend on, and the single flakiest step on the
+        # board (launchpad times out regularly). The replacement job installs
+        # Tracktion pluginval from a pinned, checksummed GitHub release and
+        # everything else from the Ubuntu archives.
+        target: [linux-x86_64, win32, win64]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -31,10 +40,9 @@ jobs:
   ubuntu-24-04:
     strategy:
       matrix:
-        # See the ubuntu-22-04 note: ARM is native (ubuntu-arm job), armhf dropped.
-        # Plugin validation runs once, on ubuntu-22-04: a second copy here adds
-        # no coverage, only another kxstudio/launchpad fetch (flakiest step on
-        # the board).
+        # See the ubuntu-22-04 note: ARM is native (ubuntu-arm job), armhf
+        # dropped, pluginval moved to wayland.yml. Plugin validation runs once,
+        # on 22.04 (the product floor); a second copy here would add no coverage.
         target: [linux-x86_64]
     runs-on: ubuntu-24.04
     steps:
