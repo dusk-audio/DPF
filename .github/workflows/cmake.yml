@@ -12,19 +12,15 @@ jobs:
   ubuntu-22-04:
     strategy:
       matrix:
-        target: [linux-arm64, linux-armhf, linux-i686, linux-x86_64, win32, win64, pluginval]
+        # No linux-arm64 / linux-armhf here: arm64 is built natively by the
+        # ubuntu-arm job below (see the rationale there), and this fork ships
+        # arm64 only — there is no 32-bit ARM (armhf) product to build.
+        target: [linux-i686, linux-x86_64, win32, win64, pluginval]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      # The runner image snapshot can lag the archive; multiarch :armhf/:arm64 installs need the
-      # amd64 side at identical versions, so sync it to the current mirror state first.
-      - name: Sync base image packages (multiarch version alignment)
-        if: startsWith(matrix.target, 'linux-arm')
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get dist-upgrade -yqq
       - uses: distrho/dpf-cmake-action@v1
         with:
           dpf_path: .
@@ -34,24 +30,98 @@ jobs:
   ubuntu-24-04:
     strategy:
       matrix:
-        target: [linux-arm64, linux-armhf, linux-x86_64, pluginval]
+        # See the ubuntu-22-04 note: ARM is native (ubuntu-arm job), armhf dropped.
+        target: [linux-x86_64, pluginval]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      # The runner image snapshot can lag the archive; multiarch :armhf/:arm64 installs need the
-      # amd64 side at identical versions, so sync it to the current mirror state first.
-      - name: Sync base image packages (multiarch version alignment)
-        if: startsWith(matrix.target, 'linux-arm')
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get dist-upgrade -yqq
       - uses: distrho/dpf-cmake-action@v1
         with:
           dpf_path: .
           suffix: _24_04
           target: ${{ matrix.target }}
+
+  # ---------------------------------------------------------------------------
+  # Linux arm64, built NATIVELY on GitHub's ARM runners.
+  #
+  # This replaces the old `linux-arm64` / `linux-armhf` matrix entries above,
+  # which cross-compiled on x86_64 runners. dpf-cmake-action's cross setup does
+  # `dpkg --add-architecture arm64`, keeps amd64 pinned to archive.ubuntu.com,
+  # and adds ports.ubuntu.com for the :arm64 packages. Multiarch requires the
+  # amd64 and :arm64 halves of a package at the *same* version, but the two
+  # archives publish on independent schedules — every time they drift, apt
+  # cannot satisfy the version-locked -dev packages and aborts with "held broken
+  # packages", reddening an otherwise clean commit. Native arm64 runners
+  # (ubuntu-*-arm, free for public repos) resolve everything from ports alone,
+  # so the two archives can never disagree: the failure class is gone, and the
+  # qemu-user-static emulation step goes with it.
+  #
+  # armhf is not carried over: this fork ships arm64 only (no 32-bit ARM
+  # product), and GitHub offers no armhf runner.
+  #
+  # Scope: this is a build check. Making arm64 binaries *loadable* on older
+  # distros is a glibc-floor packaging concern, handled in the product repos by
+  # building inside an older-glibc container — deliberately not done here.
+  #
+  # Why inline steps instead of `uses: distrho/dpf-cmake-action@v1`: the action's
+  # native (`linux-x86_64`) dependency and build steps are arch-neutral and are
+  # reproduced verbatim below, but its "Fix GitHub's mess (ubuntu-24.04)" step
+  # runs for *every* Linux target regardless of arch and rewrites
+  # /etc/apt/sources.list.d/ubuntu.sources with `Architectures: amd64 i386`. On
+  # an arm64 runner that points apt at architectures ports.ubuntu.com does not
+  # serve, so `apt-get update` 404s and the step dies before any build happens.
+  # ---------------------------------------------------------------------------
+  ubuntu-arm:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04-arm, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Setup dependencies (native arm64)
+        # ports.ubuntu.com (the arm64 archive) is under-resourced and regularly
+        # unreachable from GitHub's ARM runners on both IPv6 and IPv4. Swap it
+        # for a high-bandwidth mirror (MIT), force IPv4, and retry, so a mirror
+        # hiccup doesn't fail CI. Package list matches the action's
+        # linux-x86_64 setup step, plus the toolchain bits explicitly.
+        run: |
+          sudo find /etc/apt/ -type f \( -name "*.list" -o -name "*.sources" \) \
+            -exec sed -i 's|ports.ubuntu.com|mirrors.mit.edu|g' {} +
+          echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4 >/dev/null
+          ok=0
+          for i in 1 2 3; do
+            sudo apt-get update -qq && sudo apt-get install -yqq \
+              build-essential cmake pkg-config gperf \
+              libasound2-dev libdbus-1-dev libgl1-mesa-dev libglib2.0-dev \
+              liblo-dev libx11-dev libxcursor-dev libxext-dev libxrandr-dev \
+              && { ok=1; break; }
+            echo "apt attempt $i failed; retrying in 20s"; sleep 20
+          done
+          [ "$ok" = 1 ] || { echo "apt failed after 3 attempts"; exit 1; }
+      - name: Configure
+        # Same in-tree invocation the action uses for linux-x86_64: its
+        # CMAKE_EXTRA_ARGS for a non-debug, non-LTO build plus its static
+        # libgcc/libstdc++ LDFLAGS. No cross/emulator/VST3-arch overrides —
+        # CMake detects aarch64 natively.
+        env:
+          LDFLAGS: -static-libgcc -static-libstdc++
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
+              -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}" \
+              -DCMAKE_MODULE_LINKER_FLAGS="${LDFLAGS}" \
+              -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}" \
+              .
+      - name: Build
+        run: make -j $(nproc)
+      - name: Show built files
+        run: ls -l bin/
 
   macos-13:
     strategy:
