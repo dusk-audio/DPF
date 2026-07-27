@@ -59,6 +59,23 @@ typedef struct {
   PuglBlob data;                ///< Data received from, or offered to, the clipboard
 } PuglWaylandClipboard;
 
+/**
+   A clipboard receive that is currently in progress.
+
+   Published on the world so that the wl_data_source.send handler can find it. When this client
+   both owns the selection and is pasting from it, the two ends of the pipe are serviced by the
+   same thread, and the writer has to drain the reader's end itself or the transfer stalls as soon
+   as the payload outgrows the pipe buffer.
+*/
+typedef struct {
+  int      fd;       ///< Read end of the transfer pipe
+  uint8_t* buffer;   ///< Accumulated data, owned by puglWaylandReadPipe()
+  size_t   len;      ///< Bytes accumulated so far
+  size_t   capacity; ///< Bytes allocated in buffer
+  bool     done;     ///< Whether the writing end has closed or errored
+  bool     failed;   ///< Whether the buffer could not be grown
+} PuglWaylandPipeRecv;
+
 /// Everything needed to turn wl_keyboard events into Pugl key and text events
 typedef struct {
   struct xkb_context*       context;
@@ -136,6 +153,9 @@ struct PuglWorldInternalsImpl {
   // Clipboard, plus the drag-and-drop offer we decline but still have to clean up after
   PuglWaylandOffer* selectionOffer;
   PuglWaylandOffer* dndOffer;
+
+  /// Set only for the duration of puglAcceptOffer(), see PuglWaylandPipeRecv
+  PuglWaylandPipeRecv* activeRecv;
 
   // Outputs
   PuglWaylandOutput outputs[PUGL_WAYLAND_MAX_OUTPUTS];

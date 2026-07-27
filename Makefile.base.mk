@@ -562,6 +562,10 @@ endif # HAVE_X11
 ifeq ($(DGL_BACKEND_WAYLAND),true)
 DGL_FLAGS       += $(shell $(PKG_CONFIG) --cflags wayland-client wayland-egl wayland-cursor xkbcommon) -DHAVE_WAYLAND
 DGL_SYSTEM_LIBS += $(shell $(PKG_CONFIG) --libs wayland-client wayland-egl wayland-cursor xkbcommon)
+# The clipboard code calls pthread_sigmask to keep SIGPIPE off the GUI thread during a transfer.
+# glibc 2.34 and later have it in libc, but older ones keep it in libpthread.
+DGL_FLAGS       += -pthread
+DGL_SYSTEM_LIBS += -pthread
 endif # DGL_BACKEND_WAYLAND
 
 endif

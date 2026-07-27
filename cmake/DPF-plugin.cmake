@@ -1585,6 +1585,11 @@ function(dpf__add_dgl_system_libs)
       target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_WAYLAND")
       target_include_directories(dgl-system-libs INTERFACE "${WAYLAND_INCLUDE_DIRS}")
       target_link_libraries(dgl-system-libs INTERFACE "${WAYLAND_LIBRARIES}")
+      # The clipboard code calls pthread_sigmask to keep SIGPIPE off the GUI thread during a
+      # transfer. glibc 2.34 and later have it in libc, but older ones keep it in libpthread.
+      set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+      find_package(Threads REQUIRED)
+      target_link_libraries(dgl-system-libs INTERFACE Threads::Threads)
       message(STATUS "DGL windowing backend: Wayland (X11 not found)")
     endif()
    endif()
