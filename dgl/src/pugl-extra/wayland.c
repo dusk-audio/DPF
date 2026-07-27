@@ -708,6 +708,12 @@ puglWaylandSurfaceEnter(void* const              data,
   PuglView* const      view = (PuglView*)data;
   PuglInternals* const impl = view->impl;
 
+  /* libwayland passes NULL for an object that was destroyed before the event reached us, which is
+     exactly what happens when an output is unplugged with an enter still in flight. */
+  if (!output) {
+    return;
+  }
+
   for (uint32_t i = 0; i < impl->numEnteredOutputs; ++i) {
     if (impl->enteredOutputs[i] == output) {
       return;
@@ -727,12 +733,16 @@ puglWaylandSurfaceEnter(void* const              data,
   }
 }
 
+/**
+   Stop tracking an output on a view, and react to the scale change that may follow.
+
+   Shared by wl_surface.leave and by wl_registry.global_remove: a removed output has to be dropped
+   from every view before its proxy is destroyed, or puglWaylandUpdateScale() will call
+   wl_output_get_user_data() on freed memory.
+*/
 static void
-puglWaylandSurfaceLeave(void* const              data,
-                        struct wl_surface* const PUGL_UNUSED(surface),
-                        struct wl_output* const  output)
+puglWaylandForgetOutput(PuglView* const view, struct wl_output* const output)
 {
-  PuglView* const      view = (PuglView*)data;
   PuglInternals* const impl = view->impl;
 
   for (uint32_t i = 0; i < impl->numEnteredOutputs; ++i) {
@@ -748,6 +758,18 @@ puglWaylandSurfaceLeave(void* const              data,
     puglWaylandSetSize(view, impl->requestedLogicalSize);
     puglWaylandQueueConfigure(view);
     puglWaylandQueueFullExpose(view);
+  }
+}
+
+static void
+puglWaylandSurfaceLeave(void* const              data,
+                        struct wl_surface* const PUGL_UNUSED(surface),
+                        struct wl_output* const  output)
+{
+  /* A leave queued behind the destruction of its output arrives with a NULL object, and the output
+     has already been dropped from every view by puglWaylandRegistryGlobalRemove(). */
+  if (output) {
+    puglWaylandForgetOutput((PuglView*)data, output);
   }
 }
 
@@ -1420,6 +1442,14 @@ puglWaylandKeyboardKeymap(void* const               data,
 
   xkb->keymap = keymap;
   xkb->state  = state;
+
+  /* A keycode that was repeating under the old keymap may mean something else (or nothing) under the
+     new one, and a half-finished compose sequence was started with symbols that no longer apply. */
+  puglWaylandStopRepeat(impl);
+
+  if (xkb->composeState) {
+    xkb_compose_state_reset(xkb->composeState);
+  }
 }
 
 static void
@@ -1816,12 +1846,6 @@ static const struct wl_data_device_listener puglWaylandDataDeviceListener = {
   puglWaylandDataDeviceDrop,
   puglWaylandDataDeviceSelection};
 
-/// The data we have most recently put on the clipboard, kept alive for wl_data_source.send
-typedef struct {
-  PuglBlob            data;
-  PuglWorldInternals* wimpl; ///< Owning world, for reaching a receive in progress
-} PuglWaylandSourceData;
-
 /// Append whatever is readable to a receive in progress; sets done at end of stream
 static void
 puglWaylandRecvRead(PuglWaylandPipeRecv* const recv)
@@ -2013,7 +2037,15 @@ static void
 puglWaylandDataSourceCancelled(void* const                  data,
                                struct wl_data_source* const source)
 {
-  PuglWaylandSourceData* const sd = (PuglWaylandSourceData*)data;
+  PuglWaylandSourceData* const sd    = (PuglWaylandSourceData*)data;
+  PuglWorldInternals* const    wimpl = sd ? sd->wimpl : NULL;
+
+  /* Only stop tracking if the world still points at *this* source: a cancelled event usually means
+     puglSetClipboard() has already put a newer one in its place, which must not be forgotten. */
+  if (wimpl && wimpl->dataSource == source) {
+    wimpl->dataSource     = NULL;
+    wimpl->dataSourceData = NULL;
+  }
 
   wl_data_source_destroy(source);
 
@@ -2331,7 +2363,10 @@ static const char* const puglWaylandLegacyCursorNames[PUGL_NUM_CURSORS] = {
 static bool
 puglWaylandLoadCursorTheme(PuglWorldInternals* const impl)
 {
-  if (impl->cursorTheme) {
+  /* Both halves are needed: the theme supplies the wl_buffer, the surface is what it is attached to.
+     Checking only the theme would let a previous run that loaded the theme but failed to create the
+     surface report success, and puglWaylandApplyCursor() would then attach to a NULL surface. */
+  if (impl->cursorTheme && impl->cursorSurface) {
     return true;
   }
 
@@ -2339,23 +2374,28 @@ puglWaylandLoadCursorTheme(PuglWorldInternals* const impl)
     return false;
   }
 
-  const char* const sizeEnv = getenv("XCURSOR_SIZE");
-  if (sizeEnv) {
-    const int size = atoi(sizeEnv);
-    if (size > 0) {
-      impl->cursorSize = size;
+  if (!impl->cursorTheme) {
+    const char* const sizeEnv = getenv("XCURSOR_SIZE");
+    if (sizeEnv) {
+      const int size = atoi(sizeEnv);
+      if (size > 0) {
+        impl->cursorSize = size;
+      }
+    }
+
+    impl->cursorTheme = wl_cursor_theme_load(
+      getenv("XCURSOR_THEME"), impl->cursorSize, impl->shm);
+
+    if (!impl->cursorTheme) {
+      impl->cursorLoadFailed = true;
+      return false;
     }
   }
 
-  impl->cursorTheme = wl_cursor_theme_load(
-    getenv("XCURSOR_THEME"), impl->cursorSize, impl->shm);
-
-  if (!impl->cursorTheme) {
-    impl->cursorLoadFailed = true;
-    return false;
+  if (!impl->cursorSurface) {
+    impl->cursorSurface = wl_compositor_create_surface(impl->compositor);
   }
 
-  impl->cursorSurface = wl_compositor_create_surface(impl->compositor);
   return impl->cursorSurface != NULL;
 }
 
@@ -2512,13 +2552,37 @@ puglWaylandRegistryGlobalRemove(void* const               data,
   PuglWorldInternals* const impl = (PuglWorldInternals*)data;
 
   for (uint32_t i = 0; i < impl->numOutputs; ++i) {
-    if (impl->outputs[i].globalName == name) {
-      wl_output_destroy(impl->outputs[i].output);
-      impl->outputs[i] = impl->outputs[impl->numOutputs - 1U];
-      memset(&impl->outputs[impl->numOutputs - 1U], 0, sizeof(PuglWaylandOutput));
-      --impl->numOutputs;
-      return;
+    if (impl->outputs[i].globalName != name) {
+      continue;
     }
+
+    struct wl_output* const output = impl->outputs[i].output;
+
+    /* Every view that has entered this output holds a bare proxy pointer, so they all have to let
+       go of it (and settle on a new scale) while it is still valid. */
+    if (impl->world) {
+      for (size_t v = 0; v < impl->world->numViews; ++v) {
+        PuglView* const view = impl->world->views[v];
+        if (view->impl) {
+          puglWaylandForgetOutput(view, output);
+        }
+      }
+    }
+
+    wl_output_destroy(output);
+
+    /* Compacting the array moves the last entry into this slot, which invalidates the listener data
+       pointer wl_output_add_listener() was given for it: repoint it, or wl_output.scale would write
+       to a stale (and possibly later reused) slot. */
+    impl->outputs[i] = impl->outputs[impl->numOutputs - 1U];
+    memset(&impl->outputs[impl->numOutputs - 1U], 0, sizeof(PuglWaylandOutput));
+    --impl->numOutputs;
+
+    if (impl->outputs[i].output) {
+      wl_output_set_user_data(impl->outputs[i].output, &impl->outputs[i]);
+    }
+
+    return;
   }
 }
 
@@ -2537,6 +2601,18 @@ puglWaylandDestroyWorldInternals(PuglWorldInternals* const impl)
 
   puglWaylandFreeOffer(impl->selectionOffer);
   puglWaylandFreeOffer(impl->dndOffer);
+
+  /* If this client still owns the selection, nobody is going to deliver the cancelled event that
+     would normally clean the source up. */
+  if (impl->dataSource) {
+    wl_data_source_destroy(impl->dataSource);
+    impl->dataSource = NULL;
+  }
+  if (impl->dataSourceData) {
+    free(impl->dataSourceData->data.data);
+    free(impl->dataSourceData);
+    impl->dataSourceData = NULL;
+  }
 
 #if PUGL_WAYLAND_HAVE_TIMERFD
   if (impl->repeat.fd >= 0) {
@@ -2600,7 +2676,11 @@ puglWaylandDestroyWorldInternals(PuglWorldInternals* const impl)
     }
   }
   if (impl->seat) {
-    wl_seat_destroy(impl->seat);
+    if (wl_seat_get_version(impl->seat) >= WL_SEAT_RELEASE_SINCE_VERSION) {
+      wl_seat_release(impl->seat);
+    } else {
+      wl_seat_destroy(impl->seat);
+    }
   }
 
   for (uint32_t i = 0; i < impl->numOutputs; ++i) {
@@ -2747,6 +2827,11 @@ puglInitViewInternals(PuglWorld* const world)
     return NULL;
   }
 
+  /* puglInitWorldInternals() is not handed the world, so this is the first opportunity to record
+     it.  Doing it here is enough for everything that needs it, which is the listeners that walk
+     world->views[]: those can do nothing useful before a view exists anyway. */
+  world->impl->world = world;
+
   impl->scale                     = world->impl->scaleFactor;
   impl->bufferScale               = 1;
   impl->cursor                    = PUGL_CURSOR_ARROW;
@@ -2804,6 +2889,52 @@ puglWaylandApplyTransientParent(PuglView* const view)
   }
 }
 
+/**
+   Destroy every protocol object hanging off a view's wl_surface, in reverse creation order.
+
+   Shared by puglUnrealize() and puglRealize()'s failure path.  The latter used to leave the
+   viewport, fractional scale and decoration objects behind, which made a retry fatal: their
+   surfaces were gone, so wp_viewport.set_destination raised the no_surface protocol error.
+*/
+static void
+puglWaylandDestroyViewSurface(PuglInternals* const impl)
+{
+  if (impl->frameCallback) {
+    wl_callback_destroy(impl->frameCallback);
+    impl->frameCallback = NULL;
+  }
+  if (impl->fractionalScale) {
+    wp_fractional_scale_v1_destroy(impl->fractionalScale);
+    impl->fractionalScale = NULL;
+  }
+  if (impl->viewport) {
+    wp_viewport_destroy(impl->viewport);
+    impl->viewport = NULL;
+  }
+  if (impl->decoration) {
+    zxdg_toplevel_decoration_v1_destroy(impl->decoration);
+    impl->decoration = NULL;
+  }
+  if (impl->xdgToplevel) {
+    xdg_toplevel_destroy(impl->xdgToplevel);
+    impl->xdgToplevel = NULL;
+  }
+  if (impl->xdgSurface) {
+    xdg_surface_destroy(impl->xdgSurface);
+    impl->xdgSurface = NULL;
+  }
+  if (impl->wlSurface) {
+    wl_surface_destroy(impl->wlSurface);
+    impl->wlSurface = NULL;
+  }
+
+  impl->configured               = false;
+  impl->frameCallbackWorks       = false;
+  impl->needsRedisplay           = false;
+  impl->numEnteredOutputs        = 0U;
+  impl->preferredFractionalScale = 0U;
+}
+
 PuglStatus
 puglRealize(PuglView* const view)
 {
@@ -2845,8 +2976,7 @@ puglRealize(PuglView* const view)
   impl->xdgSurface =
     xdg_wm_base_get_xdg_surface(wimpl->wmBase, impl->wlSurface);
   if (!impl->xdgSurface) {
-    wl_surface_destroy(impl->wlSurface);
-    impl->wlSurface = NULL;
+    puglWaylandDestroyViewSurface(impl);
     return PUGL_REALIZE_FAILED;
   }
 
@@ -2898,12 +3028,7 @@ puglRealize(PuglView* const view)
   // Configure and create the drawing surface
   if ((st = view->backend->configure(view)) || (st = view->backend->create(view))) {
     view->backend->destroy(view);
-    xdg_toplevel_destroy(impl->xdgToplevel);
-    xdg_surface_destroy(impl->xdgSurface);
-    wl_surface_destroy(impl->wlSurface);
-    impl->xdgToplevel = NULL;
-    impl->xdgSurface  = NULL;
-    impl->wlSurface   = NULL;
+    puglWaylandDestroyViewSurface(impl);
     return st;
   }
 
@@ -2943,38 +3068,7 @@ puglUnrealize(PuglView* const view)
     view->backend->destroy(view);
   }
 
-  if (impl->frameCallback) {
-    wl_callback_destroy(impl->frameCallback);
-    impl->frameCallback = NULL;
-  }
-  if (impl->fractionalScale) {
-    wp_fractional_scale_v1_destroy(impl->fractionalScale);
-    impl->fractionalScale = NULL;
-  }
-  if (impl->viewport) {
-    wp_viewport_destroy(impl->viewport);
-    impl->viewport = NULL;
-  }
-  if (impl->decoration) {
-    zxdg_toplevel_decoration_v1_destroy(impl->decoration);
-    impl->decoration = NULL;
-  }
-  if (impl->xdgToplevel) {
-    xdg_toplevel_destroy(impl->xdgToplevel);
-    impl->xdgToplevel = NULL;
-  }
-  if (impl->xdgSurface) {
-    xdg_surface_destroy(impl->xdgSurface);
-    impl->xdgSurface = NULL;
-  }
-  if (impl->wlSurface) {
-    wl_surface_destroy(impl->wlSurface);
-    impl->wlSurface = NULL;
-  }
-
-  impl->configured         = false;
-  impl->frameCallbackWorks = false;
-  impl->numEnteredOutputs  = 0U;
+  puglWaylandDestroyViewSurface(impl);
 
   memset(&view->lastConfigure, 0, sizeof(PuglConfigureEvent));
   memset(&impl->pendingConfigure, 0, sizeof(PuglEvent));
@@ -3140,6 +3234,8 @@ puglWaylandDispatchEvents(PuglWorld* const world, const double timeout)
   PuglWorldInternals* const impl    = world->impl;
   struct wl_display* const  display = impl->display;
 
+  impl->world = world;
+
   if (wl_display_dispatch_pending(display) < 0) {
     return PUGL_UNKNOWN_ERROR;
   }
@@ -3218,6 +3314,20 @@ puglWaylandFlushExposures(PuglWorld* const world)
     PuglView* const      view = world->views[i];
     PuglInternals* const impl = view->impl;
 
+    /* Retry a repaint that an earlier pass had to put off.  The frame callback re-queues one too,
+       but a compositor that never sends frame callbacks -- an occluded or unmapped window, exactly
+       what the timeouts in puglWaylandCanDraw() exist for -- would otherwise drop the repaint on
+       the floor forever, because nothing else consumes needsRedisplay.
+
+       This is reached often enough to matter because DGL always calls puglUpdate() with a finite
+       timeout (Application::PrivateData::idle(), dgl/src/ApplicationPrivateData.cpp), which bounds
+       the poll() deadline in puglWaylandDispatchEvents() even when the compositor sends nothing. */
+    if (impl->needsRedisplay && impl->visible && impl->configured &&
+        puglWaylandCanDraw(view)) {
+      impl->needsRedisplay = false;
+      puglWaylandQueueFullExpose(view);
+    }
+
     PuglEvent configure = impl->pendingConfigure;
     PuglEvent expose    = impl->pendingExpose;
 
@@ -3253,6 +3363,12 @@ puglWaylandFlushExposures(PuglWorld* const world)
            the surface, and the frame request has to ride along with that same commit. */
         puglWaylandRequestFrame(view);
       }
+    } else if (expose.type) {
+      /* The backend could not give us anything to draw into (both shm buffers still held by the
+         compositor, a context that would not go current, ...).  The expose has already been taken
+         off pendingExpose, so hand it to needsRedisplay or it is lost; the retry at the top of this
+         loop picks it up again next pass. */
+      impl->needsRedisplay = true;
     }
 
     st2 = view->backend->leave(view, exposeEvent);
@@ -3443,12 +3559,14 @@ puglSetWindowSize(PuglView* const view,
   request.width  = (PuglSpan)width;
   request.height = (PuglSpan)height;
 
-  // A client-initiated resize is not negotiated: we simply pick a new buffer size and commit it
-  impl->size        = puglWaylandConstrainSize(view, request);
-  impl->logicalSize = puglWaylandPixelsToLogical(impl->size, impl->scale);
-  impl->size        = puglWaylandLogicalToPixels(impl->logicalSize, impl->scale);
+  /* A client-initiated resize is not negotiated: we simply pick a new size and commit it.  Whatever
+     the compositor last asked for is forgotten at the same time -- it is not what is on screen any
+     more, and leaving it behind would make the next configure, scale change or output enter re-apply
+     it and snap the window straight back. */
+  impl->requestedLogicalSize.width  = 0;
+  impl->requestedLogicalSize.height = 0;
 
-  puglWaylandApplyGeometry(view);
+  puglWaylandSetSize(view, puglWaylandPixelsToLogical(request, impl->scale));
 
   puglWaylandQueueConfigure(view);
   puglWaylandQueueFullExpose(view);
@@ -3707,8 +3825,11 @@ puglAcceptOffer(PuglView* const                 view,
     return PUGL_FAILURE;
   }
 
+  /* Close-on-exec matters here: this runs inside somebody else's host, which may fork and exec at
+     any moment, and the write end staying open in a child would keep the transfer from ever ending.
+     The fd handed to the compositor is a separate copy made by the socket, so it is unaffected. */
   int fds[2] = {-1, -1};
-  if (pipe(fds) != 0) {
+  if (pipe2(fds, O_CLOEXEC) != 0) {
     return PUGL_UNKNOWN_ERROR;
   }
 
@@ -3814,9 +3935,19 @@ puglSetClipboard(PuglView* const   view,
     wl_data_source_offer(source, "TEXT");
   }
 
+  /* NOTE: this reuses whatever the most recent input serial happened to be.  Compositors are
+     entitled to ignore a set_selection carrying a serial they have already acted on, and some
+     (mutter) do.  In practice a real copy always follows fresh keyboard or pointer input, so the
+     serial has moved on by the time this runs; a copy triggered with no input at all (from a timer,
+     say) is the case that may silently do nothing. */
   wl_data_device_set_selection(
     wimpl->dataDevice, source, wimpl->lastSerial);
   wl_display_flush(wimpl->display);
+
+  /* Take over the tracking: any previous source is left for its cancelled event to destroy, which
+     the compositor sends precisely because this call replaced it. */
+  wimpl->dataSource     = source;
+  wimpl->dataSourceData = sd;
 
   return PUGL_SUCCESS;
 }

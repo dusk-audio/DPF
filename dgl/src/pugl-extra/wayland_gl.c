@@ -226,14 +226,36 @@ puglWaylandGlCreate(PuglView* const view)
   const bool isGles = view->hints[PUGL_CONTEXT_API] == PUGL_OPENGL_ES_API;
   const PuglArea size = puglWaylandGetBufferSize(view);
 
+  /* PUGL_DONT_CARE is -1, which EGL would reject, so the boolean and enumerated hints are compared
+     against the value that means "yes" rather than simply tested for truth. */
+  const EGLint debug =
+    view->hints[PUGL_CONTEXT_DEBUG] == PUGL_TRUE ? EGL_TRUE : EGL_FALSE;
+
+  const EGLint profile =
+    view->hints[PUGL_CONTEXT_PROFILE] == PUGL_OPENGL_COMPATIBILITY_PROFILE
+      ? EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT
+      : EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT;
+
+  /* The profile mask is defined to be ignored for OpenGL versions below 3.2, so it is always safe
+     to pass; EGL ignores EGL_CONTEXT_OPENGL_* entirely for an OpenGL ES context, hence the separate
+     attribute list for that case. */
   // clang-format off
   const EGLint contextAttrs[] = {
+    EGL_CONTEXT_MAJOR_VERSION,        view->hints[PUGL_CONTEXT_VERSION_MAJOR],
+    EGL_CONTEXT_MINOR_VERSION,        view->hints[PUGL_CONTEXT_VERSION_MINOR],
+    EGL_CONTEXT_OPENGL_PROFILE_MASK,  profile,
+    EGL_CONTEXT_OPENGL_DEBUG,         debug,
+    EGL_NONE
+  };
+
+  const EGLint glesContextAttrs[] = {
     EGL_CONTEXT_MAJOR_VERSION, view->hints[PUGL_CONTEXT_VERSION_MAJOR],
     EGL_CONTEXT_MINOR_VERSION, view->hints[PUGL_CONTEXT_VERSION_MINOR],
     EGL_NONE
   };
 
-  // EGL 1.4 and OpenGL ES only understand the older single-number attribute
+  /* EGL 1.4 understands neither the minor version nor any of the above, only the older
+     single-number attribute, so that is what the fallback below asks for. */
   const EGLint legacyContextAttrs[] = {
     EGL_CONTEXT_CLIENT_VERSION, view->hints[PUGL_CONTEXT_VERSION_MAJOR],
     EGL_NONE
@@ -243,7 +265,7 @@ puglWaylandGlCreate(PuglView* const view)
   surface->context = eglCreateContext(surface->display,
                                       surface->config,
                                       EGL_NO_CONTEXT,
-                                      isGles ? legacyContextAttrs
+                                      isGles ? glesContextAttrs
                                              : contextAttrs);
 
   if (surface->context == EGL_NO_CONTEXT) {
@@ -270,18 +292,24 @@ puglWaylandGlCreate(PuglView* const view)
     return PUGL_CREATE_CONTEXT_FAILED;
   }
 
-  /* Pacing is done by wayland.c with wl_surface frame callbacks, so EGL is told not to block in
-     eglSwapBuffers unless the application explicitly asked for a swap interval.  Letting both
-     throttles run would add a frame of latency for no benefit. */
+  /* A context that will not go current here will not go current in enter() either, so fail now
+     rather than hand back a surface that can never be drawn into. */
   if (eglMakeCurrent(surface->display,
                      surface->surface,
                      surface->surface,
-                     surface->context) == EGL_TRUE) {
-    const int hint = view->hints[PUGL_SWAP_INTERVAL];
-    eglSwapInterval(surface->display, hint == PUGL_DONT_CARE ? 0 : hint);
-    eglMakeCurrent(
-      surface->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+                     surface->context) != EGL_TRUE) {
+    return PUGL_CREATE_CONTEXT_FAILED;
   }
+
+  /* Pacing is done by wayland.c with wl_surface frame callbacks, so EGL is told not to block in
+     eglSwapBuffers unless the application explicitly asked for a swap interval.  Letting both
+     throttles run would add a frame of latency for no benefit.  eglSwapInterval() applies to the
+     surface that is current, which is why it has to happen inside this pair. */
+  const int hint = view->hints[PUGL_SWAP_INTERVAL];
+  eglSwapInterval(surface->display, hint == PUGL_DONT_CARE ? 0 : hint);
+
+  eglMakeCurrent(
+    surface->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
   return PUGL_SUCCESS;
 }
