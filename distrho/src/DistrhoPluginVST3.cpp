@@ -1001,8 +1001,11 @@ public:
                 // restore read character
                 buffer[read] = orig;
 
-                // if buffer offset points to null, we found the end of a string, lets check
-                if (buffer[i] == '\0')
+                // The null character placed above bounds strlen(), so the offset now points either at a real
+                // null inside the chunk or exactly at `read`. The latter means the string is cut in half by
+                // the chunk boundary and continues in the next read, so do not look at buffer[read] itself:
+                // that byte is past the valid data and holds stale or uninitialized garbage.
+                if (i != read)
                 {
                     // special keys
                     if (key == "__dpf_state_begin__")

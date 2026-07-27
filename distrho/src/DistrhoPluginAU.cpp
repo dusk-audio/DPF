@@ -426,7 +426,7 @@ public:
         }
         else
         {
-            fFactoryPresetsData = new AUPreset;
+            fFactoryPresetsData = new AUPreset[1];
             std::memset(fFactoryPresetsData, 0, sizeof(AUPreset));
 
             fFactoryPresetsData->presetNumber = 0;
