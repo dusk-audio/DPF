@@ -221,9 +221,6 @@ jobs:
                 'state-reproducibility-flush',
                 'state-reproducibility-null-cookies',
             },
-            'studio.kx.distrho.examples.latency': {
-                'state-buffered-streams',
-            },
             'studio.kx.distrho.examples.meters': {
                 'state-reproducibility-flush',
             },
