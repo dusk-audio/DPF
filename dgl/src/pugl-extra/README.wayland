@@ -1,0 +1,169 @@
+DGL Wayland backend
+===================
+
+A native pugl backend for Wayland: xdg-shell top level windows, EGL or wl_shm drawing, xkbcommon
+keyboard handling, wl_data_device clipboard.
+
+State: implemented and building. Exercised on GNOME Shell (Mutter) with both the OpenGL and the
+Cairo backends. Treat it as a first release -- the shape is right and the protocol traffic is
+correct, but it has not been through the years of host-by-host abuse that the X11 backend has.
+
+
+When is the Wayland arm selected?
+---------------------------------
+
+Only when X11 is absent from the build machine entirely. X11 and Wayland development files coexist
+on most desktop systems, and DGL prefers X11 whenever it is present, because hosts embed plugin UIs
+through the X11 embedding contract (of the formats DPF targets, only CLAP has a Wayland window API)
+and standalone builds work fine on a Wayland session via XWayland.
+
+That policy is expressed in three places, which must be kept in agreement:
+
+  * dgl/src/pugl.hpp      -- `#elif defined(HAVE_X11)` before
+                             `#elif defined(HAVE_WAYLAND)`, plus the long
+                             rationale comment. This is the canonical statement.
+  * Makefile.base.mk      -- `DGL_BACKEND_WAYLAND`, set only when HAVE_WAYLAND
+                             is true and HAVE_X11 is not. Only this variable
+                             gates -DHAVE_WAYLAND and the Wayland libraries.
+  * cmake/DPF-plugin.cmake -- the `if(X11_FOUND) ... else()` split inside
+                             `dpf__add_dgl_system_libs`.
+
+To exercise the Wayland arm on a machine that has X11 installed:
+
+    make -C dgl HAVE_X11=
+    cmake -DCMAKE_DISABLE_FIND_PACKAGE_X11=ON ...
+
+
+Build requirements
+------------------
+
+Only the client libraries, probed together as HAVE_WAYLAND_LIBS:
+
+    wayland-client, wayland-egl, wayland-cursor, xkbcommon, egl
+
+The protocol bindings are pre-generated and vendored in `wayland-protocols/` (see the README
+there), so neither the `wayland-protocols` data package nor `wayland-scanner` is needed to build.
+`make features` still reports HAVE_WAYLAND_TOOLS, but purely as information for regenerating that
+directory; it gates nothing.
+
+OpenGL builds additionally use `gl` for the desktop GL entry points DGL itself calls
+(glViewport, glOrtho, ...) -- EGL only supplies the context, not the API.
+
+
+Files
+-----
+
+  wayland.h          shared internals: PuglWorldInternals / PuglInternals, seat and xkb state,
+                     key repeat, clipboard offers, output tracking
+  wayland.c          the backend proper: registry, xdg-shell lifecycle, scaling, input, clipboard,
+                     cursors, timers, the event loop
+  wayland_gl.c       OpenGL over EGL + wl_egl_window
+  wayland_cairo.c    Cairo over a wl_shm buffer pool
+  wayland_stub.c     the no-graphics-API backend (PUGL_STUB), as x11_stub.c is
+  wayland-protocols/ vendored protocol XML and generated bindings
+
+All of these are pulled into the dgl/src/pugl.cpp unity build and compiled as C++ inside the DGL
+namespace, the same way pugl-extra/wasm.c and pugl-extra/haiku.cpp are.
+
+
+Protocols used
+--------------
+
+Required; the backend refuses to start without them:
+
+  wl_compositor        surfaces
+  xdg_wm_base          window role, ping/pong, configure/ack
+
+Used when advertised, degraded gracefully when not:
+
+  wl_seat              wl_pointer and wl_keyboard
+  wl_output            integer scale, via wl_surface.enter/leave
+  wl_shm               cursor themes, and the Cairo backend's buffers
+  wl_data_device_manager    clipboard get and set
+  wp_viewporter        + wp_fractional_scale_v1: exact fractional scaling
+  zxdg_decoration_manager_v1   server-side decorations are requested; compositors without it
+                               (GNOME, notably) leave the window undecorated
+
+Deliberately not used: cursor-shape-v1 (drags in tablet-v2 for no real gain over wl_cursor themes),
+primary selection, text-input, DnD, Vulkan.
+
+
+Coordinates and scaling
+-----------------------
+
+Pugl talks in *buffer pixels* everywhere: configure sizes, expose regions, pointer positions. The
+compositor talks in *logical pixels*. `puglWaylandLogicalToPixels()` / `puglWaylandPixelsToLogical()`
+are the only places the two meet, so the direction of a conversion is never ambiguous.
+
+The scale factor is, in order of preference:
+
+  1. wp_fractional_scale_v1's preferred_scale (in 120ths), applied by rendering at that scale and
+     using a wp_viewport to map the buffer back down to the logical size. Requires viewporter.
+  2. the largest integer wl_output scale among the outputs the surface overlaps, applied with
+     wl_surface.set_buffer_scale.
+  3. 1.0.
+
+puglGetScaleFactor() returns whichever is in effect, so DGL scales the widget tree the same way it
+does from Xft.dpi on X11.
+
+
+Redraw pacing
+-------------
+
+Exposes are accumulated during event dispatch and flushed at the end of puglUpdate(), exactly as in
+x11.c. What differs is the gate in front of the flush: a wl_surface frame callback is requested with
+each drawn frame, and the next draw waits for it, which paces redraws to the compositor's refresh
+and stops an invisible window burning cycles.
+
+Frame callbacks cannot be relied on unconditionally -- a compositor only sends them for surfaces it
+is actually compositing, and some send none at all for a window that is hidden, occluded, on another
+workspace, or in a session that is not painting. Waiting forever would freeze the UI, so there is a
+timeout: short (~30 Hz floor, i.e. what an unthrottled backend would do anyway) until the first
+callback has ever come back, longer afterwards. See PUGL_WAYLAND_FIRST_FRAME_TIMEOUT in wayland.c.
+
+EGL's own swap-interval throttle is therefore switched off by default (interval 0), since running
+both would just add a frame of latency. An explicit PUGL_SWAP_INTERVAL hint still wins.
+
+
+Known limitations
+-----------------
+
+* **No embedding.** Wayland has no cross-client window embedding; there is no protocol by which a
+  host hands out a surface for a plugin to draw into. puglSetParent() is accepted and ignored with a
+  debug message, and the view becomes a top level window instead. This is the big one: it means a
+  plugin UI in a Wayland-native host appears as a separate floating window. Plugin embedding on
+  Linux remains an X11 (or XWayland) affair.
+
+* **No window positions.** puglSetWindowPosition() returns PUGL_UNSUPPORTED and configure events
+  always report 0,0. Wayland does not let a client place its own windows or learn where they are.
+  Root-relative pointer coordinates (xRoot/yRoot) are reported as the surface-relative ones.
+
+* **Transient parents only within one process.** puglSetTransientParent() maps to
+  xdg_toplevel.set_parent when the handle belongs to another view of this process, and is ignored
+  otherwise (again, no cross-client handles exist).
+
+* **No raise, no focus grab.** puglRaiseWindow() does nothing and puglGrabFocus() returns
+  PUGL_UNSUPPORTED. Stacking and focus are compositor policy.
+
+* **puglSetViewStyle is partial.** Fullscreen, maximise and minimise map onto xdg_toplevel;
+  MODAL / ABOVE / BELOW / DEMANDING have no equivalent and are ignored.
+
+* **No aspect ratio constraints.** xdg_toplevel has min and max size but nothing for aspect, so
+  PUGL_MIN_ASPECT / PUGL_MAX_ASPECT / PUGL_FIXED_ASPECT are not enforced during interactive resize.
+  DPF re-imposes the aspect from its own configure handler, so the window snaps back rather than
+  resisting.
+
+* **Timers need timerfd**, so application timers and key repeat are Linux-only. On other systems
+  puglStartTimer() returns PUGL_UNSUPPORTED and keys do not auto-repeat; everything else works.
+
+* **Clipboard is text-oriented.** MIME types are reported with any parameters stripped
+  ("text/plain;charset=utf-8" is offered to the application as "text/plain") because that is what
+  portable Pugl clients compare against. Setting the clipboard offers the UTF-8 and legacy
+  X11-style aliases alongside the requested type. Unlike X11 the transfer is synchronous: the pipe
+  is read inside puglAcceptOffer(), so PUGL_DATA is dispatched before it returns.
+
+* **Vulkan is not implemented** (DGL's Vulkan drawing layer is a stub anyway).
+
+* **getDesktopScaleFactor() returns 1.0** on Wayland, in distrho/src/DistrhoUI.cpp. There is no
+  window-independent scale to query before a surface exists; the real value arrives through
+  puglGetScaleFactor() once the window maps, and DGL picks it up from the configure event.

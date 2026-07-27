@@ -108,6 +108,76 @@
 # ifdef DGL_VULKAN
 #  include <vulkan/vulkan_xlib.h>
 # endif
+// NOTE: reachable only when HAVE_X11 is undefined -- see the backend policy comment in pugl.hpp.
+// The arm ordering here must stay identical to the one there, or the headers pulled in would stop
+// matching the backend that gets compiled below.
+#elif defined(HAVE_WAYLAND)
+# include <dlfcn.h>
+# include <errno.h>
+# include <fcntl.h>
+# include <limits.h>
+# include <poll.h>
+# include <unistd.h>
+# include <sys/mman.h>
+# include <sys/select.h>
+# ifdef __linux__
+#  include <sys/timerfd.h>
+# endif
+# include <wayland-client.h>
+# include <wayland-cursor.h>
+# include <xkbcommon/xkbcommon.h>
+# include <xkbcommon/xkbcommon-compose.h>
+# include <xkbcommon/xkbcommon-keysyms.h>
+/* Wayland protocol bindings, pre-generated and vendored so that neither wayland-scanner nor the
+   wayland-protocols data package is needed to build. See pugl-extra/wayland-protocols/README.
+
+   The marshalling code has to stay at global scope with C linkage: it declares the wl_*_interface
+   symbols that libwayland-client exports, and defines the xdg, zxdg and wp ones it needs itself.
+   Pulling it into the DGL namespace would declare a second, namespaced set of the former that could
+   never resolve at link time.
+
+   It is also included *before* the matching client headers on purpose: the generated code declares
+   the interfaces it defines, and seeing a later `extern` declaration from the client header first
+   would make those definitions extern too.
+
+   What the generated code does *not* do is give those definitions hidden visibility.  wayland-
+   scanner emits its own forward declarations without WL_PRIVATE, so by the time the attribute
+   appears on the definition it is too late to apply and the compiler ignores it -- which is exactly
+   the warning that -Wattributes is silenced for here.  The enclosing extern "C" block keeps the
+   linkage external as well, so nothing in this file stops a symbol from being exported.
+
+   Isolation from a host that links its own copy of the same protocol therefore comes entirely from
+   the build's global -fvisibility=hidden (see Makefile.base.mk), which release builds set.  DEBUG
+   builds do not, so a debug plugin loaded into a host that also uses xdg-shell can have its
+   xdg_*_interface symbols interposed by the host's copies. The layouts are generated from the same
+   protocol XML, so in practice this is benign, but it is worth knowing when debugging one. */
+# if defined(__GNUC__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wattributes"
+# endif
+extern "C" {
+# include "pugl-extra/wayland-protocols/xdg-shell-protocol.c"
+# include "pugl-extra/wayland-protocols/xdg-decoration-unstable-v1-protocol.c"
+# include "pugl-extra/wayland-protocols/viewporter-protocol.c"
+# include "pugl-extra/wayland-protocols/fractional-scale-v1-protocol.c"
+}
+# if defined(__GNUC__)
+#  pragma GCC diagnostic pop
+# endif
+# include "pugl-extra/wayland-protocols/xdg-shell-client-protocol.h"
+# include "pugl-extra/wayland-protocols/xdg-decoration-unstable-v1-client-protocol.h"
+# include "pugl-extra/wayland-protocols/viewporter-client-protocol.h"
+# include "pugl-extra/wayland-protocols/fractional-scale-v1-client-protocol.h"
+# ifdef DGL_CAIRO
+#  include <cairo.h>
+# endif
+# ifdef DGL_OPENGL
+#  include <EGL/egl.h>
+#  include <EGL/eglext.h>
+#  include <wayland-egl.h>
+# endif
+// NOTE: no vulkan/vulkan_wayland.h here on purpose. There is no wayland_vulkan backend to include
+// below, so the header would only be dead weight ahead of the diagnostic in the backend arm.
 #endif
 
 #ifdef DGL_USE_FILE_BROWSER
@@ -212,6 +282,23 @@ START_NAMESPACE_DGL
 # ifdef DGL_VULKAN
 #  include "pugl-upstream/src/x11_vulkan.c"
 # endif
+#elif defined(HAVE_WAYLAND)
+// The build system will only ever define HAVE_WAYLAND without HAVE_X11 (see pugl.hpp), so reaching
+// this point means a genuine Wayland-only build was requested.
+# include "pugl-extra/wayland.c"
+# include "pugl-extra/wayland_stub.c"
+# ifdef DGL_CAIRO
+#  include "pugl-extra/wayland_cairo.c"
+# endif
+# ifdef DGL_OPENGL
+#  include "pugl-extra/wayland_gl.c"
+# endif
+# ifdef DGL_VULKAN
+// There is no wayland_vulkan.c, but puglSetMatchingBackendForCurrentBuild below calls
+// puglVulkanBackend() whenever DGL_VULKAN is set. Say so here rather than leaving the build to fail
+// at link time with an undefined reference. Reachable via the CMake UI_TYPE vulkan option.
+#  error "Vulkan is not implemented on the DGL Wayland backend"
+# endif
 #endif
 
 #include "pugl-upstream/src/common.c"
@@ -292,6 +379,8 @@ void puglRaiseWindow(PuglView* const view)
     SetActiveWindow(view->impl->hwnd);
    #elif defined(HAVE_X11)
     XRaiseWindow(view->world->impl->display, view->impl->win);
+   #elif defined(HAVE_WAYLAND)
+    // nothing: a Wayland client cannot raise itself, stacking is entirely the compositor's business
    #endif
 }
 
@@ -333,6 +422,15 @@ PuglStatus puglSetGeometryConstraints(PuglView* const view, const uint width, co
 
         XFlush(view->world->impl->display);
     }
+   #elif defined(HAVE_WAYLAND)
+    // xdg_toplevel has min/max size but no aspect ratio, see puglUpdateSizeHints in wayland.c
+    if (view->impl->xdgToplevel)
+    {
+        if (const PuglStatus status = puglUpdateSizeHints(view))
+            return status;
+
+        wl_display_flush(view->world->impl->display);
+    }
    #endif
 
     return PUGL_SUCCESS;
@@ -364,6 +462,8 @@ void puglSetResizable(PuglView* const view, const bool resizable)
         SetWindowLong(hwnd, GWL_STYLE, winFlags);
     }
    #elif defined(HAVE_X11)
+    puglUpdateSizeHints(view);
+   #elif defined(HAVE_WAYLAND)
     puglUpdateSizeHints(view);
    #endif
 }
@@ -416,6 +516,17 @@ PuglStatus puglSetSizeAndDefault(PuglView* const view, const uint width, const u
 
         // flush size changes
         XFlush(view->world->impl->display);
+    }
+   #elif defined(HAVE_WAYLAND)
+    if (view->impl->wlSurface)
+    {
+        if (const PuglStatus status = puglUpdateSizeHints(view))
+            return status;
+
+        if (const PuglStatus status = puglSetWindowSize(view, width, height))
+            return status;
+
+        wl_display_flush(view->world->impl->display);
     }
    #endif
 
@@ -667,7 +778,18 @@ void puglX11SetWindowType(const PuglView* const view, const bool isStandalone)
 
 // --------------------------------------------------------------------------------------------------------------------
 
-#endif // HAVE_X11
+#elif defined(HAVE_WAYLAND)
+
+// --------------------------------------------------------------------------------------------------------------------
+// Wayland specific
+//
+// puglWaylandUpdateWithoutExposures() and puglWaylandSetAppId() are declared in pugl.hpp so that the
+// Wayland arm there has the same shape as the X11 one. Their bodies live at the bottom of
+// pugl-extra/wayland.c, next to the internals they need, rather than being duplicated here.
+
+// --------------------------------------------------------------------------------------------------------------------
+
+#endif // HAVE_X11 / HAVE_WAYLAND
 
 #ifndef DISTRHO_OS_MAC
 END_NAMESPACE_DGL

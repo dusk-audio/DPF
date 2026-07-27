@@ -1,0 +1,89 @@
+Vendored Wayland protocol bindings
+==================================
+
+This directory holds Wayland protocol definitions and the client-side C bindings generated from
+them. Both the XML and the generated code are checked in.
+
+
+Why vendor the generated code?
+------------------------------
+
+Generating these at build time would make DGL's Wayland backend depend on two extra things being
+installed on every build machine:
+
+  * the `wayland-protocols` data package, which ships the XML
+  * the `wayland-scanner` binary, which turns XML into C
+
+Neither is needed at run time, neither is needed to *link*, and neither is universally present --
+`wayland-protocols` in particular is a build-time-only package that plenty of otherwise complete
+Wayland systems (and most cross-compilation sysroots) do not have. The generated code is small,
+stable, and licensed permissively, so checking it in removes both dependencies: a machine with the
+Wayland *client libraries* can build the backend, full stop.
+
+This is the same reasoning behind `dgl/src/khronos` for the MSVC GL headers.
+
+Makefile.base.mk still probes for the tooling and reports it as `HAVE_WAYLAND_TOOLS` in
+`make features`, but only as information for whoever wants to regenerate this directory. It gates
+nothing; `HAVE_WAYLAND` depends on the libraries alone.
+
+
+Origin
+------
+
+Fetched 2026-07-26 from the `main` branch of
+
+    https://gitlab.freedesktop.org/wayland/wayland-protocols
+
+at commit afb614d5fcbd02d261a6ae91920aa91cf3915a8a
+("stable/linux-dmabuf: Spell out rules around format_table events", 2026-06-23).
+
+  XML file                          upstream path
+  --------------------------------  ---------------------------------------------------------
+  xdg-shell.xml                     stable/xdg-shell/xdg-shell.xml
+  viewporter.xml                    stable/viewporter/viewporter.xml
+  fractional-scale-v1.xml           staging/fractional-scale/fractional-scale-v1.xml
+  xdg-decoration-unstable-v1.xml    unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
+
+Interface versions in the generated code:
+
+  xdg_wm_base, xdg_positioner, xdg_surface, xdg_toplevel, xdg_popup   7
+  wp_viewporter, wp_viewport                                          1
+  wp_fractional_scale_manager_v1, wp_fractional_scale_v1              1
+  zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1             2
+
+Note that these are the versions the *bindings* can speak. wayland.c binds each global at
+`MIN(advertised, what this backend actually implements)`, so a newer protocol version here never
+makes the backend demand more of a compositor than before.
+
+Each protocol XML carries its own MIT/X11-style licence notice, which the generator copies into both
+the header and the source. Nothing here is under DPF's ISC licence.
+
+
+Regenerating
+------------
+
+With wayland-scanner installed, from this directory:
+
+    for p in xdg-shell viewporter fractional-scale-v1 xdg-decoration-unstable-v1; do
+        wayland-scanner client-header "$p.xml" "$p-client-protocol.h"
+        wayland-scanner private-code   "$p.xml" "$p-protocol.c"
+    done
+
+To also refresh the XML, download it from the upstream paths in the table above and update the
+commit and date recorded here.
+
+`private-code` (rather than `public-code`) is deliberate: it marks the generated interface objects
+`WL_PRIVATE`, i.e. hidden visibility, so a DPF plugin cannot collide with a host that has linked its
+own copy of the same protocol.
+
+
+How this is compiled
+--------------------
+
+dgl/src/pugl.cpp includes all four `-protocol.c` files at global scope inside `extern "C"`, before
+the matching `-client-protocol.h` headers and before it enters the DGL namespace. The ordering and
+the reasons for it are explained in the comment there; in short, the marshalling code has to keep C
+linkage and has to be the first declaration the compiler sees for its own symbols.
+
+There is no separate compilation step and no entry in any Makefile or CMakeLists: these files are
+part of the pugl.cpp unity build.

@@ -27,7 +27,10 @@
 # define __MACOSX_CORE__
 # define RTAUDIO_API_TYPE MACOSX_CORE
 # define RTMIDI_API_TYPE MACOSX_CORE
-#elif defined(DISTRHO_OS_WINDOWS) && !defined(_MSC_VER)
+#elif defined(DISTRHO_OS_WINDOWS)
+// NOTE the vendored RtAudio WASAPI and RtMidi WinMM backends build under MSVC as well as MinGW.
+// The one thing they cannot handle there is HAVE_GETTIMEOFDAY, which pulls in <sys/time.h> and
+// gettimeofday(); the build files therefore only define it for non-MSVC compilers.
 # define __WINDOWS_WASAPI__
 # define __WINDOWS_MM__
 # define RTAUDIO_API_TYPE WINDOWS_WASAPI
@@ -43,6 +46,13 @@
 #  define __LINUX_ALSA__
 #  define RTMIDI_API_TYPE LINUX_ALSA
 # endif
+#endif
+
+// NOTE __PRETTY_FUNCTION__ is a GCC/Clang builtin, MSVC spells the same thing __FUNCSIG__.
+#ifdef _MSC_VER
+# define RTAUDIO_BRIDGE_FUNC_NAME __FUNCSIG__
+#else
+# define RTAUDIO_BRIDGE_FUNC_NAME __PRETTY_FUNCTION__
 #endif
 
 #ifdef RTAUDIO_API_TYPE
@@ -175,7 +185,7 @@ struct RtAudioBridge : NativeBridge {
 
     bool requestMIDI() override
     {
-        d_stdout("%s %d", __PRETTY_FUNCTION__, __LINE__);
+        d_stdout("%s %d", RTAUDIO_BRIDGE_FUNC_NAME, __LINE__);
         // clear ports in use first
        #if defined(RTMIDI_API_TYPE) && DISTRHO_PLUGIN_WANT_MIDI_INPUT
         if (!midiIns.empty())

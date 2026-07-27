@@ -600,17 +600,31 @@ FileBrowserHandle fileBrowserCreate(const bool isEmbed,
                                                                       "org.freedesktop.portal.FileChooser",
                                                                       options.saving ? "SaveFile" : "OpenFile"))
             {
-               #ifdef HAVE_X11
+                // NOTE the portal method signature is (s parent_window, s title, a{sv} options),
+                // so the parent window argument must always be sent.
+                // An empty string means "no parent window", as per the portal spec.
+                //
+                // NOTE on Wayland builds the empty string is all we can send, and that is by design
+                // for now. The portal's Wayland parent form is "wayland:<handle>", where the handle
+                // comes from exporting the surface through xdg-foreign (zxdg_exporter_v2). That
+                // export is asynchronous and needs the wl_surface plus the wl_registry that owns
+                // the exporter, whereas everything that reaches this function is a single opaque
+                // uintptr_t windowId -- on Wayland that is the wl_surface pointer, which carries no
+                // way back to the display or the exporter, and would be meaningless to the portal
+                // process even if it did. Wiring it up properly means widening the DGL file-browser
+                // API to hand over the pugl view (or a pre-exported handle string) rather than an
+                // integer. Until then the portal simply centres the dialog on screen instead of
+                // over the plugin window, which is a cosmetic loss, not a functional one.
                 char windowIdStr[32];
                 memset(windowIdStr, 0, sizeof(windowIdStr));
-                snprintf(windowIdStr, sizeof(windowIdStr)-1, "x11:%llx", (ulonglong)windowId);
-                const char* windowIdStrPtr = windowIdStr;
+               #ifdef HAVE_X11
+                if (windowId != 0)
+                    snprintf(windowIdStr, sizeof(windowIdStr)-1, "x11:%llx", (ulonglong)windowId);
                #endif
+                const char* windowIdStrPtr = windowIdStr;
 
                 dbus_message_append_args(msg,
-                                        #ifdef HAVE_X11
                                          DBUS_TYPE_STRING, &windowIdStrPtr,
-                                        #endif
                                          DBUS_TYPE_STRING, &windowTitle,
                                          DBUS_TYPE_INVALID);
 
@@ -670,6 +684,20 @@ FileBrowserHandle fileBrowserCreate(const bool isEmbed,
 
     if (x_fib_show(x11display, windowId, 0, 0, scaleFactor + 0.5) != 0)
         return nullptr;
+#endif
+
+#if !defined(DISTRHO_OS_MAC) && !defined(DISTRHO_OS_WASM) && !defined(DISTRHO_OS_WINDOWS) && !defined(HAVE_X11)
+    // A Unix build without X11 (the native Wayland backend, or a headless/stub build) has the
+    // xdg-desktop-portal path above and nothing else. libsofd is an X11 program through and
+    // through -- Xlib windows, X fonts, its own X event loop -- so it is not even compiled in here,
+    // see the HAVE_X11 guard around its include near the top of this file.
+    //
+    // Reaching this point therefore means no portal answered. Returning the handle anyway would be
+    // worse than failing: no dialog was ever shown, so fileBrowserIdle() would never report
+    // completion and the caller would sit waiting on a window that does not exist. Fail cleanly
+    // instead, the same way every other unsupported case in this function does.
+    d_stderr2("fileBrowserCreate failed, xdg-desktop-portal is unavailable and this build has no X11 fallback");
+    return nullptr;
 #endif
 
     return handle.release();

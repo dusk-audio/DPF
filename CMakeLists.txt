@@ -6,6 +6,26 @@
 
 cmake_minimum_required(VERSION 3.8...3.31)
 
+# macOS deployment target.
+#
+# CMAKE_OSX_DEPLOYMENT_TARGET has to be set *before* project(), since project() runs the compiler
+# ABI and feature detection with it and selects the SDK accordingly. Assigning it after project()
+# does still reach most per-target compile flags at generate time, but the detection results then no
+# longer match the flags actually used, so that is not a reliable place to set it.
+#
+# DPF is normally consumed as a subproject, where the parent project's project() call has already
+# run and this file can no longer influence it. Parent projects must therefore set
+# CMAKE_OSX_DEPLOYMENT_TARGET themselves (or export MACOSX_DEPLOYMENT_TARGET) before their own
+# project() call. The default below only kicks in when DPF is the top-level project, and never
+# overrides an explicit choice.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
+   AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin"
+   AND NOT DEFINED CMAKE_SYSTEM_NAME
+   AND NOT CMAKE_OSX_DEPLOYMENT_TARGET
+   AND NOT DEFINED ENV{MACOSX_DEPLOYMENT_TARGET})
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version to target")
+endif()
+
 project(DPF)
 
 # ensure c++11 at minimum, the parent project can override

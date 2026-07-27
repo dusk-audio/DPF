@@ -474,6 +474,7 @@ struct JackBridge {
            #if defined(DISTRHO_OS_MAC)
             "libjack.0.dylib",
             "/usr/local/lib/libjack.0.dylib",
+            "/opt/homebrew/lib/libjack.0.dylib",
            #elif defined(DISTRHO_OS_WINDOWS) && defined(_WIN64)
             "libjack64.dll",
            #elif defined(DISTRHO_OS_WINDOWS)

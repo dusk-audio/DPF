@@ -871,12 +871,22 @@ const void* Window::PrivateData::getClipboard(size_t& dataSize)
         return nullptr;
     }
 
-   #ifdef DGL_USING_X11
+   #if defined(DGL_USING_X11)
     // wait for type request, clipboardTypeId must be != 0 to be valid
     int retry = static_cast<int>(2 / 0.03);
     while (clipboardTypeId == 0 && waitingForClipboardData && --retry >= 0)
     {
         if (puglX11UpdateWithoutExposures(appData->world) != PUGL_SUCCESS)
+            break;
+    }
+   #elif defined(DGL_USING_WAYLAND)
+    // same dance as X11: pump events without exposing until the offer types are known.
+    // On Wayland the offer is usually already in hand (wl_data_device.selection arrives ahead of
+    // time), so puglPaste dispatches PUGL_DATA_OFFER synchronously and this loop exits immediately.
+    int retry = static_cast<int>(2 / 0.03);
+    while (clipboardTypeId == 0 && waitingForClipboardData && --retry >= 0)
+    {
+        if (puglWaylandUpdateWithoutExposures(appData->world) != PUGL_SUCCESS)
             break;
     }
    #endif
@@ -888,7 +898,7 @@ const void* Window::PrivateData::getClipboard(size_t& dataSize)
         return nullptr;
     }
 
-   #ifdef DGL_USING_X11
+   #if defined(DGL_USING_X11)
     // wait for actual data (assumes offer was accepted)
     retry = static_cast<int>(2 / 0.03);
     while (waitingForClipboardData && --retry >= 0)
@@ -897,6 +907,10 @@ const void* Window::PrivateData::getClipboard(size_t& dataSize)
             break;
     }
    #endif
+    // NOTE: no second wait on Wayland. puglAcceptOffer performs the pipe transfer inline and
+    // dispatches PUGL_DATA before it returns, so by the time puglPaste above has returned the data
+    // is either in hand or the attempt has already failed. Pumping events here would just burn 2
+    // seconds waiting for an event that can no longer arrive.
 
     if (clipboardTypeId == 0)
     {
@@ -994,6 +1008,10 @@ PuglStatus Window::PrivateData::puglEventCallback(PuglView* const view, const Pu
            #ifdef DGL_USING_X11
             puglX11SetWindowType(view, pData->appData->isStandalone);
            #endif
+            /* NOTE: nothing to do for Wayland here. It has no window-type atoms, and the closest
+               equivalent -- the xdg_toplevel app id, which compositors key window rules, task list
+               grouping and desktop-file icon matching off -- is already set by puglRealize from the
+               very same world class name before this event is dispatched. */
         }
         break;
 
@@ -1168,7 +1186,22 @@ PuglStatus Window::PrivateData::puglEventCallback(PuglView* const view, const Pu
     ///< Data offered from clipboard, a #PuglDataOfferEvent
     case PUGL_DATA_OFFER:
         if (const uint32_t offerTypeId = pData->onClipboardDataOffer())
-            puglAcceptOffer(view, &event->offer, offerTypeId - 1);
+        {
+            const PuglStatus status = puglAcceptOffer(view, &event->offer, offerTypeId - 1);
+           #ifdef DGL_USING_WAYLAND
+            // Wayland does the whole transfer inline and dispatches PUGL_DATA itself, so a failure
+            // here is final: no later event will clear the wait, and getClipboard would otherwise
+            // hand back a type id with no data behind it.
+            if (status != PUGL_SUCCESS)
+            {
+                pData->clipboardTypeId = 0;
+                pData->waitingForClipboardData = false;
+            }
+           #else
+            // Every other backend answers asynchronously; PUGL_DATA is what ends the wait there.
+            (void)status;
+           #endif
+        }
         break;
 
     ///< Data available from clipboard, a #PuglDataEvent

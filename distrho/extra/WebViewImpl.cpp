@@ -451,7 +451,12 @@ WebViewHandle webViewCreate(const char* const url,
     }
 
     WKWebViewConfiguration* const config = [[WKWebViewConfiguration alloc] init];
-    config.limitsNavigationsToAppBoundDomains = false;
+    // NOTE limitsNavigationsToAppBoundDomains is macOS 11+, it already defaults to NO so older
+    // systems behave the same by simply not touching it.
+    if (@available(macOS 11.0, *))
+    {
+        config.limitsNavigationsToAppBoundDomains = false;
+    }
     config.preferences = prefs;
 
     const CGRect rect = CGRectMake(options.offset.x / scaleFactor,
@@ -519,8 +524,18 @@ WebViewHandle webViewCreate(const char* const url,
                                                            length:(lastsep - url)
                                                          encoding:NSUTF8StringEncoding];
 
-        [webview loadFileRequest:urlreq
-         allowingReadAccessToURL:[NSURL URLWithString:urlpath]];
+        NSURL* const readAccessURL = [NSURL URLWithString:urlpath];
+
+        // NOTE loadFileRequest:allowingReadAccessToURL: is macOS 12+, older systems get the
+        // equivalent loadFileURL:allowingReadAccessToURL: (macOS 10.11+) instead.
+        if (@available(macOS 12.0, *))
+        {
+            [webview loadFileRequest:urlreq allowingReadAccessToURL:readAccessURL];
+        }
+        else
+        {
+            [webview loadFileURL:[urlreq URL] allowingReadAccessToURL:readAccessURL];
+        }
 
          [urlpath release];
     }
@@ -709,6 +724,8 @@ WebViewHandle webViewCreate(const char* const url,
 #endif
 
     // maybe unused
+    // (url is used by every backend except the no-backend fallback, which a Wayland-only build hits)
+    (void)url;
     (void)windowId;
     (void)initialWidth;
     (void)initialHeight;

@@ -161,6 +161,17 @@ static double getDesktopScaleFactor(const uintptr_t parentWindowHandle)
 
     XCloseDisplay(display);
     return dpi / 96;
+   #elif defined(HAVE_WAYLAND)
+    /* Wayland has no global, window-independent scale factor to query: the compositor only tells a
+       client what scale to use once it has a surface on a particular output, via wl_surface.enter
+       or wp_fractional_scale_v1. That happens after this function is called, so 1.0 is the only
+       honest answer here.
+
+       This is not a gap in practice. The pugl Wayland backend reports the real scale through
+       puglGetScaleFactor() as soon as the window is mapped, and DGL picks the change up from the
+       configure event that follows, so the UI ends up correctly scaled either way. Only the very
+       first size request uses the value returned here. DPF_SCALE_FACTOR above still overrides. */
+    return 1.0;
    #endif
 
     return 1.0;

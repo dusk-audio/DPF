@@ -234,6 +234,24 @@ UNIX = true
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Set default macOS deployment target, unless the user already picked one
+#
+# Without this, the toolchain defaults to the SDK version of the build machine, making binaries
+# refuse to load on anything older. The environment variable (rather than -mmacosx-version-min) is
+# used on purpose: the compiler driver honors it per architecture slice, so universal builds passing
+# `-arch x86_64 -arch arm64` still get a sane per-slice minimum.
+#
+# To override, either set MACOSX_DEPLOYMENT_TARGET in the environment / on the make command line,
+# or pass -mmacosx-version-min=... yourself in CFLAGS/CXXFLAGS (as the macos-* rules below do).
+
+ifeq ($(MACOS),true)
+ifeq (,$(findstring -mmacosx-version-min=,$(CFLAGS)$(CXXFLAGS)$(LDFLAGS)))
+MACOSX_DEPLOYMENT_TARGET ?= 10.15
+export MACOSX_DEPLOYMENT_TARGET
+endif
+endif
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Compatibility checks
 
 ifeq ($(FILE_BROWSER_DISABLED),true)
@@ -288,7 +306,12 @@ BASE_OPTS += -msse -msse2 -msse3 -msimd128
 else ifeq ($(CPU_ARM32),true)
 BASE_OPTS += -mfpu=neon-vfpv4 -mfloat-abi=hard
 else ifeq ($(CPU_I386_OR_X86_64),true)
+# Skipped on macOS: universal builds pass several -arch flags at once and these x86-only options
+# would also be applied to the arm64 slice. Redundant there anyway, as macOS x86_64 has an SSE2
+# baseline and clang already defaults to -mfpmath=sse on it.
+ifneq ($(MACOS),true)
 BASE_OPTS += -mtune=generic -msse -msse2 -mfpmath=sse
+endif
 endif
 
 ifeq ($(MACOS),true)
@@ -413,6 +436,26 @@ HAVE_X11     = $(shell $(PKG_CONFIG) --exists x11 && echo true)
 HAVE_XCURSOR = $(shell $(PKG_CONFIG) --exists xcursor && echo true)
 HAVE_XEXT    = $(shell $(PKG_CONFIG) --exists xext && echo true)
 HAVE_XRANDR  = $(shell $(PKG_CONFIG) --exists xrandr && echo true)
+# The Wayland backend needs the whole set of client libraries or none of them: a partial install
+# cannot produce a working backend, so anything less counts as absent.
+#
+# It does NOT need wayland-scanner or the wayland-protocols data package. The xdg-shell,
+# xdg-decoration, viewporter and fractional-scale bindings are pre-generated and vendored in
+# dgl/src/pugl-extra/wayland-protocols, so a build machine only needs the libraries to link against.
+# HAVE_WAYLAND_TOOLS is still probed, but only as information for whoever wants to regenerate that
+# vendored code (see the README there); it gates nothing.
+HAVE_WAYLAND_LIBS  = $(shell $(PKG_CONFIG) --exists wayland-client wayland-egl wayland-cursor xkbcommon egl && echo true)
+HAVE_WAYLAND_TOOLS = $(shell $(PKG_CONFIG) --exists wayland-protocols && which wayland-scanner > /dev/null 2>&1 && echo true)
+HAVE_WAYLAND       = $(HAVE_WAYLAND_LIBS)
+# X11 and Wayland can both be installed, and on most desktop systems they are. X11 stays the
+# backend DGL actually compiles against whenever it is present (see dgl/src/pugl.hpp for why), so
+# HAVE_WAYLAND alone must not pull in Wayland cflags/libs -- that would add dead weight to every
+# existing dual-stack build. DGL_BACKEND_WAYLAND is the "Wayland is really being used" gate and is
+# what the flag blocks below key off; it mirrors the `#elif defined(HAVE_WAYLAND)` arm that only
+# becomes reachable once HAVE_X11 is absent.
+ifneq ($(HAVE_X11),true)
+DGL_BACKEND_WAYLAND = $(HAVE_WAYLAND)
+endif
 endif
 
 # Vulkan is not supported yet
@@ -514,6 +557,17 @@ DGL_SYSTEM_LIBS += -pthread -lrt
 endif
 endif # HAVE_X11
 
+# NOTE: gated on DGL_BACKEND_WAYLAND, not HAVE_WAYLAND, so that a system with both X11 and Wayland
+# installed builds exactly as it did before Wayland support existed.
+ifeq ($(DGL_BACKEND_WAYLAND),true)
+DGL_FLAGS       += $(shell $(PKG_CONFIG) --cflags wayland-client wayland-egl wayland-cursor xkbcommon) -DHAVE_WAYLAND
+DGL_SYSTEM_LIBS += $(shell $(PKG_CONFIG) --libs wayland-client wayland-egl wayland-cursor xkbcommon)
+# The clipboard code calls pthread_sigmask to keep SIGPIPE off the GUI thread during a transfer.
+# glibc 2.34 and later have it in libc, but older ones keep it in libpthread.
+DGL_FLAGS       += -pthread
+DGL_SYSTEM_LIBS += -pthread
+endif # DGL_BACKEND_WAYLAND
+
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -556,8 +610,20 @@ else ifeq ($(WINDOWS),true)
 OPENGL_FLAGS =
 OPENGL_LIBS  = -lopengl32
 else
+# X11 keeps GLX even when Wayland is also available, matching the backend choice made in pugl.hpp.
+# Only a build without X11 at all falls back to EGL on the Wayland platform.
+ifeq ($(HAVE_X11),true)
 OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags gl x11)
 OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs gl x11)
+else ifeq ($(DGL_BACKEND_WAYLAND),true)
+# EGL and wl_egl_window replace GLX as the way to get a context onto a window, but DGL itself still
+# calls plain desktop GL entry points (glViewport, glOrtho, ...), so libGL is needed just the same.
+OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags egl gl wayland-egl)
+OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs egl gl wayland-egl)
+else
+OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags gl x11)
+OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs gl x11)
+endif
 endif
 
 HAVE_CAIRO_OR_OPENGL = true
@@ -569,8 +635,10 @@ endif # HAVE_OPENGL
 
 ifeq ($(HAIKU_OR_MACOS_OR_WASM_OR_WINDOWS),true)
 HAVE_STUB = true
+else ifeq ($(HAVE_X11),true)
+HAVE_STUB = true
 else
-HAVE_STUB = $(HAVE_X11)
+HAVE_STUB = $(DGL_BACKEND_WAYLAND)
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -628,8 +696,10 @@ endif
 
 ifeq ($(HAIKU_OR_MACOS_OR_WASM_OR_WINDOWS),true)
 HAVE_DGL = true
+else ifeq ($(HAVE_X11),true)
+HAVE_DGL = true
 else
-HAVE_DGL = $(HAVE_X11)
+HAVE_DGL = $(DGL_BACKEND_WAYLAND)
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -760,6 +830,12 @@ else ifeq ($(WINDOWS)$(CPU_I386),truetrue)
 VST3_BINARY_DIR = Contents/x86-win
 else ifeq ($(WINDOWS)$(CPU_X86_64),truetrue)
 VST3_BINARY_DIR = Contents/x86_64-win
+else ifeq ($(WINDOWS)$(CPU_ARM64),truetrue)
+# NOTE the folder is "arm64-win" even for an aarch64-* toolchain triplet,
+# matching both the VST3 locations spec and dpf__determine_vst3_package_architecture in cmake/
+VST3_BINARY_DIR = Contents/arm64-win
+else ifeq ($(WINDOWS)$(CPU_ARM32),truetrue)
+VST3_BINARY_DIR = Contents/arm-win
 else
 VST3_BINARY_DIR =
 endif
@@ -827,10 +903,15 @@ features:
 	$(call print_available,HAVE_SDL2)
 	$(call print_available,HAVE_STUB)
 	$(call print_available,HAVE_VULKAN)
+	$(call print_available,HAVE_WAYLAND)
+	$(call print_available,HAVE_WAYLAND_LIBS)
+	$(call print_available,HAVE_WAYLAND_TOOLS)
 	$(call print_available,HAVE_X11)
 	$(call print_available,HAVE_XCURSOR)
 	$(call print_available,HAVE_XEXT)
 	$(call print_available,HAVE_XRANDR)
+	@echo === Selected DGL backend
+	$(call print_available,DGL_BACKEND_WAYLAND)
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Extra rules for MOD Audio stuff
@@ -920,10 +1001,14 @@ macos-intel-10.8:
 		PKG_CONFIG=/usr/bin/false \
 		PKG_CONFIG_PATH=/NOT
 
+# NOTE the arm64 slice requires macOS 10.15 or later, so the deployment target of this
+# "oldest supported universal" build is 10.15 even though the source is kept 10.8 compatible.
+# MAX_ALLOWED must match the deployment target actually passed via -mmacosx-version-min,
+# otherwise every post-10.8 API is hidden from a binary that is built for 10.15.
 macos-universal-10.8:
 	$(MAKE) \
-		CFLAGS="$(CFLAGS) -arch x86_64 -arch arm64 -DMAC_OS_X_VERSION_MAX_ALLOWED=MAC_OS_X_VERSION_10_8 -DMAC_OS_X_VERSION_MIN_REQUIRED=MAC_OS_X_VERSION_10_8 -mmacosx-version-min=10.15" \
-		CXXFLAGS="$(CXXFLAGS) -arch x86_64 -arch arm64 -DMAC_OS_X_VERSION_MAX_ALLOWED=MAC_OS_X_VERSION_10_8 -DMAC_OS_X_VERSION_MIN_REQUIRED=MAC_OS_X_VERSION_10_8 -mmacosx-version-min=10.15 -stdlib=libc++" \
+		CFLAGS="$(CFLAGS) -arch x86_64 -arch arm64 -DMAC_OS_X_VERSION_MAX_ALLOWED=MAC_OS_X_VERSION_10_15 -DMAC_OS_X_VERSION_MIN_REQUIRED=MAC_OS_X_VERSION_10_8 -mmacosx-version-min=10.15" \
+		CXXFLAGS="$(CXXFLAGS) -arch x86_64 -arch arm64 -DMAC_OS_X_VERSION_MAX_ALLOWED=MAC_OS_X_VERSION_10_15 -DMAC_OS_X_VERSION_MIN_REQUIRED=MAC_OS_X_VERSION_10_8 -mmacosx-version-min=10.15 -stdlib=libc++" \
 		LDFLAGS="$(LDFLAGS) -stdlib=libc++" \
 		PKG_CONFIG=/usr/bin/false \
 		PKG_CONFIG_PATH=/NOT
@@ -957,6 +1042,17 @@ mingw64:
 		CC=x86_64-w64-mingw32-gcc \
 		CXX=x86_64-w64-mingw32-g++ \
 		EXE_WRAPPER=wine \
+		PKG_CONFIG=/usr/bin/false \
+		PKG_CONFIG_PATH=/NOT
+
+# NOTE requires an aarch64-w64-mingw32 toolchain, as provided by llvm-mingw.
+# EXE_WRAPPER is deliberately not set to wine here, since an x86 host cannot run arm64 PE binaries;
+# set EXE_WRAPPER yourself when building on a machine where that does work.
+mingw64-arm64:
+	$(MAKE) \
+		AR=aarch64-w64-mingw32-ar \
+		CC=aarch64-w64-mingw32-gcc \
+		CXX=aarch64-w64-mingw32-g++ \
 		PKG_CONFIG=/usr/bin/false \
 		PKG_CONFIG_PATH=/NOT
 

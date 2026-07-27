@@ -1,0 +1,272 @@
+name: wayland
+
+# Fork-specific CI for dusk-audio/DPF.
+#
+# Upstream CI (build.yml, cmake.yml, example-plugins.yml) always runs on machines that have the X11
+# development files installed, so it only ever exercises the X11 arm of the DGL backend selection.
+# The jobs below cover the two things that arm hides:
+#   - wayland-only          the Wayland backend actually compiles when X11 dev files are absent
+#   - wayland-x11-regression  a dual-stack machine still picks X11, exactly as it did before
+# plus a CLAP conformance gate, which upstream does not run at all.
+
+on:
+  push:
+    branches:
+      - '*'
+  pull_request:
+    branches:
+      - '*'
+
+# Every job here only builds and validates, so nothing needs write access to the repository.
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------------------------------------------------------------------
+  # Build with the Wayland development files present and the X11 development files absent.
+  #
+  # A plain runner image cannot be used for this: ubuntu-latest ships libx11-dev, and it cannot simply be
+  # apt-removed because half the desktop -dev stack depends on it. A bare container is the only way to get a
+  # machine where `pkg-config --exists x11` genuinely fails.
+
+  wayland-only:
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    steps:
+    # Installed before checkout on purpose: actions/checkout only clones submodules when git is already
+    # available, otherwise it silently falls back to the tarball API and dgl/src/pugl-upstream stays empty.
+    #
+    # Package list matches exactly what Makefile.base.mk probes for the Wayland arm:
+    #   wayland-client, wayland-egl, wayland-cursor -> libwayland-dev  (all three .pc files live there)
+    #   xkbcommon                                   -> libxkbcommon-dev
+    #   egl                                         -> libegl-dev
+    #   gl                                          -> libgl-dev       (HAVE_OPENGL; the Wayland arm still
+    #                                                                   calls desktop GL entry points)
+    # Deliberately absent: libcairo2-dev. cairo.pc has `Requires.private: x11 xext xrender xcb ...`, so on
+    # Debian/Ubuntu Cairo development files cannot exist without X11 development files. HAVE_CAIRO is
+    # therefore expected to be No here and dgl builds its gles2/gles3/opengl/opengl3/stub variants only.
+    - name: Set up dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        apt-get update -qq
+        apt-get install -yq --no-install-recommends \
+          build-essential ca-certificates git pkg-config \
+          libegl-dev libgl-dev libwayland-dev libxkbcommon-dev
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        persist-credentials: false
+    # libgl-dev depends on libglx-dev which depends on libx11-dev, and libegl-dev depends on libx11-dev
+    # directly, so there is no apt line that installs GL/EGL development files without dragging X11
+    # development files along. Drop just that one package with dpkg and leave everything it pulled in
+    # behind: gl.pc and egl.pc declare no Requires at all, so they keep resolving once x11.pc is gone.
+    # libGL.so.1 still needs libX11.so.6 at runtime, and libx11-6 is untouched.
+    - name: Remove X11 development files
+      run: |
+        dpkg --remove --force-depends libx11-dev || true
+    - name: Verify the environment really has no X11
+      run: |
+        status=0
+        for mod in x11 xcursor xext xrandr; do
+          if pkg-config --exists $mod; then
+            echo "::error::${mod}.pc is still installed, this job would not be testing the Wayland arm"
+            status=1
+          fi
+        done
+        for mod in egl gl wayland-client wayland-cursor wayland-egl xkbcommon; do
+          if ! pkg-config --exists $mod; then
+            echo "::error::${mod}.pc is missing, the Wayland arm cannot be selected"
+            status=1
+          fi
+        done
+        exit $status
+    - name: Show detected features
+      run: |
+        make features | tee features.txt
+        assert() {
+          grep -qx "$1" features.txt || { echo "::error::expected 'make features' to report '$1'"; exit 1; }
+        }
+        assert 'HAVE_X11: No'
+        assert 'HAVE_WAYLAND: Yes'
+        assert 'HAVE_WAYLAND_LIBS: Yes'
+        assert 'HAVE_OPENGL: Yes'
+        assert 'HAVE_DGL: Yes'
+        assert 'HAVE_STUB: Yes'
+        assert 'DGL_BACKEND_WAYLAND: Yes'
+    - name: Build DGL
+      run: |
+        make -C dgl -j$(nproc)
+    # Config-level detection can be right while the objects still come out wrong, so check the link-time
+    # view too: the Wayland backend must be what actually got compiled in.
+    - name: Verify the built objects use the Wayland backend
+      run: |
+        nm --undefined-only build/libdgl-opengl.a > syms.txt
+        grep -q 'wl_display_connect' syms.txt \
+          || { echo "::error::libdgl-opengl.a does not reference libwayland"; exit 1; }
+        grep -q 'xkb_context_new' syms.txt \
+          || { echo "::error::libdgl-opengl.a does not reference libxkbcommon"; exit 1; }
+        if grep -q 'XOpenDisplay' syms.txt; then
+          echo "::error::libdgl-opengl.a still references Xlib"
+          exit 1
+        fi
+    - name: Build example plugins
+      run: |
+        make -C examples/Meters -j$(nproc)
+        make -C examples/Info clap -j$(nproc)
+
+  # -------------------------------------------------------------------------------------------------------------------
+  # Build with both stacks installed and prove X11 is still the one that gets compiled in.
+  #
+  # This is the regression half of the pair: adding a Wayland backend must not change what an ordinary
+  # dual-stack desktop or CI machine produces.
+
+  wayland-x11-regression:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        persist-credentials: false
+    - name: Set up dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -yq libcairo2-dev libegl-dev libgl-dev libwayland-dev libx11-dev libxcursor-dev libxext-dev libxkbcommon-dev libxrandr-dev
+    - name: Show detected features
+      run: |
+        make features | tee features.txt
+        assert() {
+          grep -qx "$1" features.txt || { echo "::error::expected 'make features' to report '$1'"; exit 1; }
+        }
+        # Both stacks are present, and X11 must win. DGL_BACKEND_WAYLAND is the gate that decides whether
+        # any Wayland cflags or libs enter the build at all.
+        assert 'HAVE_X11: Yes'
+        assert 'HAVE_WAYLAND: Yes'
+        assert 'DGL_BACKEND_WAYLAND: No'
+    - name: Build DGL
+      run: |
+        make -C dgl -j$(nproc)
+    - name: Verify the built objects use the X11 backend
+      run: |
+        nm --undefined-only build/libdgl-opengl.a > syms.txt
+        grep -q 'XOpenDisplay' syms.txt \
+          || { echo "::error::libdgl-opengl.a does not reference Xlib"; exit 1; }
+        if grep -qE 'wl_(display|proxy|surface|compositor)_' syms.txt; then
+          echo "::error::libdgl-opengl.a references libwayland on a machine that has X11"
+          grep -E 'wl_[a-z_]+' syms.txt | sort -u
+          exit 1
+        fi
+    - name: Build example plugins
+      run: |
+        make -C examples/Meters -j$(nproc)
+
+  # -------------------------------------------------------------------------------------------------------------------
+  # Run the CLAP examples through clap-validator. Upstream CI builds CLAP plugins but never loads them.
+  #
+  # The validator finds pre-existing conformance problems in the DPF examples that are not this fork's to
+  # fix, so the gate is a baseline: any failure that is not in KNOWN_FAILURES below turns the job red. When
+  # a baseline entry starts passing the job stays green but prints a notice asking for the list to be
+  # trimmed, which keeps the baseline from quietly rotting.
+
+  clap-validation:
+    runs-on: ubuntu-latest
+    env:
+      # 0.4.1 is newer but its asset name embeds a git-describe suffix and its test set has not been
+      # baselined here. Bump both the version and KNOWN_FAILURES together.
+      CLAP_VALIDATOR_VERSION: 0.3.2
+      CLAP_VALIDATOR_SHA256: 1476ed68f5657e76050e0c4f19790c02d819ecc62c35fd465059d21f05169cb1
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        persist-credentials: false
+    - name: Set up dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -yq libgl-dev libx11-dev libxcursor-dev libxext-dev libxrandr-dev
+    - name: Build CLAP plugins
+      run: |
+        make -C examples/Info clap -j$(nproc)
+        make -C examples/Latency clap -j$(nproc)
+        make -C examples/Meters clap -j$(nproc)
+        ls -l bin/*.clap
+    - name: Fetch clap-validator
+      run: |
+        url="https://github.com/free-audio/clap-validator/releases/download/${CLAP_VALIDATOR_VERSION}/clap-validator-${CLAP_VALIDATOR_VERSION}-ubuntu-18.04.tar.gz"
+        curl -sSfL -o clap-validator.tar.gz "$url"
+        echo "${CLAP_VALIDATOR_SHA256}  clap-validator.tar.gz" | sha256sum -c -
+        mkdir -p clap-validator
+        tar xzf clap-validator.tar.gz -C clap-validator
+        ./clap-validator/clap-validator --version
+    # The validator exits non-zero whenever any test fails, including the baselined ones, so its status is
+    # ignored here and the JSON report decides. The report is also checked for completeness, which is what
+    # catches the validator dying before it got through the plugins.
+    - name: Validate CLAP plugins
+      run: |
+        ./clap-validator/clap-validator validate --hide-output --json \
+          bin/d_info.clap bin/d_latency.clap bin/d_meters.clap > report.json || true
+        python3 - <<'PY'
+        import json
+        import sys
+
+        KNOWN_FAILURES = {
+            'studio.kx.distrho.examples.info': {
+                'param-set-wrong-namespace',
+                'state-buffered-streams',
+                'state-reproducibility-basic',
+                'state-reproducibility-flush',
+                'state-reproducibility-null-cookies',
+            },
+            'studio.kx.distrho.examples.latency': {
+                'state-buffered-streams',
+            },
+            'studio.kx.distrho.examples.meters': {
+                'state-reproducibility-flush',
+            },
+        }
+        EXPECTED_LIBRARIES = {'bin/d_info.clap', 'bin/d_latency.clap', 'bin/d_meters.clap'}
+
+        try:
+            with open('report.json') as fh:
+                report = json.load(fh)
+        except (OSError, ValueError) as exc:
+            sys.exit('::error::clap-validator did not produce a usable JSON report: %s' % exc)
+
+        libraries = report.get('plugin-library-tests') or {}
+        plugins = report.get('plugin-tests') or {}
+
+        status = 0
+
+        missing = EXPECTED_LIBRARIES - set(libraries)
+        if missing:
+            print('::error::clap-validator did not report on %s' % ', '.join(sorted(missing)))
+            status = 1
+        missing = set(KNOWN_FAILURES) - set(plugins)
+        if missing:
+            print('::error::clap-validator did not report on plugin %s' % ', '.join(sorted(missing)))
+            status = 1
+
+        for group in (libraries, plugins):
+            for subject, tests in group.items():
+                if not tests:
+                    print('::error::clap-validator ran no tests for %s' % subject)
+                    status = 1
+                    continue
+                baseline = KNOWN_FAILURES.get(subject, set())
+                failed = {t['name'] for t in tests if t['status']['code'] == 'failed'}
+                details = {t['name']: t['status'].get('details') or '' for t in tests}
+                for name in sorted(failed - baseline):
+                    print('::error::%s: %s failed: %s' % (subject, name, details[name]))
+                    status = 1
+                for name in sorted(baseline - failed):
+                    print('::notice::%s: %s now passes, drop it from KNOWN_FAILURES' % (subject, name))
+                passed = sum(1 for t in tests if t['status']['code'] == 'success')
+                print('%s: %d tests, %d passed, %d failed (%d baselined)'
+                      % (subject, len(tests), passed, len(failed), len(failed & baseline)))
+
+        sys.exit(status)
+        PY

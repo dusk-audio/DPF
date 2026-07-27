@@ -1,5 +1,5 @@
 # DPF - DISTRHO Plugin Framework
-[![makefile](https://github.com/DISTRHO/DPF/actions/workflows/makefile.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/makefile.yml)
+[![build](https://github.com/DISTRHO/DPF/actions/workflows/build.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/build.yml)
 [![cmake](https://github.com/DISTRHO/DPF/actions/workflows/cmake.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/cmake.yml)
 [![example-plugins](https://github.com/DISTRHO/DPF/actions/workflows/example-plugins.yml/badge.svg)](https://github.com/DISTRHO/DPF/actions/workflows/example-plugins.yml)
 
@@ -18,6 +18,9 @@ Getting time information from the host is possible.
 It uses the same format as the JACK Transport API, making porting some code easier.
 
 Provided features and implementation status for specific plugin formats can be seen in [FEATURES.md](FEATURES.md).
+
+On Linux, DPF builds against X11 by default and against Wayland natively when the X11 development
+files are absent; see [Wayland support](FEATURES.md#wayland-support) for what each build can do.
 
 ## Licensing
 
