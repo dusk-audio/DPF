@@ -78,6 +78,23 @@
 # define DISTRHO_PLUGIN_USES_CUSTOM_MODGUI 0
 #endif
 
+// The UI class written into manifest.ttl tells the host how (and whether) it may embed our window.
+// Every native class here implies embedding: the host reparents the widget handle we hand back from
+// lv2ui_instantiate() into its own plugin rack.
+//
+// On Unix that is only true when DGL was built against X11, which is what HAVE_X11 records (see the
+// DGL_FLAGS blocks in Makefile.base.mk and dpf__add_dgl_system_libs in cmake/DPF-plugin.cmake -- both
+// keep X11 primary when X11 and Wayland are installed side by side). A Wayland-only build has no X11
+// window to give away: Wayland has no cross-process reparenting at all, so a wl_surface cannot be
+// embedded into a host's window, and claiming ui:X11UI would just make the host embed a handle that
+// can never be honoured. Declaring the generic ui:UI instead means "no class the host knows how to
+// embed", which is precisely the case in which conforming hosts (Ardour, jalv, ...) fall back to
+// ui:showInterface + ui:idleInterface and let the plugin own a floating toplevel -- both of which we
+// already declare in lv2ManifestUiExtensionData and implement in DistrhoUILV2.cpp.
+//
+// Note this is deliberately keyed off HAVE_X11 and not off the UI toolkit: an external/webview UI on
+// an X11 system keeps declaring ui:X11UI exactly as before, because HAVE_X11 is set for every Unix
+// build that found libx11, independent of UI_TYPE.
 #if DISTRHO_PLUGIN_HAS_UI
 # if defined(DISTRHO_OS_HAIKU)
 #  define DISTRHO_LV2_UI_TYPE "BeUI"
@@ -85,8 +102,10 @@
 #  define DISTRHO_LV2_UI_TYPE "CocoaUI"
 # elif defined(DISTRHO_OS_WINDOWS)
 #  define DISTRHO_LV2_UI_TYPE "WindowsUI"
-# else
+# elif defined(HAVE_X11)
 #  define DISTRHO_LV2_UI_TYPE "X11UI"
+# else
+#  define DISTRHO_LV2_UI_TYPE "UI"
 # endif
 #else
 # define DISTRHO_LV2_UI_TYPE "UI"

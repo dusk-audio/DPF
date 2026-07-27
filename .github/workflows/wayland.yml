@@ -124,6 +124,45 @@ jobs:
       run: |
         make -C examples/Meters -j$(nproc)
         make -C examples/Info clap -j$(nproc)
+    # Compiling and linking cannot catch this one: the LV2 UI class is a string baked into the turtle by
+    # DistrhoPluginLV2export.cpp, picked at compile time from HAVE_X11, so a wrong choice produces a
+    # perfectly good binary that no host can open. The turtle has to be generated and read back.
+    #
+    # Why it must not be ui:X11UI here: every native LV2 UI class means "the host may reparent the widget
+    # handle this UI hands back". Wayland has no cross-process reparenting at all, so a Wayland-only build
+    # has no window it could give away, and declaring ui:X11UI would only make hosts embed a handle that
+    # can never be honoured. The generic ui:UI says "no class you know how to embed", which is exactly the
+    # case in which conforming hosts (Ardour, jalv, ...) fall back to ui:showInterface and let the plugin
+    # own a floating toplevel -- the path DistrhoUILV2.cpp implements when ui:parent is absent.
+    #
+    # examples/Meters builds the lv2_sep target above, so the bundle is already linked; only the one-file
+    # ttl generator still has to be built. generate-ttl.sh then loads the DSP binary and asks the plugin to
+    # describe itself, which needs neither a display nor a compositor.
+    - name: Verify the LV2 turtle declares a Wayland-capable UI
+      run: |
+        make -C utils/lv2-ttl-generator
+        ./utils/generate-ttl.sh
+        cat bin/d_meters.lv2/*.ttl
+        status=0
+        # With lv2_sep the UI class lands in manifest.ttl and its extension data in d_meters_ui.ttl.
+        # Anchored match rather than a substring search for 'ui:UI': that would also be satisfied by the
+        # @prefix line. Note 'ui:X11UI' does not contain 'ui:UI', so the two assertions cannot both pass.
+        grep -qE '^[[:space:]]*a ui:UI ;$' bin/d_meters.lv2/manifest.ttl \
+          || { echo "::error::manifest.ttl does not declare the UI as the generic ui:UI"; status=1; }
+        # Swept over the whole bundle, not just the manifest: any surviving X11UI anywhere would still
+        # send a host down the embedding path this build cannot serve.
+        if grep -rn 'ui:X11UI' bin/d_meters.lv2/*.ttl; then
+          echo "::error::a Wayland-only build still declares ui:X11UI"
+          status=1
+        fi
+        # ui:UI alone only tells the host what the UI is not. showInterface, and the idleInterface it
+        # leans on, are the half that says what to do instead, so losing either would turn a floating UI
+        # into an unopenable one.
+        grep -rq 'ui:showInterface' bin/d_meters.lv2/*.ttl \
+          || { echo "::error::the UI no longer declares ui:showInterface"; status=1; }
+        grep -rq 'ui:idleInterface' bin/d_meters.lv2/*.ttl \
+          || { echo "::error::the UI no longer declares ui:idleInterface"; status=1; }
+        exit $status
 
   # -------------------------------------------------------------------------------------------------------------------
   # Build with both stacks installed and prove X11 is still the one that gets compiled in.
@@ -171,6 +210,27 @@ jobs:
     - name: Build example plugins
       run: |
         make -C examples/Meters -j$(nproc)
+    # The regression half of the turtle check in the wayland-only job. Both assertions read the same line
+    # of manifest.ttl, and the line is chosen from HAVE_X11, so this is the guard that the Wayland arm was
+    # given the generic ui:UI without also taking it away from everyone else: ui:X11UI is the class every
+    # existing host uses to embed a DPF UI into its plugin rack, and quietly degrading it to ui:UI would
+    # move all of them onto the floating showInterface path instead.
+    #
+    # Costs one extra compilation unit: the step above already links the LV2 bundle, so only the one-file
+    # ttl generator is left to build.
+    - name: Verify the LV2 turtle still declares an X11 UI
+      run: |
+        make -C utils/lv2-ttl-generator
+        ./utils/generate-ttl.sh
+        cat bin/d_meters.lv2/*.ttl
+        status=0
+        grep -qE '^[[:space:]]*a ui:X11UI ;$' bin/d_meters.lv2/manifest.ttl \
+          || { echo "::error::manifest.ttl no longer declares the UI as ui:X11UI"; status=1; }
+        # showInterface is declared unconditionally and must stay that way on X11 too: it is what hosts
+        # that decline to embed fall back to, and the Wayland change must not have made it conditional.
+        grep -rq 'ui:showInterface' bin/d_meters.lv2/*.ttl \
+          || { echo "::error::the UI no longer declares ui:showInterface"; status=1; }
+        exit $status
 
   # -------------------------------------------------------------------------------------------------------------------
   # Run the CLAP examples through clap-validator. Upstream CI builds CLAP plugins but never loads them.
