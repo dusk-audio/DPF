@@ -256,6 +256,34 @@ public:
        #if defined(__GLIBC__) && (__GLIBC__ * 1000 + __GLIBC_MINOR__) >= 2012 && !defined(DISTRHO_OS_GNU_HURD)
         pthread_setname_np(pthread_self(), name);
        #endif
+       #ifdef DISTRHO_OS_MAC
+        // macOS only provides the single-argument form, which always renames the calling thread
+        pthread_setname_np(name);
+       #endif
+       #ifdef DISTRHO_OS_WINDOWS
+        // SetThreadDescription requires Windows 10 1607 or later,
+        // resolve it dynamically so that older systems simply get no thread name.
+        typedef HRESULT(WINAPI* PFN_SetThreadDescription)(HANDLE, PCWSTR);
+
+       #if defined(__GNUC__) && (__GNUC__ >= 9)
+       # pragma GCC diagnostic push
+       # pragma GCC diagnostic ignored "-Wcast-function-type"
+       #endif
+        static const PFN_SetThreadDescription setThreadDescription = (PFN_SetThreadDescription)
+            GetProcAddress(GetModuleHandleA("kernel32.dll"), "SetThreadDescription");
+       #if defined(__GNUC__) && (__GNUC__ >= 9)
+       # pragma GCC diagnostic pop
+       #endif
+
+        if (setThreadDescription != nullptr)
+        {
+            // thread names are short by convention, a fixed buffer is plenty
+            WCHAR wname[128];
+
+            if (MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, ARRAY_SIZE(wname)) > 0)
+                setThreadDescription(GetCurrentThread(), wname);
+        }
+       #endif
     }
 
     // -------------------------------------------------------------------
