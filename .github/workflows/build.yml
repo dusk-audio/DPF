@@ -49,13 +49,7 @@ jobs:
       if: ${{ runner.os == 'Linux' }}
       run: |
         xvfb-run make -C tests run
-    - name: As C++98 mode
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror -std=gnu++98
-      run: |
-        make clean >/dev/null
-        make -j ${{ env.JOBS }}
+    # gnu++98 dropped: this fork's C++ floor is C++11 (std::atomic in the CLAP wrapper)
     - name: As C++11 mode
       env:
         CFLAGS: -Werror
