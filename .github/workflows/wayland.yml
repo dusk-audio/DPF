@@ -175,9 +175,16 @@ jobs:
   # -------------------------------------------------------------------------------------------------------------------
   # Run the CLAP examples through clap-validator. Upstream CI builds CLAP plugins but never loads them.
   #
-  # The validator finds pre-existing conformance problems in the DPF examples that are not this fork's to
-  # fix, so the gate is a baseline: any failure that is not in KNOWN_FAILURES below turns the job red. When
-  # a baseline entry starts passing the job stays green but prints a notice asking for the list to be
+  # Every entry left in KNOWN_FAILURES below is a clap-validator 0.3.2 false positive rather than a DPF
+  # defect. They all reduce to the validator having no concept of an output parameter: DPF reports its
+  # output parameters as CLAP_PARAM_IS_READONLY, the validator then either refuses to send them anything
+  # and complains that nothing changed, or expects values that only the host can move to survive a state
+  # round-trip. Upstream knows (clap-validator issues #15, #16, #26) and 0.4.1 has already reworked the
+  # state tests to drive parameters with flush() instead of process(). The per-entry notes record what was
+  # checked, so do not "fix" the examples to satisfy these.
+  #
+  # The gate is therefore a baseline: any failure that is not in KNOWN_FAILURES below turns the job red.
+  # When a baseline entry starts passing the job stays green but prints a notice asking for the list to be
   # trimmed, which keeps the baseline from quietly rotting.
 
   clap-validation:
@@ -224,17 +231,41 @@ jobs:
         import sys
 
         KNOWN_FAILURES = {
+            # All 13 of Info's parameters are DPF output parameters, so DistrhoPluginCLAP.cpp reports
+            # them as CLAP_PARAM_IS_READONLY, and every one of them mirrors host state: BufferSize
+            # follows activate(), the rest follow the transport during process().
             'studio.kx.distrho.examples.info': {
+                # tests/plugin/params.rs reads all parameters, processes one block, and requires the
+                # values to be unchanged. The fuzzer (tests/rng.rs randomize_params_at) only randomizes
+                # CLAP_PARAM_IS_AUTOMATABLE parameters, so Info is sent no parameter events whatsoever
+                # and still fails: BufferSize moved 1024 -> 512 at activate() and the transport readouts
+                # moved during process(). Nothing here can be about namespace checking, and the wrapper
+                # does check (DistrhoPluginCLAP.cpp, both the process and flush event loops) -- d_latency
+                # passes this same test with real wrong-namespace events sent at it.
                 'param-set-wrong-namespace',
+                # tests/plugin/state.rs processes audio on instance A, then requires instance B to
+                # reproduce A's parameter values from the saved state alone. Info's readouts are all 0
+                # until B processes. They cannot be carried in the state either: DPF only calls
+                # Plugin::setParameterValue for input parameters, so the wrapper deliberately skips
+                # output parameters when saving and loading, and the examples ignore writes to them.
                 'state-buffered-streams',
                 'state-reproducibility-basic',
-                'state-reproducibility-flush',
                 'state-reproducibility-null-cookies',
+                # tests/plugin/state.rs calls flush() with the fuzzer's events and then requires the
+                # parameter values to have changed. Info has no automatable parameters, so flush() is
+                # called with an empty event list and the test asks a no-op to have done something.
+                'state-reproducibility-flush',
             },
             # no baselined failures; the key is kept so the completeness check below still requires
             # clap-validator to have reported on this plugin
             'studio.kx.distrho.examples.latency': set(),
             'studio.kx.distrho.examples.meters': {
+                # Same check as Info's, failing for the opposite reason. Meters' only automatable
+                # parameter is 'color', stepped over 0..1 and defaulting to 0, and the validator's PRNG
+                # is fixed (Pcg32::new(1337, 420) in tests/rng.rs), so the random value it flushes is 0 --
+                # exactly the value the parameter already holds. Nothing changes and the validator reads
+                # that as an unimplemented flush(). Confirmed by starting fColor at 1.0f instead, which
+                # makes the test pass with no wrapper change at all.
                 'state-reproducibility-flush',
             },
         }
