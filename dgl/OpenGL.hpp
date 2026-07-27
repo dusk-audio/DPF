@@ -119,6 +119,28 @@ struct OpenGL3GraphicsContext : GraphicsContext
     GLuint buffers[2];
 
    /**
+      Vertex array object created with glGenVertexArrays, bound for the duration of onDisplay().
+      A core profile has no default vertex array object, so every glVertexAttribPointer and draw call needs a
+      real one bound or it fails with GL_INVALID_OPERATION and the draw is silently dropped. DPF binds this one
+      before calling onDisplay() and rebinds it around its own drawing, because NanoVG binds its own vertex
+      array object and leaves zero bound when it is done.
+      If changing the current vertex array object make sure to revert back to this one at the end of your
+      pipeline.
+      Always 0 when building for GLESv2, which has no vertex array objects.
+
+      @code
+      // use custom vertex array object
+      glBindVertexArray(myVertexArray);
+
+      // custom stuff here
+
+      // revert back
+      glBindVertexArray(context.vao);
+      @endcode
+    */
+    GLuint vao;
+
+   /**
       Total width of the window used for this context.
     */
     uint width;
