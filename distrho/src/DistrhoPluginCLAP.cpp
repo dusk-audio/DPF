@@ -1129,7 +1129,7 @@ public:
                     case CLAP_EVENT_PARAM_VALUE:
                         DISTRHO_SAFE_ASSERT_UINT2_BREAK(event->size == sizeof(clap_event_param_value_t),
                                                         event->size, sizeof(clap_event_param_value_t));
-                        if (event->space_id == 0)
+                        if (event->space_id == CLAP_CORE_EVENT_SPACE_ID)
                             setParameterValueFromEvent(reinterpret_cast<const clap_event_param_value_t*>(event));
                         break;
                     case CLAP_EVENT_PARAM_MOD:
@@ -1398,7 +1398,7 @@ public:
 
                 if (event->type != CLAP_EVENT_PARAM_VALUE)
                     continue;
-                if (event->space_id != 0)
+                if (event->space_id != CLAP_CORE_EVENT_SPACE_ID)
                     continue;
 
                 DISTRHO_SAFE_ASSERT_UINT2_BREAK(event->size == sizeof(clap_event_param_value_t),
@@ -1755,37 +1755,64 @@ public:
         ClapUI* const ui = fUI.get();
        #endif
         String key, value;
-        bool empty = true;
         bool hasValue = false;
         bool fillingKey = true; // if filling key or value
         char queryingType = 'i'; // can be 'n', 's' or 'p' (none, states, parameters)
+        const uint32_t paramCount = fPlugin.getParameterCount();
+       #if DISTRHO_PLUGIN_WANT_STATE
+        const uint32_t stateCount = fPlugin.getStateCount();
+       #else
+        const uint32_t stateCount = 0;
+       #endif
 
-        char buffer[512], orig;
-        buffer[sizeof(buffer)-1] = '\xff';
+        char buffer[512];
 
         for (int32_t terminated = 0; terminated == 0;)
         {
             const int32_t read = stream->read(stream, buffer, sizeof(buffer)-1);
-            DISTRHO_SAFE_ASSERT_INT_RETURN(read >= 0, read, false);
+            DISTRHO_SAFE_ASSERT_INT_RETURN(read >= 0 && read < static_cast<int32_t>(sizeof(buffer)), read, false);
+
+            // place null character right after the chunk, so the string scans below stay inside the data
+            // just read; at most sizeof(buffer)-1 bytes are requested, so this never writes past the buffer
+            buffer[read] = '\0';
 
             if (read == 0)
-                return !empty;
+            {
+                // stateSave() has a fast path for plugins with no parameters and no states:
+                // it writes a single null byte and never emits the '\xfe' terminator.
+                // Accept exactly that stream here, that is a lone empty key and nothing else
+                // parsed; a genuinely truncated state still fails.
+                if (paramCount == 0 && stateCount == 0
+                    && queryingType == 'i'
+                    && ! fillingKey
+                    && ! hasValue
+                    && key.isEmpty()
+                    && value.isEmpty())
+                    break;
 
-            empty = false;
+                return false;
+            }
+
             for (int32_t i = 0; i < read; ++i)
             {
                 // found terminator, stop here
                 if (buffer[i] == '\xfe')
                 {
+                    const bool validTerminalState =
+                        paramCount != 0
+                            ? queryingType == 'x'
+                            : stateCount != 0
+                                ? queryingType == 'n'
+                                : queryingType == 'i';
+                    if (! validTerminalState
+                        || ! fillingKey
+                        || hasValue
+                        || ! key.isEmpty()
+                        || ! value.isEmpty())
+                        return false;
                     terminated = 1;
                     break;
                 }
-
-                // store character at read position
-                orig = buffer[read];
-
-                // place null character to create valid string
-                buffer[read] = '\0';
 
                 // append to temporary vars
                 if (fillingKey)
@@ -1801,11 +1828,11 @@ public:
                 // increase buffer offset by length of string
                 i += std::strlen(buffer + i);
 
-                // restore read character
-                buffer[read] = orig;
-
-                // if buffer offset points to null, we found the end of a string, lets check
-                if (buffer[i] == '\0')
+                // The null character placed after the chunk bounds strlen(), so the offset now points either at a real
+                // null inside the chunk or exactly at `read`. The latter means the string is cut in half by
+                // the chunk boundary and continues in the next read, so do not look at buffer[read] itself:
+                // that byte is past the valid data and holds stale or uninitialized garbage.
+                if (i != read)
                 {
                     // special keys
                     if (key == "__dpf_state_begin__")

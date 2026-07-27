@@ -1074,6 +1074,8 @@ public:
             {
                 std::memcpy(outData, &fUserPresetData, sizeof(AUPreset));
             }
+            if (static_cast<AUPreset*>(outData)->presetName != nullptr)
+                CFRetain(static_cast<AUPreset*>(outData)->presetName);
             return noErr;
 
        #if DISTRHO_PLUGIN_WANT_MIDI_AS_MPE
@@ -1492,15 +1494,18 @@ public:
            #if DISTRHO_PLUGIN_WANT_TIMEPOS
             {
                 const UInt32 usableDataSize = std::min(inDataSize, static_cast<UInt32>(sizeof(HostCallbackInfo)));
-                const bool changed = std::memcmp(&fHostCallbackInfo, inData, usableDataSize) != 0;
 
-                std::memcpy(&fHostCallbackInfo, inData, usableDataSize);
+                // the host is allowed to supply less than the full struct, everything past it is unset;
+                // compare the whole thing so that shrinking the size also counts as a change
+                HostCallbackInfo hostCallbackInfo;
+                std::memset(&hostCallbackInfo, 0, sizeof(hostCallbackInfo));
+                std::memcpy(&hostCallbackInfo, inData, usableDataSize);
 
-                if (sizeof(HostCallbackInfo) > usableDataSize)
-                    std::memset(&fHostCallbackInfo + usableDataSize, 0, sizeof(HostCallbackInfo) - usableDataSize);
-
-                if (changed)
+                if (std::memcmp(&fHostCallbackInfo, &hostCallbackInfo, sizeof(HostCallbackInfo)) != 0)
+                {
+                    std::memcpy(&fHostCallbackInfo, &hostCallbackInfo, sizeof(HostCallbackInfo));
                     notifyPropertyListeners(inProp, inScope, inElement);
+                }
             }
             return noErr;
            #else
@@ -1519,6 +1524,11 @@ public:
                 const int32_t presetNumber = static_cast<const AUPreset*>(inData)->presetNumber;
 
                #if DISTRHO_PLUGIN_WANT_PROGRAMS
+                // a negative number is a user preset, a positive one must match an advertised factory preset;
+                // reject anything else before touching state, fCurrentProgram indexes fFactoryPresetsData
+                DISTRHO_SAFE_ASSERT_INT_RETURN(presetNumber < static_cast<int32_t>(fProgramCount),
+                                               presetNumber, kAudioUnitErr_InvalidPropertyValue);
+
                 if (presetNumber >= 0)
                 {
                     if (fCurrentProgram != presetNumber)
@@ -1526,19 +1536,33 @@ public:
                         fCurrentProgram = presetNumber;
                         fLastFactoryProgram = presetNumber;
                         fPlugin.loadProgram(fLastFactoryProgram);
+                        for (uint32_t i=0; i<fParameterCount; ++i)
+                            fLastParameterValues[i] = fPlugin.getParameterValue(i);
                         notifyPropertyListeners('DPFo', kAudioUnitScope_Global, 0);
                     }
                 }
                 else
                 {
                     fCurrentProgram = presetNumber;
+                    const CFStringRef presetName =
+                        static_cast<const AUPreset*>(inData)->presetName;
+                    if (presetName != nullptr)
+                        CFRetain(presetName);
                     CFRelease(fUserPresetData.presetName);
-                    std::memcpy(&fUserPresetData, inData, sizeof(AUPreset));
+                    fUserPresetData.presetNumber = presetNumber;
+                    fUserPresetData.presetName =
+                        presetName != nullptr ? presetName : CFSTR("");
                 }
                #else
                 DISTRHO_SAFE_ASSERT_INT_RETURN(presetNumber < 0, presetNumber, kAudioUnitErr_InvalidPropertyValue);
+                const CFStringRef presetName =
+                    static_cast<const AUPreset*>(inData)->presetName;
+                if (presetName != nullptr)
+                    CFRetain(presetName);
                 CFRelease(fUserPresetData.presetName);
-                std::memcpy(&fUserPresetData, inData, sizeof(AUPreset));
+                fUserPresetData.presetNumber = presetNumber;
+                fUserPresetData.presetName =
+                    presetName != nullptr ? presetName : CFSTR("");
                #endif
             }
             return noErr;
@@ -2655,7 +2679,10 @@ private:
             && CFGetTypeID(programRef) == CFNumberGetTypeID())
         {
             SInt32 program = -1;
-            if (CFNumberGetValue(programRef, kCFNumberSInt32Type, &program))
+            // ignore a program that this build does not have, restored data is not trusted input and
+            // fCurrentProgram indexes fFactoryPresetsData; negative means user preset, which is fine
+            if (CFNumberGetValue(programRef, kCFNumberSInt32Type, &program)
+                && program < static_cast<SInt32>(fProgramCount))
             {
                 fCurrentProgram = program;
 
@@ -2663,6 +2690,8 @@ private:
                 {
                     fLastFactoryProgram = program;
                     fPlugin.loadProgram(fLastFactoryProgram);
+                    for (uint32_t i=0; i<fParameterCount; ++i)
+                        fLastParameterValues[i] = fPlugin.getParameterValue(i);
                     notifyPropertyListeners('DPFo', kAudioUnitScope_Global, 0);
                 }
 

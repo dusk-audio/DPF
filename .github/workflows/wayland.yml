@@ -2,20 +2,30 @@ name: wayland
 
 # Fork-specific CI for dusk-audio/DPF.
 #
-# Upstream CI (build.yml, cmake.yml, example-plugins.yml) always runs on machines that have the X11
+# The other CI here (build.yml, cmake.yml) always runs on machines that have the X11
 # development files installed, so it only ever exercises the X11 arm of the DGL backend selection.
 # The jobs below cover the two things that arm hides:
 #   - wayland-only          the Wayland backend actually compiles when X11 dev files are absent
 #   - wayland-x11-regression  a dual-stack machine still picks X11, exactly as it did before
-# plus a CLAP conformance gate, which upstream does not run at all.
+# plus two conformance gates that load the built plugins instead of only compiling them:
+#   - clap-validation       CLAP, which upstream does not run at all
+#   - plugin-validation     VST3 + LV2, replacing the `pluginval` matrix target that cmake.yml used
+#                           to hand to upstream's dpf action. That target
+#                           pulled the KXStudio archive off launchpad.net and installed carla-git,
+#                           lv2lint and the mod/darkglass extensions from it; the job below needs
+#                           nothing but the Ubuntu archives and one pinned GitHub release asset.
 
 on:
+  # Push-only, on every branch. This fork takes same-repo PRs exclusively, and
+  # GitHub surfaces a branch's push checks on the PR opened from that branch, so
+  # a pull_request trigger only duplicates every run on PR branches.
+  #
+  # '**' rather than '*': in GitHub filter patterns '*' does not match '/', so
+  # '*' would silently skip every dusk/... branch this fork works on.
   push:
     branches:
-      - '*'
-  pull_request:
-    branches:
-      - '*'
+      - '**'
+  workflow_dispatch:
 
 # Every job here only builds and validates, so nothing needs write access to the repository.
 permissions:
@@ -221,9 +231,9 @@ jobs:
                 'state-reproducibility-flush',
                 'state-reproducibility-null-cookies',
             },
-            'studio.kx.distrho.examples.latency': {
-                'state-buffered-streams',
-            },
+            # no baselined failures; the key is kept so the completeness check below still requires
+            # clap-validator to have reported on this plugin
+            'studio.kx.distrho.examples.latency': set(),
             'studio.kx.distrho.examples.meters': {
                 'state-reproducibility-flush',
             },
@@ -270,3 +280,185 @@ jobs:
 
         sys.exit(status)
         PY
+
+  # -------------------------------------------------------------------------------------------------------------------
+  # Load the VST3 and LV2 examples with third-party validators. This replaces the `pluginval` target that
+  # used to sit in the ubuntu-22-04 matrix of cmake.yml.
+  #
+  # Everything here comes from either the Ubuntu archives or a pinned, checksummed GitHub release, so there
+  # is no launchpad.net fetch and no KXStudio package set to go stale. What that costs is lv2lint, which
+  # has never been packaged for Ubuntu; the LV2 side below is lv2_validate (turtle against the LV2 spec)
+  # plus lilv actually discovering and describing the bundles, which is the coverage lv2lint overlapped
+  # with anyway.
+
+  plugin-validation:
+    # ubuntu-22.04, not ubuntu-latest: 22.04 is this fork's product floor, and it is the image the target
+    # this job replaces used to run on.
+    runs-on: ubuntu-22.04
+    env:
+      # v1.0.4 (2024-12-04) is the newest Tracktion release; pluginval_Linux.zip holds a single static
+      # binary. Bump the version and the checksum together.
+      PLUGINVAL_VERSION: v1.0.4
+      PLUGINVAL_SHA256: c01c49d8063965c4c2dea8324468336768f5c9139e0b1caebde14c2400b55352
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        persist-credentials: false
+    # X11 build set, then the validation tools:
+    #   xvfb              headless X server, so pluginval's editor tests can open a real DGL window
+    #   libgl1-mesa-dri   the swrast driver that makes GLX work on a runner with no GPU
+    #   lv2-dev           /usr/bin/lv2_validate, plus the LV2 spec bundles it validates against
+    #   sordi             /usr/bin/sord_validate; lv2_validate is a shell wrapper around it and lv2-dev
+    #                     declares no dependencies at all, so without this it dies on "command not found"
+    #   lilv-utils        lv2ls / lv2info
+    - name: Set up dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -yq \
+          libgl-dev libx11-dev libxcursor-dev libxext-dev libxrandr-dev \
+          libgl1-mesa-dri lilv-utils lv2-dev sordi xvfb
+    # A representative slice rather than every example: Info (large parameter set, output-only ports,
+    # modgui), Meters (audio metering with an animated UI), Parameters (every parameter flavour plus
+    # presets) and States (state save/restore plus presets). All four build both a VST3 and an LV2.
+    #
+    # `make lv2` only links the bundle; the turtle is written afterwards by utils/generate-ttl.sh, which
+    # loads each bundle and asks the plugin to describe itself.
+    - name: Build VST3 and LV2 plugins
+      run: |
+        for example in Info Meters Parameters States; do
+          make -C examples/$example vst3 lv2 -j$(nproc)
+        done
+        make -C utils/lv2-ttl-generator
+        ./utils/generate-ttl.sh
+        ls -l bin/
+    - name: Fetch pluginval
+      run: |
+        url="https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_Linux.zip"
+        curl -sSfL -o pluginval.zip "$url"
+        echo "${PLUGINVAL_SHA256}  pluginval.zip" | sha256sum -c -
+        unzip -q pluginval.zip -d pluginval
+        chmod +x pluginval/pluginval
+        ./pluginval/pluginval --version
+    # Strictness 5 is pluginval's own recommended minimum for host compatibility. The GUI tests are left
+    # enabled on purpose: "Editor", "Open editor whilst processing" and "Editor Automation" are the only
+    # place any CI job here opens a DGL window, which for this fork is the interesting part. They need a
+    # display, hence xvfb-run, and a GL implementation, hence LIBGL_ALWAYS_SOFTWARE pinning Mesa to
+    # llvmpipe instead of letting it look for a GPU that is not there. If they ever turn flaky rather
+    # than genuinely failing, --skip-gui-tests drops exactly those three and needs no display at all.
+    #
+    # No baseline list: all four plugins pass clean, unlike the CLAP side above.
+    - name: Validate VST3 plugins
+      env:
+        LIBGL_ALWAYS_SOFTWARE: 1
+      run: |
+        status=0
+        for plugin in bin/d_info.vst3 bin/d_meters.vst3 bin/d_parameters.vst3 bin/d_states.vst3; do
+          [ -d "$plugin" ] || { echo "::error::$plugin was not built"; status=1; continue; }
+          echo "=== pluginval $plugin"
+          xvfb-run -a --server-args="-screen 0 1280x1024x24" \
+            ./pluginval/pluginval --strictness-level 5 --timeout-ms 120000 --validate "$plugin" \
+            || { echo "::error::pluginval failed for $plugin"; status=1; }
+        done
+        exit $status
+    # lv2_validate exits non-zero on any diagnostic, including the baselined ones, so its status is
+    # ignored here and the parsed log decides — same shape as the CLAP gate above.
+    - name: Validate LV2 turtle
+      run: |
+        command -v lv2_validate >/dev/null \
+          || { echo "::error::lv2_validate is missing; lv2-dev no longer ships it"; exit 1; }
+        command -v sord_validate >/dev/null \
+          || { echo "::error::sord_validate is missing; lv2_validate cannot run without sordi"; exit 1; }
+        for bundle in bin/d_info.lv2 bin/d_meters.lv2 bin/d_parameters.lv2 bin/d_states.lv2; do
+          [ -f "$bundle/manifest.ttl" ] \
+            || { echo "::error::$bundle has no manifest.ttl, ttl generation did not run"; exit 1; }
+        done
+        lv2_validate bin/*.lv2/*.ttl > lv2_validate.log 2>&1 || true
+        cat lv2_validate.log
+        python3 - <<'PY'
+        import re
+        import sys
+
+        # Every diagnostic lv2_validate raises against a stock DPF bundle comes from a vocabulary that is
+        # not in the Ubuntu archives. DPF unconditionally emits mod:brand / mod:label / modgui:* and
+        # declares the KXStudio programs and control-input-port-change-request extensions, and
+        # sord_validate cannot check a property whose .ttl it has never been shown. Installing those
+        # vocabularies is precisely the KXStudio dependency this job exists to drop, so a diagnostic that
+        # only touches these namespaces is baselined. Anything else - a malformed literal, a misused
+        # lv2: property, an unparsable file - is this repository's problem and fails the job.
+        EXTERNAL_NAMESPACES = (
+            'http://kx.studio/ns/',
+            'http://kxstudio.sf.net/ns/',
+            'http://moddevices.com/ns/',
+        )
+
+        # sord_validate prints one diagnostic as a header line followed by the offending triple, indented
+        # over the next few lines, so records are split on the header rather than per line.
+        records = []
+        try:
+            with open('lv2_validate.log') as fh:
+                for line in fh:
+                    line = line.rstrip('\n')
+                    if line.startswith('Found '):
+                        break  # trailing summary, not part of the last record
+                    if re.match(r'^(error|warning):', line):
+                        records.append([line])
+                    elif records:
+                        records[-1].append(line)
+        except OSError as exc:
+            sys.exit('::error::could not read the lv2_validate log: %s' % exc)
+
+        status = 0
+        baselined = 0
+        for record in records:
+            text = ' '.join('\n'.join(record).split())
+            if record[0].startswith('warning:'):
+                print('::warning::lv2_validate: %s' % text)
+            elif any(ns in text for ns in EXTERNAL_NAMESPACES):
+                baselined += 1
+            else:
+                print('::error::lv2_validate: %s' % text)
+                status = 1
+
+        print('lv2_validate: %d diagnostics, %d baselined as external vocabulary' % (len(records), baselined))
+        if not baselined:
+            print('::notice::no external-vocabulary diagnostics left, EXTERNAL_NAMESPACES can be dropped')
+        sys.exit(status)
+        PY
+    # The turtle being well formed does not mean lilv can find a plugin in it, which is what every real
+    # LV2 host does first. LV2_PATH has to point at a directory of bundles and bin/ also holds the .vst3
+    # directories, so the .lv2 bundles get symlinked into a directory of their own.
+    - name: Discover LV2 bundles with lilv
+      run: |
+        mkdir -p lv2-path
+        for bundle in bin/*.lv2; do
+          ln -sfn "$PWD/$bundle" "lv2-path/$(basename "$bundle")"
+        done
+        export LV2_PATH="$PWD/lv2-path"
+        lv2ls | tee discovered.txt
+        status=0
+        for uri in http://distrho.sf.net/examples/Info \
+                   http://distrho.sf.net/examples/Meters \
+                   http://distrho.sf.net/examples/Parameters \
+                   http://distrho.sf.net/examples/States; do
+          if ! grep -qxF "$uri" discovered.txt; then
+            echo "::error::lv2ls did not discover $uri"
+            status=1
+            continue
+          fi
+          if ! lv2info "$uri" > /dev/null 2> lv2info.err; then
+            echo "::error::lv2info failed for $uri"
+            cat lv2info.err
+            status=1
+          elif grep -qi 'error' lv2info.err; then
+            echo "::error::lv2info reported errors for $uri"
+            cat lv2info.err
+            status=1
+          elif [ -s lv2info.err ]; then
+            echo "::warning::lv2info wrote to stderr for $uri"
+            cat lv2info.err
+          fi
+        done
+        exit $status
