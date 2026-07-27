@@ -27,11 +27,10 @@
 # include <windows.h>
 #endif
 
-// FIXME make Mutex stop relying on pthread
-#ifdef _MSC_VER
-#define DISTRHO_OS_WINDOWS__TODO
-#pragma NOTE(DPF Mutex implementation is TODO on MSVC)
-#else
+// MSVC has no pthread, use the native Win32 synchronization primitives instead.
+// NOTE: SRWLOCK and CONDITION_VARIABLE require Windows Vista or later,
+//       which the MSVC toolchain targets by default (_WIN32_WINNT >= 0x0600).
+#ifndef _MSC_VER
 #include <pthread.h>
 #endif
 
@@ -49,12 +48,13 @@ public:
      * Constructor.
      */
     Mutex(const bool inheritPriority = true) noexcept
-       #ifdef DISTRHO_OS_WINDOWS__TODO
-       #else
         : fMutex()
-       #endif
     {
-       #ifdef DISTRHO_OS_WINDOWS__TODO
+       #ifdef _MSC_VER
+        // SRWLOCK is non-recursive, matching PTHREAD_MUTEX_NORMAL used below.
+        // It has no priority-inheritance option, so the argument is ignored.
+        (void)inheritPriority;
+        InitializeSRWLock(&fMutex);
        #else
         pthread_mutexattr_t attr;
         pthread_mutexattr_init(&attr);
@@ -70,7 +70,8 @@ public:
      */
     ~Mutex() noexcept
     {
-       #ifdef DISTRHO_OS_WINDOWS__TODO
+       #ifdef _MSC_VER
+        // SRWLOCK needs no cleanup
        #else
         pthread_mutex_destroy(&fMutex);
        #endif
@@ -81,7 +82,9 @@ public:
      */
     bool lock() const noexcept
     {
-       #ifdef DISTRHO_OS_WINDOWS__TODO
+       #ifdef _MSC_VER
+        AcquireSRWLockExclusive(&fMutex);
+        return true;
        #else
         return (pthread_mutex_lock(&fMutex) == 0);
        #endif
@@ -93,7 +96,8 @@ public:
      */
     bool tryLock() const noexcept
     {
-       #ifdef DISTRHO_OS_WINDOWS__TODO
+       #ifdef _MSC_VER
+        return (TryAcquireSRWLockExclusive(&fMutex) != FALSE);
        #else
         return (pthread_mutex_trylock(&fMutex) == 0);
        #endif
@@ -104,14 +108,16 @@ public:
      */
     void unlock() const noexcept
     {
-       #ifdef DISTRHO_OS_WINDOWS__TODO
+       #ifdef _MSC_VER
+        ReleaseSRWLockExclusive(&fMutex);
        #else
         pthread_mutex_unlock(&fMutex);
        #endif
     }
 
 private:
-   #ifdef DISTRHO_OS_WINDOWS__TODO
+   #ifdef _MSC_VER
+    mutable SRWLOCK fMutex;
    #else
     mutable pthread_mutex_t fMutex;
    #endif
@@ -207,7 +213,6 @@ private:
     DISTRHO_DECLARE_NON_COPYABLE(RecursiveMutex)
 };
 
-#ifndef _MSC_VER
 // -----------------------------------------------------------------------
 // Signal class
 
@@ -222,6 +227,10 @@ public:
           fMutex(),
           fTriggered(false)
     {
+       #ifdef _MSC_VER
+        InitializeConditionVariable(&fCondition);
+        InitializeCriticalSection(&fMutex);
+       #else
         pthread_condattr_t cattr;
         pthread_condattr_init(&cattr);
         pthread_condattr_setpshared(&cattr, PTHREAD_PROCESS_PRIVATE);
@@ -234,6 +243,7 @@ public:
         pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_NORMAL);
         pthread_mutex_init(&fMutex, &mattr);
         pthread_mutexattr_destroy(&mattr);
+       #endif
     }
 
     /*
@@ -241,8 +251,13 @@ public:
      */
     ~Signal() noexcept
     {
+       #ifdef _MSC_VER
+        // CONDITION_VARIABLE needs no cleanup
+        DeleteCriticalSection(&fMutex);
+       #else
         pthread_cond_destroy(&fCondition);
         pthread_mutex_destroy(&fMutex);
+       #endif
     }
 
     /*
@@ -250,6 +265,19 @@ public:
      */
     void wait() noexcept
     {
+       #ifdef _MSC_VER
+        EnterCriticalSection(&fMutex);
+
+        while (! fTriggered)
+        {
+            // spurious wakeups and failures are handled by the surrounding loop
+            SleepConditionVariableCS(&fCondition, &fMutex, INFINITE);
+        }
+
+        fTriggered = false;
+
+        LeaveCriticalSection(&fMutex);
+       #else
         pthread_mutex_lock(&fMutex);
 
         while (! fTriggered)
@@ -262,6 +290,7 @@ public:
         fTriggered = false;
 
         pthread_mutex_unlock(&fMutex);
+       #endif
     }
 
     /*
@@ -269,6 +298,17 @@ public:
      */
     void signal() noexcept
     {
+       #ifdef _MSC_VER
+        EnterCriticalSection(&fMutex);
+
+        if (! fTriggered)
+        {
+            fTriggered = true;
+            WakeAllConditionVariable(&fCondition);
+        }
+
+        LeaveCriticalSection(&fMutex);
+       #else
         pthread_mutex_lock(&fMutex);
 
         if (! fTriggered)
@@ -278,17 +318,22 @@ public:
         }
 
         pthread_mutex_unlock(&fMutex);
+       #endif
     }
 
 private:
+   #ifdef _MSC_VER
+    CONDITION_VARIABLE fCondition;
+    CRITICAL_SECTION   fMutex;
+   #else
     pthread_cond_t  fCondition;
     pthread_mutex_t fMutex;
+   #endif
     volatile bool   fTriggered;
 
     DISTRHO_PREVENT_HEAP_ALLOCATION
     DISTRHO_DECLARE_NON_COPYABLE(Signal)
 };
-#endif // _MSC_VER
 
 // -----------------------------------------------------------------------
 // Helper class to lock&unlock a mutex during a function scope.

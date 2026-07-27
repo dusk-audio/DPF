@@ -27,7 +27,10 @@
 # define __MACOSX_CORE__
 # define RTAUDIO_API_TYPE MACOSX_CORE
 # define RTMIDI_API_TYPE MACOSX_CORE
-#elif defined(DISTRHO_OS_WINDOWS) && !defined(_MSC_VER)
+#elif defined(DISTRHO_OS_WINDOWS)
+// NOTE the vendored RtAudio WASAPI and RtMidi WinMM backends build under MSVC as well as MinGW.
+// The one thing they cannot handle there is HAVE_GETTIMEOFDAY, which pulls in <sys/time.h> and
+// gettimeofday(); the build files therefore only define it for non-MSVC compilers.
 # define __WINDOWS_WASAPI__
 # define __WINDOWS_MM__
 # define RTAUDIO_API_TYPE WINDOWS_WASAPI
