@@ -1584,6 +1584,8 @@ function(dpf__add_dgl_system_libs)
       # otherwise every existing dual-stack build would start dragging in unused libraries.
       target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_WAYLAND")
       target_include_directories(dgl-system-libs INTERFACE "${WAYLAND_INCLUDE_DIRS}")
+      # Not dpf__target_link_directories: it uses PUBLIC, which an INTERFACE library cannot take.
+      link_directories(${WAYLAND_LIBRARY_DIRS})
       target_link_libraries(dgl-system-libs INTERFACE "${WAYLAND_LIBRARIES}")
       # The clipboard code calls pthread_sigmask to keep SIGPIPE off the GUI thread during a
       # transfer. glibc 2.34 and later have it in libc, but older ones keep it in libpthread.

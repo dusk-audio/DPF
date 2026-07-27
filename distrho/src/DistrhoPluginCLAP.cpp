@@ -2311,6 +2311,9 @@ static const char* const kSupportedAPIs[] = {
 // TODO DPF external UI
 static bool CLAP_ABI clap_gui_is_api_supported(const clap_plugin_t*, const char* const api, const bool is_floating)
 {
+    // might be unused
+    (void)is_floating;
+
    #if DPF_CLAP_GUI_FLOATING_ONLY
     // Wayland cannot embed, so only the floating variant of the advertised API is real.
     if (! is_floating)
@@ -2327,9 +2330,6 @@ static bool CLAP_ABI clap_gui_is_api_supported(const clap_plugin_t*, const char*
     }
 
     return false;
-
-    // might be unused
-    (void)is_floating;
 }
 
 // TODO DPF external UI

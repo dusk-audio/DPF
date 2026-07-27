@@ -94,10 +94,14 @@
 
 /* Clipboard transfers happen over a pipe shared with another (possibly hostile or simply wedged)
    process, and both ends are serviced from the GUI thread.  Every wait is therefore bounded: the
-   receiving side gives up after this long with no progress, and the sending side after this long
-   without the requester draining the pipe. */
+   receiving side gives up this long after the transfer started, and the sending side after this
+   long without the requester draining the pipe. */
 #define PUGL_WAYLAND_CLIPBOARD_RECV_TIMEOUT_MS 1000
 #define PUGL_WAYLAND_CLIPBOARD_SEND_TIMEOUT_MS 1000
+
+/* The selection owner decides how much it writes, so the accumulated buffer needs a ceiling as
+   well: without one another process could grow this client's heap until the host is killed. */
+#define PUGL_WAYLAND_CLIPBOARD_MAX_SIZE (64U * 1024U * 1024U)
 
 // --------------------------------------------------------------------------------------------
 // Small helpers
@@ -1855,8 +1859,16 @@ puglWaylandRecvRead(PuglWaylandPipeRecv* const recv)
   }
 
   if (recv->len == recv->capacity) {
-    const size_t   capacity = recv->capacity * 2U;
-    uint8_t* const grown    = (uint8_t*)realloc(recv->buffer, capacity);
+    if (recv->capacity >= (size_t)PUGL_WAYLAND_CLIPBOARD_MAX_SIZE) {
+      // Buffer is full at the ceiling and the peer is still writing, so give up on the transfer
+      recv->failed = true;
+      recv->done   = true;
+      return;
+    }
+
+    const size_t capacity = MIN(recv->capacity * 2U,
+                                (size_t)PUGL_WAYLAND_CLIPBOARD_MAX_SIZE);
+    uint8_t* const grown = (uint8_t*)realloc(recv->buffer, capacity);
 
     if (!grown) {
       recv->failed = true;
@@ -2234,9 +2246,9 @@ puglWaylandReadPipe(PuglWorldInternals* const impl,
 
   const int displayFd = wl_display_get_fd(display);
 
-  /* Bounded by inactivity rather than total time, so a large but healthy transfer is not truncated
-     while a stalled peer (or a compositor event storm) still cannot spin here forever. */
-  int64_t deadline =
+  /* One deadline for the whole transfer, never extended by progress: a peer that drips a byte at a
+     time is just as able to wedge the GUI thread as one that stops writing entirely. */
+  const int64_t deadline =
     puglWaylandMonotonicMs() + PUGL_WAYLAND_CLIPBOARD_RECV_TIMEOUT_MS;
 
   while (!recv.done) {
@@ -2300,8 +2312,6 @@ puglWaylandReadPipe(PuglWorldInternals* const impl,
       wl_display_cancel_read(display);
     }
 
-    const size_t lenBeforeDispatch = recv.len;
-
     /* This is what lets a self-paste complete: our own wl_data_source.send handler runs from here,
        and for anything bigger than the pipe buffer it drains recv itself as it goes. */
     if (wl_display_dispatch_pending(display) < 0) {
@@ -2316,10 +2326,6 @@ puglWaylandReadPipe(PuglWorldInternals* const impl,
       free(recv.buffer);
       impl->activeRecv = previousRecv;
       return PUGL_NO_MEMORY;
-    }
-
-    if (recv.len != lenBeforeDispatch) {
-      deadline = puglWaylandMonotonicMs() + PUGL_WAYLAND_CLIPBOARD_RECV_TIMEOUT_MS;
     }
   }
 
@@ -3279,6 +3285,9 @@ puglWaylandDispatchEvents(PuglWorld* const world, const double timeout)
     return PUGL_UNKNOWN_ERROR;
   }
 
+  /* One pass over the timer list already services every timer that expired, so several ready timer
+     fds in the same cycle must not each trigger a full scan of their own. */
+  bool timersReady = false;
   for (nfds_t i = 1; i < nfds; ++i) {
     if (!(impl->pollFds[i].revents & POLLIN)) {
       continue;
@@ -3287,8 +3296,12 @@ puglWaylandDispatchEvents(PuglWorld* const world, const double timeout)
     if (impl->pollFds[i].fd == impl->repeat.fd) {
       puglWaylandHandleRepeat(impl);
     } else {
-      puglWaylandHandleTimers(impl);
+      timersReady = true;
     }
+  }
+
+  if (timersReady) {
+    puglWaylandHandleTimers(impl);
   }
 
   return PUGL_SUCCESS;

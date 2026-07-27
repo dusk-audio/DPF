@@ -17,6 +17,10 @@ on:
     branches:
       - '*'
 
+# Every job here only builds and validates, so nothing needs write access to the repository.
+permissions:
+  contents: read
+
 jobs:
   # -------------------------------------------------------------------------------------------------------------------
   # Build with the Wayland development files present and the X11 development files absent.
@@ -52,6 +56,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+        persist-credentials: false
     # libgl-dev depends on libglx-dev which depends on libx11-dev, and libegl-dev depends on libx11-dev
     # directly, so there is no apt line that installs GL/EGL development files without dragging X11
     # development files along. Drop just that one package with dpkg and leave everything it pulled in
@@ -122,6 +127,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+        persist-credentials: false
     - name: Set up dependencies
       env:
         DEBIAN_FRONTEND: noninteractive
@@ -175,6 +181,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+        persist-credentials: false
     - name: Set up dependencies
       env:
         DEBIAN_FRONTEND: noninteractive
