@@ -18,6 +18,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      # The runner image snapshot can lag the archive; multiarch :armhf/:arm64 installs need the
+      # amd64 side at identical versions, so sync it to the current mirror state first.
+      - name: Sync base image packages (multiarch version alignment)
+        if: startsWith(matrix.target, 'linux-arm')
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get dist-upgrade -yqq
       - uses: distrho/dpf-makefile-action@v1
         with:
           dpf_path: .
@@ -33,6 +40,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      # The runner image snapshot can lag the archive; multiarch :armhf/:arm64 installs need the
+      # amd64 side at identical versions, so sync it to the current mirror state first.
+      - name: Sync base image packages (multiarch version alignment)
+        if: startsWith(matrix.target, 'linux-arm')
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get dist-upgrade -yqq
       - uses: distrho/dpf-makefile-action@v1
         with:
           dpf_path: .
