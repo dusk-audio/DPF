@@ -30,6 +30,7 @@ typedef struct {
   EGLSurface            surface;
   struct wl_egl_window* window;
   PuglArea              size;
+  bool                  entered; ///< Whether the matching enter() got as far as succeeding
 } PuglWaylandGlSurface;
 
 /* EGL does not accept EGL_DONT_CARE for the "at least this many bits" attributes, and does not need
@@ -236,28 +237,38 @@ puglWaylandGlCreate(PuglView* const view)
       ? EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT
       : EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT;
 
+  /* Likewise for the version, except that here zero is not a legal value either: version 1.0 is
+     what EGL defines as the "any version" default, so that is what PUGL_DONT_CARE becomes. */
+  const EGLint majorVersion = view->hints[PUGL_CONTEXT_VERSION_MAJOR] < 0
+                                ? 1
+                                : (EGLint)view->hints[PUGL_CONTEXT_VERSION_MAJOR];
+
+  const EGLint minorVersion = view->hints[PUGL_CONTEXT_VERSION_MINOR] < 0
+                                ? 0
+                                : (EGLint)view->hints[PUGL_CONTEXT_VERSION_MINOR];
+
   /* The profile mask is defined to be ignored for OpenGL versions below 3.2, so it is always safe
      to pass; EGL ignores EGL_CONTEXT_OPENGL_* entirely for an OpenGL ES context, hence the separate
      attribute list for that case. */
   // clang-format off
   const EGLint contextAttrs[] = {
-    EGL_CONTEXT_MAJOR_VERSION,        view->hints[PUGL_CONTEXT_VERSION_MAJOR],
-    EGL_CONTEXT_MINOR_VERSION,        view->hints[PUGL_CONTEXT_VERSION_MINOR],
+    EGL_CONTEXT_MAJOR_VERSION,        majorVersion,
+    EGL_CONTEXT_MINOR_VERSION,        minorVersion,
     EGL_CONTEXT_OPENGL_PROFILE_MASK,  profile,
     EGL_CONTEXT_OPENGL_DEBUG,         debug,
     EGL_NONE
   };
 
   const EGLint glesContextAttrs[] = {
-    EGL_CONTEXT_MAJOR_VERSION, view->hints[PUGL_CONTEXT_VERSION_MAJOR],
-    EGL_CONTEXT_MINOR_VERSION, view->hints[PUGL_CONTEXT_VERSION_MINOR],
+    EGL_CONTEXT_MAJOR_VERSION, majorVersion,
+    EGL_CONTEXT_MINOR_VERSION, minorVersion,
     EGL_NONE
   };
 
   /* EGL 1.4 understands neither the minor version nor any of the above, only the older
      single-number attribute, so that is what the fallback below asks for. */
   const EGLint legacyContextAttrs[] = {
-    EGL_CONTEXT_CLIENT_VERSION, view->hints[PUGL_CONTEXT_VERSION_MAJOR],
+    EGL_CONTEXT_CLIENT_VERSION, majorVersion,
     EGL_NONE
   };
   // clang-format on
@@ -349,7 +360,15 @@ puglWaylandGlEnter(PuglView* const view, const PuglExposeEvent* const expose)
   PuglWaylandGlSurface* const surface =
     (PuglWaylandGlSurface*)view->impl->surface;
 
-  if (!surface || surface->context == EGL_NO_CONTEXT ||
+  if (!surface) {
+    return PUGL_FAILURE;
+  }
+
+  /* Every failure below leaves this false, which is what stops leave() from swapping a surface that
+     was never made current.  wayland.c re-arms needsRedisplay for a failed enter(). */
+  surface->entered = false;
+
+  if (surface->context == EGL_NO_CONTEXT ||
       surface->surface == EGL_NO_SURFACE) {
     return PUGL_FAILURE;
   }
@@ -369,6 +388,8 @@ puglWaylandGlEnter(PuglView* const view, const PuglExposeEvent* const expose)
     return PUGL_FAILURE;
   }
 
+  surface->entered = true;
+
   (void)expose;
   return PUGL_SUCCESS;
 }
@@ -383,17 +404,24 @@ puglWaylandGlLeave(PuglView* const view, const PuglExposeEvent* const expose)
     return PUGL_FAILURE;
   }
 
-  if (expose) {
+  const bool entered = surface->entered;
+  surface->entered   = false;
+
+  if (expose && entered) {
     // This is what commits the wl_surface, frame callback request included
     eglSwapBuffers(surface->display, surface->surface);
   }
 
-  return eglMakeCurrent(surface->display,
-                        EGL_NO_SURFACE,
-                        EGL_NO_SURFACE,
-                        EGL_NO_CONTEXT) == EGL_TRUE
-           ? PUGL_SUCCESS
-           : PUGL_FAILURE;
+  /* The unbind happens either way: wayland.c calls leave() even for a failed enter(), and asking
+     EGL to make nothing current is harmless when nothing is current in the first place. */
+  const PuglStatus st = eglMakeCurrent(surface->display,
+                                       EGL_NO_SURFACE,
+                                       EGL_NO_SURFACE,
+                                       EGL_NO_CONTEXT) == EGL_TRUE
+                          ? PUGL_SUCCESS
+                          : PUGL_FAILURE;
+
+  return entered ? st : PUGL_FAILURE;
 }
 
 PuglGlFunc
