@@ -4,6 +4,8 @@ on: [push]
 
 jobs:
   notification:
+    # upstream's channel and bot identity, never announce from forks
+    if: github.repository == 'DISTRHO/DPF'
     runs-on: ubuntu-latest
     name: IRC notification
     steps:
