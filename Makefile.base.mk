@@ -436,15 +436,17 @@ HAVE_X11     = $(shell $(PKG_CONFIG) --exists x11 && echo true)
 HAVE_XCURSOR = $(shell $(PKG_CONFIG) --exists xcursor && echo true)
 HAVE_XEXT    = $(shell $(PKG_CONFIG) --exists xext && echo true)
 HAVE_XRANDR  = $(shell $(PKG_CONFIG) --exists xrandr && echo true)
-# The Wayland backend is all-or-nothing: a partial set of libraries or missing code generator
-# tooling cannot produce a working backend, so anything less than the whole set counts as absent.
-# HAVE_WAYLAND_LIBS/HAVE_WAYLAND_TOOLS are kept separate purely so `make features` can say which
-# half is missing.
+# The Wayland backend needs the whole set of client libraries or none of them: a partial install
+# cannot produce a working backend, so anything less counts as absent.
+#
+# It does NOT need wayland-scanner or the wayland-protocols data package. The xdg-shell,
+# xdg-decoration, viewporter and fractional-scale bindings are pre-generated and vendored in
+# dgl/src/pugl-extra/wayland-protocols, so a build machine only needs the libraries to link against.
+# HAVE_WAYLAND_TOOLS is still probed, but only as information for whoever wants to regenerate that
+# vendored code (see the README there); it gates nothing.
 HAVE_WAYLAND_LIBS  = $(shell $(PKG_CONFIG) --exists wayland-client wayland-egl wayland-cursor xkbcommon egl && echo true)
 HAVE_WAYLAND_TOOLS = $(shell $(PKG_CONFIG) --exists wayland-protocols && which wayland-scanner > /dev/null 2>&1 && echo true)
-ifeq ($(HAVE_WAYLAND_LIBS)$(HAVE_WAYLAND_TOOLS),truetrue)
-HAVE_WAYLAND = true
-endif
+HAVE_WAYLAND       = $(HAVE_WAYLAND_LIBS)
 # X11 and Wayland can both be installed, and on most desktop systems they are. X11 stays the
 # backend DGL actually compiles against whenever it is present (see dgl/src/pugl.hpp for why), so
 # HAVE_WAYLAND alone must not pull in Wayland cflags/libs -- that would add dead weight to every
@@ -610,8 +612,10 @@ ifeq ($(HAVE_X11),true)
 OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags gl x11)
 OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs gl x11)
 else ifeq ($(DGL_BACKEND_WAYLAND),true)
-OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags egl wayland-egl)
-OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs egl wayland-egl)
+# EGL and wl_egl_window replace GLX as the way to get a context onto a window, but DGL itself still
+# calls plain desktop GL entry points (glViewport, glOrtho, ...), so libGL is needed just the same.
+OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags egl gl wayland-egl)
+OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs egl gl wayland-egl)
 else
 OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags gl x11)
 OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs gl x11)

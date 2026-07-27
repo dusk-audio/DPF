@@ -113,18 +113,58 @@
 // matching the backend that gets compiled below.
 #elif defined(HAVE_WAYLAND)
 # include <dlfcn.h>
+# include <errno.h>
+# include <fcntl.h>
 # include <limits.h>
+# include <poll.h>
 # include <unistd.h>
+# include <sys/mman.h>
 # include <sys/select.h>
+# ifdef __linux__
+#  include <sys/timerfd.h>
+# endif
 # include <wayland-client.h>
 # include <wayland-cursor.h>
 # include <xkbcommon/xkbcommon.h>
 # include <xkbcommon/xkbcommon-compose.h>
+# include <xkbcommon/xkbcommon-keysyms.h>
+/* Wayland protocol bindings, pre-generated and vendored so that neither wayland-scanner nor the
+   wayland-protocols data package is needed to build. See pugl-extra/wayland-protocols/README.
+
+   The marshalling code has to stay at global scope with C linkage: it declares the wl_*_interface
+   symbols that libwayland-client exports, and defines the xdg, zxdg and wp ones it needs itself.
+   Pulling it into the DGL namespace would declare a second, namespaced set of the former that could
+   never resolve at link time.
+
+   It is also included *before* the matching client headers on purpose: the definitions carry
+   WL_PRIVATE (hidden visibility) so a plugin cannot collide with a host that links its own copy of
+   the same protocol, and that only takes effect if the definition is the first declaration the
+   compiler sees.  Where the generated code does not forward declare its own interface, C++ gives
+   the const definition internal linkage instead, which is even better -- but makes the visibility
+   attribute meaningless, hence -Wattributes off for this block. */
+# if defined(__GNUC__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wattributes"
+# endif
+extern "C" {
+# include "pugl-extra/wayland-protocols/xdg-shell-protocol.c"
+# include "pugl-extra/wayland-protocols/xdg-decoration-unstable-v1-protocol.c"
+# include "pugl-extra/wayland-protocols/viewporter-protocol.c"
+# include "pugl-extra/wayland-protocols/fractional-scale-v1-protocol.c"
+}
+# if defined(__GNUC__)
+#  pragma GCC diagnostic pop
+# endif
+# include "pugl-extra/wayland-protocols/xdg-shell-client-protocol.h"
+# include "pugl-extra/wayland-protocols/xdg-decoration-unstable-v1-client-protocol.h"
+# include "pugl-extra/wayland-protocols/viewporter-client-protocol.h"
+# include "pugl-extra/wayland-protocols/fractional-scale-v1-client-protocol.h"
 # ifdef DGL_CAIRO
 #  include <cairo.h>
 # endif
 # ifdef DGL_OPENGL
 #  include <EGL/egl.h>
+#  include <EGL/eglext.h>
 #  include <wayland-egl.h>
 # endif
 # ifdef DGL_VULKAN
@@ -236,18 +276,15 @@ START_NAMESPACE_DGL
 # endif
 #elif defined(HAVE_WAYLAND)
 // The build system will only ever define HAVE_WAYLAND without HAVE_X11 (see pugl.hpp), so reaching
-// this point means a genuine Wayland-only build was requested. The backend sources do not exist
-// yet; this #error is the intended Phase 3 end state and is what Phase 4 replaces with the include
-// block sketched below.
-# error "DGL Wayland backend not yet implemented, see dgl/src/pugl-extra/README.wayland"
-// # include "pugl-extra/wayland.c"
-// # include "pugl-extra/wayland_stub.c"
-// # ifdef DGL_CAIRO
-// #  include "pugl-extra/wayland_cairo.c"
-// # endif
-// # ifdef DGL_OPENGL
-// #  include "pugl-extra/wayland_gl.c"
-// # endif
+// this point means a genuine Wayland-only build was requested.
+# include "pugl-extra/wayland.c"
+# include "pugl-extra/wayland_stub.c"
+# ifdef DGL_CAIRO
+#  include "pugl-extra/wayland_cairo.c"
+# endif
+# ifdef DGL_OPENGL
+#  include "pugl-extra/wayland_gl.c"
+# endif
 #endif
 
 #include "pugl-upstream/src/common.c"
@@ -328,6 +365,8 @@ void puglRaiseWindow(PuglView* const view)
     SetActiveWindow(view->impl->hwnd);
    #elif defined(HAVE_X11)
     XRaiseWindow(view->world->impl->display, view->impl->win);
+   #elif defined(HAVE_WAYLAND)
+    // nothing: a Wayland client cannot raise itself, stacking is entirely the compositor's business
    #endif
 }
 
@@ -369,6 +408,15 @@ PuglStatus puglSetGeometryConstraints(PuglView* const view, const uint width, co
 
         XFlush(view->world->impl->display);
     }
+   #elif defined(HAVE_WAYLAND)
+    // xdg_toplevel has min/max size but no aspect ratio, see puglUpdateSizeHints in wayland.c
+    if (view->impl->xdgToplevel)
+    {
+        if (const PuglStatus status = puglUpdateSizeHints(view))
+            return status;
+
+        wl_display_flush(view->world->impl->display);
+    }
    #endif
 
     return PUGL_SUCCESS;
@@ -400,6 +448,8 @@ void puglSetResizable(PuglView* const view, const bool resizable)
         SetWindowLong(hwnd, GWL_STYLE, winFlags);
     }
    #elif defined(HAVE_X11)
+    puglUpdateSizeHints(view);
+   #elif defined(HAVE_WAYLAND)
     puglUpdateSizeHints(view);
    #endif
 }
@@ -452,6 +502,17 @@ PuglStatus puglSetSizeAndDefault(PuglView* const view, const uint width, const u
 
         // flush size changes
         XFlush(view->world->impl->display);
+    }
+   #elif defined(HAVE_WAYLAND)
+    if (view->impl->wlSurface)
+    {
+        if (const PuglStatus status = puglUpdateSizeHints(view))
+            return status;
+
+        if (const PuglStatus status = puglSetWindowSize(view, width, height))
+            return status;
+
+        wl_display_flush(view->world->impl->display);
     }
    #endif
 
@@ -706,26 +767,11 @@ void puglX11SetWindowType(const PuglView* const view, const bool isStandalone)
 #elif defined(HAVE_WAYLAND)
 
 // --------------------------------------------------------------------------------------------------------------------
-// Wayland specific, update world without triggering exposure events
+// Wayland specific
 //
-// Phase 4 owns the real bodies of these two. They are declared in pugl.hpp so that the Wayland arm
-// there has the same shape as the X11 one, and defined here as stubs so this file stays
-// syntactically complete; the #error further up means nothing in this arm is compiled yet.
-
-PuglStatus puglWaylandUpdateWithoutExposures(PuglWorld* const world)
-{
-    (void)world;
-    return PUGL_FAILURE;
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-// Wayland specific, set the xdg-shell application id
-
-void puglWaylandSetAppId(PuglView* const view, const char* const appId)
-{
-    (void)view;
-    (void)appId;
-}
+// puglWaylandUpdateWithoutExposures() and puglWaylandSetAppId() are declared in pugl.hpp so that the
+// Wayland arm there has the same shape as the X11 one. Their bodies live at the bottom of
+// pugl-extra/wayland.c, next to the internals they need, rather than being duplicated here.
 
 // --------------------------------------------------------------------------------------------------------------------
 

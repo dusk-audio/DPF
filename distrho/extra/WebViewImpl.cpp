@@ -709,6 +709,8 @@ WebViewHandle webViewCreate(const char* const url,
 #endif
 
     // maybe unused
+    // (url is used by every backend except the no-backend fallback, which a Wayland-only build hits)
+    (void)url;
     (void)windowId;
     (void)initialWidth;
     (void)initialHeight;

@@ -871,12 +871,22 @@ const void* Window::PrivateData::getClipboard(size_t& dataSize)
         return nullptr;
     }
 
-   #ifdef DGL_USING_X11
+   #if defined(DGL_USING_X11)
     // wait for type request, clipboardTypeId must be != 0 to be valid
     int retry = static_cast<int>(2 / 0.03);
     while (clipboardTypeId == 0 && waitingForClipboardData && --retry >= 0)
     {
         if (puglX11UpdateWithoutExposures(appData->world) != PUGL_SUCCESS)
+            break;
+    }
+   #elif defined(DGL_USING_WAYLAND)
+    // same dance as X11: pump events without exposing until the offer types are known.
+    // On Wayland the offer is usually already in hand (wl_data_device.selection arrives ahead of
+    // time), so puglPaste dispatches PUGL_DATA_OFFER synchronously and this loop exits immediately.
+    int retry = static_cast<int>(2 / 0.03);
+    while (clipboardTypeId == 0 && waitingForClipboardData && --retry >= 0)
+    {
+        if (puglWaylandUpdateWithoutExposures(appData->world) != PUGL_SUCCESS)
             break;
     }
    #endif
@@ -888,12 +898,20 @@ const void* Window::PrivateData::getClipboard(size_t& dataSize)
         return nullptr;
     }
 
-   #ifdef DGL_USING_X11
+   #if defined(DGL_USING_X11)
     // wait for actual data (assumes offer was accepted)
     retry = static_cast<int>(2 / 0.03);
     while (waitingForClipboardData && --retry >= 0)
     {
         if (puglX11UpdateWithoutExposures(appData->world) != PUGL_SUCCESS)
+            break;
+    }
+   #elif defined(DGL_USING_WAYLAND)
+    // wait for actual data (assumes offer was accepted)
+    retry = static_cast<int>(2 / 0.03);
+    while (waitingForClipboardData && --retry >= 0)
+    {
+        if (puglWaylandUpdateWithoutExposures(appData->world) != PUGL_SUCCESS)
             break;
     }
    #endif
@@ -993,6 +1011,13 @@ PuglStatus Window::PrivateData::puglEventCallback(PuglView* const view, const Pu
            #endif
            #ifdef DGL_USING_X11
             puglX11SetWindowType(view, pData->appData->isStandalone);
+           #endif
+           #ifdef DGL_USING_WAYLAND
+            /* Wayland has no window-type atoms; the app id is what compositors key window rules,
+               task list grouping and desktop-file icon matching off, so it is the closest
+               equivalent. Same source as the X11 class hint: the world class name. */
+            if (const char* const className = puglGetWorldString(puglGetWorld(view), PUGL_CLASS_NAME))
+                puglWaylandSetAppId(view, className);
            #endif
         }
         break;
