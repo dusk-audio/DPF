@@ -48,7 +48,7 @@
 #include <vector>
 
 #include "clap/entry.h"
-#include "clap/plugin-factory.h"
+#include "clap/factory/plugin-factory.h"
 #include "clap/ext/audio-ports.h"
 #include "clap/ext/latency.h"
 #include "clap/ext/gui.h"
