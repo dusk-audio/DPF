@@ -106,7 +106,8 @@ What a Wayland build gives you:
 |---|---|---|
 | JACK/Standalone | Native, plugin window is an xdg toplevel | Via XWayland |
 | CLAP            | Native, floating window only (see below)  | Via XWayland, embedded |
-| LV2/VST2/VST3/AU | Not usable, these formats can only embed | Via XWayland, embedded |
+| LV2             | Native, floating window via `ui:showInterface` (see below) | Via XWayland, embedded |
+| VST2/VST3/AU    | Not usable, these formats can only embed  | Via XWayland, embedded |
 | File dialogs    | xdg-desktop-portal only, no libsofd fallback | Portal, else libsofd |
 | Web view UIs    | Not available                             | Available |
 
@@ -114,7 +115,16 @@ CLAP is the only format DPF targets that has a Wayland window API at all, and ev
 specification states that embedding is not supported for it: hosts must use floating windows.
 A Wayland build therefore advertises `CLAP_WINDOW_API_WAYLAND` with `is_floating = true` and refuses
 embedded creation, while an X11 build keeps advertising `CLAP_WINDOW_API_X11` exactly as before.
-Every other plugin format is embed-only, so on a Wayland build those simply have no way to show a UI.
+
+LV2 has no Wayland UI class, but it does have a host-agnostic escape hatch. A Wayland build declares
+the generic `ui:UI` class instead of `ui:X11UI`, which is the case in which conforming hosts (Ardour,
+jalv) fall back to `ui:showInterface` plus `ui:idleInterface` — both of which DPF already declares and
+implements through the same floating-window path CLAP uses. An X11 build keeps declaring `ui:X11UI`.
+Hosts that only know how to embed will not show the UI at all, which is unavoidable: Wayland has no
+cross-process window reparenting.
+
+VST2, VST3 and AU are embed-only with no equivalent fallback, so on a Wayland build those have no way
+to show a UI.
 
 Two known limitations of the Wayland backend, both inherent to the protocol rather than to DPF:
 
