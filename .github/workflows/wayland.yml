@@ -227,6 +227,9 @@ jobs:
                 'state-reproducibility-flush',
                 'state-reproducibility-null-cookies',
             },
+            # no baselined failures; the key is kept so the completeness check below still requires
+            # clap-validator to have reported on this plugin
+            'studio.kx.distrho.examples.latency': set(),
             'studio.kx.distrho.examples.meters': {
                 'state-reproducibility-flush',
             },

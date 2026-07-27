@@ -1494,17 +1494,18 @@ public:
            #if DISTRHO_PLUGIN_WANT_TIMEPOS
             {
                 const UInt32 usableDataSize = std::min(inDataSize, static_cast<UInt32>(sizeof(HostCallbackInfo)));
-                const bool changed = std::memcmp(&fHostCallbackInfo, inData, usableDataSize) != 0;
 
-                std::memcpy(&fHostCallbackInfo, inData, usableDataSize);
+                // the host is allowed to supply less than the full struct, everything past it is unset;
+                // compare the whole thing so that shrinking the size also counts as a change
+                HostCallbackInfo hostCallbackInfo;
+                std::memset(&hostCallbackInfo, 0, sizeof(hostCallbackInfo));
+                std::memcpy(&hostCallbackInfo, inData, usableDataSize);
 
-                if (sizeof(HostCallbackInfo) > usableDataSize)
-                    std::memset(reinterpret_cast<uint8_t*>(&fHostCallbackInfo) + usableDataSize,
-                                0,
-                                sizeof(HostCallbackInfo) - usableDataSize);
-
-                if (changed)
+                if (std::memcmp(&fHostCallbackInfo, &hostCallbackInfo, sizeof(HostCallbackInfo)) != 0)
+                {
+                    std::memcpy(&fHostCallbackInfo, &hostCallbackInfo, sizeof(HostCallbackInfo));
                     notifyPropertyListeners(inProp, inScope, inElement);
+                }
             }
             return noErr;
            #else
@@ -1523,6 +1524,11 @@ public:
                 const int32_t presetNumber = static_cast<const AUPreset*>(inData)->presetNumber;
 
                #if DISTRHO_PLUGIN_WANT_PROGRAMS
+                // a negative number is a user preset, a positive one must match an advertised factory preset;
+                // reject anything else before touching state, fCurrentProgram indexes fFactoryPresetsData
+                DISTRHO_SAFE_ASSERT_INT_RETURN(presetNumber < static_cast<int32_t>(fProgramCount),
+                                               presetNumber, kAudioUnitErr_InvalidPropertyValue);
+
                 if (presetNumber >= 0)
                 {
                     if (fCurrentProgram != presetNumber)
@@ -2673,7 +2679,10 @@ private:
             && CFGetTypeID(programRef) == CFNumberGetTypeID())
         {
             SInt32 program = -1;
-            if (CFNumberGetValue(programRef, kCFNumberSInt32Type, &program))
+            // ignore a program that this build does not have, restored data is not trusted input and
+            // fCurrentProgram indexes fFactoryPresetsData; negative means user preset, which is fine
+            if (CFNumberGetValue(programRef, kCFNumberSInt32Type, &program)
+                && program < static_cast<SInt32>(fProgramCount))
             {
                 fCurrentProgram = program;
 

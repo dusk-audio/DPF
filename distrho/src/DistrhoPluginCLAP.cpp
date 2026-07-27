@@ -1765,13 +1765,16 @@ public:
         const uint32_t stateCount = 0;
        #endif
 
-        char buffer[512], orig;
-        buffer[sizeof(buffer)-1] = '\xff';
+        char buffer[512];
 
         for (int32_t terminated = 0; terminated == 0;)
         {
             const int32_t read = stream->read(stream, buffer, sizeof(buffer)-1);
-            DISTRHO_SAFE_ASSERT_INT_RETURN(read >= 0, read, false);
+            DISTRHO_SAFE_ASSERT_INT_RETURN(read >= 0 && read < static_cast<int32_t>(sizeof(buffer)), read, false);
+
+            // place null character right after the chunk, so the string scans below stay inside the data
+            // just read; at most sizeof(buffer)-1 bytes are requested, so this never writes past the buffer
+            buffer[read] = '\0';
 
             if (read == 0)
             {
@@ -1811,12 +1814,6 @@ public:
                     break;
                 }
 
-                // store character at read position
-                orig = buffer[read];
-
-                // place null character to create valid string
-                buffer[read] = '\0';
-
                 // append to temporary vars
                 if (fillingKey)
                 {
@@ -1831,10 +1828,7 @@ public:
                 // increase buffer offset by length of string
                 i += std::strlen(buffer + i);
 
-                // restore read character
-                buffer[read] = orig;
-
-                // The null character placed above bounds strlen(), so the offset now points either at a real
+                // The null character placed after the chunk bounds strlen(), so the offset now points either at a real
                 // null inside the chunk or exactly at `read`. The latter means the string is cut in half by
                 // the chunk boundary and continues in the next read, so do not look at buffer[read] itself:
                 // that byte is past the valid data and holds stale or uninitialized garbage.
