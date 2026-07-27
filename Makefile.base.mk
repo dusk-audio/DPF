@@ -616,10 +616,28 @@ ifeq ($(HAVE_X11),true)
 OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags gl x11)
 OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs gl x11)
 else ifeq ($(DGL_BACKEND_WAYLAND),true)
-# EGL and wl_egl_window replace GLX as the way to get a context onto a window, but DGL itself still
-# calls plain desktop GL entry points (glViewport, glOrtho, ...), so libGL is needed just the same.
+# EGL and wl_egl_window replace GLX as the way to get a context onto a window. Which client API library the
+# GL entry points must come from then depends on what DGL was told to render with, exactly like the wasm arm
+# above: a GLES build calls glesv2 (libGLESv2), everything else calls plain desktop GL entry points
+# (glViewport, glOrtho, ...) and needs gl (libGL).
+#
+# Linking gl unconditionally, as this used to, left GLES builds resolving GLES calls out of libGL. That only
+# appears to work because glvnd re-exports the shared subset of the two ABIs, so it is dispatch luck rather
+# than a supported configuration, and it silently pulls the whole desktop GL stack into a GLES-only binary.
+#
+# Note the X11 arm above deliberately stays on gl: GLX cannot create an ES context at all (pugl's x11_gl.c
+# would need EGL for that), so an X11 GLES build is desktop GL by construction. That is pre-existing DPF
+# design and is not changed here.
+#
+# Both GLESv2 and GLESv3 resolve to glesv2: there is no glesv3.pc, libGLESv2 is where Mesa exports the ES 3.x
+# entry points as well.
+ifneq (,$(findstring true,$(USE_GLES2)$(USE_GLES3)))
+OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags egl glesv2 wayland-egl)
+OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs egl glesv2 wayland-egl)
+else
 OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags egl gl wayland-egl)
 OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs egl gl wayland-egl)
+endif
 else
 OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags gl x11)
 OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs gl x11)
