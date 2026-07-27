@@ -114,6 +114,29 @@ void puglWin32RestoreWindow(PuglView* view);
 // win32 specific, center view based on parent coordinates (if there is one)
 void puglWin32ShowCentered(PuglView* view);
 
+// On Unix, HAVE_X11 and HAVE_WAYLAND can both be defined: the two sets of development files
+// coexist happily and most desktop distributions ship both. The order of the arms below is
+// therefore a deliberate policy, not an accident:
+//
+//   X11 is the primary backend whenever it is present.
+//
+// The reason is that a plugin UI is not free to pick its own windowing system. Hosts embed plugin
+// UIs into their own window, and the only embedding contract that every plugin format has is the
+// X11 one; of the formats DPF targets, only CLAP has a Wayland window API at all. Standalone
+// builds have no such constraint, but they run perfectly well on a Wayland session through
+// XWayland, so there is nothing to gain from splitting the backend choice between plugin and
+// standalone builds of the same source tree.
+//
+// Consequently the Wayland arm below is reachable only on a build where X11 is absent entirely
+// (no libx11-dev), which is the case this backend exists to serve. The build system mirrors this
+// exactly -- see DGL_BACKEND_WAYLAND in Makefile.base.mk and the X11_FOUND branch in
+// cmake/DPF-plugin.cmake, both of which refuse to define HAVE_WAYLAND when X11 is in play.
+//
+// A possible future step is runtime dispatch: build both backends and choose per window, so that a
+// CLAP plugin could hand the host a real Wayland surface while everything else keeps using X11.
+// That requires the pugl view/world internals to stop being a compile-time singleton, so it is
+// explicitly out of scope here; the compile-time choice below is the stepping stone to it.
+
 #elif defined(HAVE_X11)
 
 #define DGL_USING_X11
@@ -123,6 +146,18 @@ PuglStatus puglX11UpdateWithoutExposures(PuglWorld* world);
 
 // X11 specific, set dialog window type
 void puglX11SetWindowType(const PuglView* view, bool isStandalone);
+
+#elif defined(HAVE_WAYLAND)
+
+#define DGL_USING_WAYLAND
+
+// Wayland specific, update world without triggering exposure events
+PuglStatus puglWaylandUpdateWithoutExposures(PuglWorld* world);
+
+// Wayland specific, set the xdg-shell application id
+// This is the closest analogue to puglX11SetWindowType: Wayland has no window-type atoms, the
+// compositor keys window rules and icon matching off the app id instead.
+void puglWaylandSetAppId(PuglView* view, const char* appId);
 
 #endif
 

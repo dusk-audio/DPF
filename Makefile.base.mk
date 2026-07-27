@@ -436,6 +436,24 @@ HAVE_X11     = $(shell $(PKG_CONFIG) --exists x11 && echo true)
 HAVE_XCURSOR = $(shell $(PKG_CONFIG) --exists xcursor && echo true)
 HAVE_XEXT    = $(shell $(PKG_CONFIG) --exists xext && echo true)
 HAVE_XRANDR  = $(shell $(PKG_CONFIG) --exists xrandr && echo true)
+# The Wayland backend is all-or-nothing: a partial set of libraries or missing code generator
+# tooling cannot produce a working backend, so anything less than the whole set counts as absent.
+# HAVE_WAYLAND_LIBS/HAVE_WAYLAND_TOOLS are kept separate purely so `make features` can say which
+# half is missing.
+HAVE_WAYLAND_LIBS  = $(shell $(PKG_CONFIG) --exists wayland-client wayland-egl wayland-cursor xkbcommon egl && echo true)
+HAVE_WAYLAND_TOOLS = $(shell $(PKG_CONFIG) --exists wayland-protocols && which wayland-scanner > /dev/null 2>&1 && echo true)
+ifeq ($(HAVE_WAYLAND_LIBS)$(HAVE_WAYLAND_TOOLS),truetrue)
+HAVE_WAYLAND = true
+endif
+# X11 and Wayland can both be installed, and on most desktop systems they are. X11 stays the
+# backend DGL actually compiles against whenever it is present (see dgl/src/pugl.hpp for why), so
+# HAVE_WAYLAND alone must not pull in Wayland cflags/libs -- that would add dead weight to every
+# existing dual-stack build. DGL_BACKEND_WAYLAND is the "Wayland is really being used" gate and is
+# what the flag blocks below key off; it mirrors the `#elif defined(HAVE_WAYLAND)` arm that only
+# becomes reachable once HAVE_X11 is absent.
+ifneq ($(HAVE_X11),true)
+DGL_BACKEND_WAYLAND = $(HAVE_WAYLAND)
+endif
 endif
 
 # Vulkan is not supported yet
@@ -537,6 +555,13 @@ DGL_SYSTEM_LIBS += -pthread -lrt
 endif
 endif # HAVE_X11
 
+# NOTE: gated on DGL_BACKEND_WAYLAND, not HAVE_WAYLAND, so that a system with both X11 and Wayland
+# installed builds exactly as it did before Wayland support existed.
+ifeq ($(DGL_BACKEND_WAYLAND),true)
+DGL_FLAGS       += $(shell $(PKG_CONFIG) --cflags wayland-client wayland-egl wayland-cursor xkbcommon) -DHAVE_WAYLAND
+DGL_SYSTEM_LIBS += $(shell $(PKG_CONFIG) --libs wayland-client wayland-egl wayland-cursor xkbcommon)
+endif # DGL_BACKEND_WAYLAND
+
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -579,8 +604,18 @@ else ifeq ($(WINDOWS),true)
 OPENGL_FLAGS =
 OPENGL_LIBS  = -lopengl32
 else
+# X11 keeps GLX even when Wayland is also available, matching the backend choice made in pugl.hpp.
+# Only a build without X11 at all falls back to EGL on the Wayland platform.
+ifeq ($(HAVE_X11),true)
 OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags gl x11)
 OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs gl x11)
+else ifeq ($(DGL_BACKEND_WAYLAND),true)
+OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags egl wayland-egl)
+OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs egl wayland-egl)
+else
+OPENGL_FLAGS = $(shell $(PKG_CONFIG) --cflags gl x11)
+OPENGL_LIBS  = $(shell $(PKG_CONFIG) --libs gl x11)
+endif
 endif
 
 HAVE_CAIRO_OR_OPENGL = true
@@ -592,8 +627,10 @@ endif # HAVE_OPENGL
 
 ifeq ($(HAIKU_OR_MACOS_OR_WASM_OR_WINDOWS),true)
 HAVE_STUB = true
+else ifeq ($(HAVE_X11),true)
+HAVE_STUB = true
 else
-HAVE_STUB = $(HAVE_X11)
+HAVE_STUB = $(DGL_BACKEND_WAYLAND)
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -651,8 +688,10 @@ endif
 
 ifeq ($(HAIKU_OR_MACOS_OR_WASM_OR_WINDOWS),true)
 HAVE_DGL = true
+else ifeq ($(HAVE_X11),true)
+HAVE_DGL = true
 else
-HAVE_DGL = $(HAVE_X11)
+HAVE_DGL = $(DGL_BACKEND_WAYLAND)
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -856,10 +895,15 @@ features:
 	$(call print_available,HAVE_SDL2)
 	$(call print_available,HAVE_STUB)
 	$(call print_available,HAVE_VULKAN)
+	$(call print_available,HAVE_WAYLAND)
+	$(call print_available,HAVE_WAYLAND_LIBS)
+	$(call print_available,HAVE_WAYLAND_TOOLS)
 	$(call print_available,HAVE_X11)
 	$(call print_available,HAVE_XCURSOR)
 	$(call print_available,HAVE_XEXT)
 	$(call print_available,HAVE_XRANDR)
+	@echo === Selected DGL backend
+	$(call print_available,DGL_BACKEND_WAYLAND)
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Extra rules for MOD Audio stuff
