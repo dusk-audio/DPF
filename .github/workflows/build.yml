@@ -10,7 +10,22 @@ on:
   push:
     branches:
       - '**'
+    # Documentation and editor/agent configuration cannot change a build result, and every push
+    # here costs a full matrix. Anything under .github/ is deliberately absent from this list: a
+    # workflow change must run the workflow it changed.
+    paths-ignore:
+      - '**.md'
+      - '.vscode/**'
+      - '.claude/**'
+      - 'LICENSE*'
   workflow_dispatch:
+
+# One run per branch at a time: pushing again supersedes the previous run, which is otherwise left
+# building a commit nobody is waiting on. main is exempt, so every state that lands there is proven
+# even when merges arrive back to back.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
