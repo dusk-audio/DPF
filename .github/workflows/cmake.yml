@@ -27,6 +27,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# Every job here only builds, so nothing needs write access to the repository. Uploading the
+# msvc-win64 artifact does not either: actions/upload-artifact uses the Actions runtime token
+# rather than GITHUB_TOKEN.
+permissions:
+  contents: read
+
 jobs:
   ubuntu-22-04:
     strategy:
@@ -60,9 +66,10 @@ jobs:
           suffix: _22_04
           target: ${{ matrix.target }}
 
-  # No ubuntu-24-04 job: the new-toolchain canary lives in build.yml, which
-  # builds the whole tree on ubuntu-24.04 under -Werror across every C++ std
-  # mode. Rebuilding the same sources here through cmake added no coverage.
+  # No ubuntu-24-04 job: 22.04 is the product glibc floor, and a newer-toolchain
+  # canary above it is not a configuration anything is shipped on. build.yml
+  # dropped its own 24.04 leg for the same reason, so there is no canary left
+  # here to defer to either.
 
   # ---------------------------------------------------------------------------
   # Linux arm64, built NATIVELY on GitHub's ARM runners.

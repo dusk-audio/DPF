@@ -74,7 +74,8 @@ to the *parent of the fork network*, which no git config can override. Guards in
 
 ## CI
 
-Three workflows, all triggered on push to any branch: `build.yml` (make, every C++ std mode, every
-UI_TYPE), `cmake.yml` (cmake matrix incl. a native ARM Linux runner and three MSVC legs) and
-`wayland.yml` (Wayland-only container build, X11 regression, clap-validator, pluginval + LV2
-validation). Anything relying on external package repositories is deliberately kept out of them.
+Three workflows, all triggered on push to any branch: `build.yml` (make, the compiler default plus
+C++11 and C++20, the default UI type plus one explicit opengl3 leg), `cmake.yml` (cmake matrix
+incl. a native ARM Linux runner and a single MSVC x64 leg) and `wayland.yml` (Wayland-only
+container build, X11 regression, clap-validator, pluginval + LV2 validation). Anything relying on
+external package repositories is deliberately kept out of them.

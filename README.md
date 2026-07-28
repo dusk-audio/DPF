@@ -63,7 +63,9 @@ affected `bin/` bundles, otherwise objects and binaries from the other backend a
   Ubuntu 22.04 floor), `cmake.yml` (Linux x86_64, native ARM Linux, macOS, MSVC x64) and
   `wayland.yml` (Wayland-only build, X11 regression, clap-validator and pluginval runs with no
   external package repositories). Formats, UI types and architectures that are not shipped are not
-  built: no 32-bit anything, no macOS Intel, no MinGW, no Cairo or GLES UI legs.
+  built: no 32-bit anything, no Intel-only macOS legs, no MinGW, no Cairo or GLES UI legs. macOS
+  builds universal, so the x86_64 slice is still compiled and shipped alongside arm64; what was
+  dropped is the separate Intel-only CI targets, not Intel support.
 
 
 ## Licensing
