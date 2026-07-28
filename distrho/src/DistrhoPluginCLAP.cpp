@@ -1741,6 +1741,9 @@ public:
         const char* buffer = state.buffer();
         const int32_t size = static_cast<int32_t>(state.length())+1;
 
+        // A short write is normal and simply loops again. A write of 0 is not: the stream made no
+        // progress on a non-empty request, and retrying it is either an immediate spin or a hang,
+        // so treat it as the failure it is rather than looping on a host that has stopped moving.
         for (int32_t wrtntotal = 0, wrtn; wrtntotal < size; wrtntotal += wrtn)
         {
             wrtn = stream->write(stream, buffer + wrtntotal, size - wrtntotal);
@@ -1758,7 +1761,10 @@ public:
         String key, value;
         bool hasValue = false;
         bool fillingKey = true; // if filling key or value
-        char queryingType = 'i'; // can be 'n', 's', 'p' or 'x' (none, states, parameters, done)
+        // parser state: 'i' initial (nothing read yet), 'n' between sections (program and/or states
+        // done), 's' inside the states section, 'p' inside the parameters section, 'x' parameters
+        // section closed. Only 'i', 'n' and 'x' are valid places for the stream to end.
+        char queryingType = 'i';
 
         char buffer[512];
 
