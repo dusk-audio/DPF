@@ -230,8 +230,8 @@ void Window::setOffset(const Point<int>& offset)
 
 bool Window::setEmbeddedOffset(const int x, const int y)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pData->isEmbed, false);
-    DISTRHO_SAFE_ASSERT_RETURN(pData->view != nullptr, false);
+    DAF_SAFE_ASSERT_RETURN(pData->isEmbed, false);
+    DAF_SAFE_ASSERT_RETURN(pData->view != nullptr, false);
 
     return puglSetPositionHint(pData->view, PUGL_CURRENT_POSITION, x, y) == PUGL_SUCCESS;
 }

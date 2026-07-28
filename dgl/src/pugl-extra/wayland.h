@@ -32,9 +32,11 @@
 
 /// A monitor the compositor has advertised, with its integer scale
 typedef struct {
-  struct wl_output* output;     ///< Proxy, NULL for an unused slot
-  uint32_t          globalName; ///< wl_registry name, used to handle global_remove
-  int32_t           scale;      ///< Integer scale factor, at least 1
+  struct wl_output*   output;       ///< Proxy, NULL for an unused slot
+  PuglWorldInternals* wimpl;        ///< Owning world, used to refresh entered views
+  uint32_t            globalName;   ///< wl_registry name, used to handle global_remove
+  int32_t             scale;        ///< Integer scale factor, at least 1
+  bool                scaleChanged; ///< Whether the current wl_output batch changed scale
 } PuglWaylandOutput;
 
 /// An application timer started by puglStartTimer(), backed by a timerfd
@@ -72,8 +74,8 @@ typedef struct {
   uint8_t* buffer;   ///< Accumulated data, owned by puglWaylandReadPipe()
   size_t   len;      ///< Bytes accumulated so far
   size_t   capacity; ///< Bytes allocated in buffer
-  bool     done;     ///< Whether the writing end has closed or errored
-  bool     failed;   ///< Whether the buffer could not be grown
+  bool     done;     ///< Whether the receive reached EOF or failed
+  PuglStatus status; ///< Error encountered while reading, or PUGL_SUCCESS
 } PuglWaylandPipeRecv;
 
 /**
