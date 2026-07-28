@@ -24,7 +24,6 @@
 #
 # dpf_add_plugin(MyPlugin
 #   TARGETS clap lv2 vst2 vst3
-#   UI_TYPE opengl
 #   FILES_DSP
 #       src/MyPlugin.cpp
 #   FILES_UI
