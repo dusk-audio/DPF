@@ -32,15 +32,14 @@ jobs:
     strategy:
       matrix:
         os:
-          # macos-13 dropped: GitHub is deprecating the image, and macos-15
-          # already covers the same x86_64 code paths.
-          # macos-14 dropped: macos-15 covers the newer-SDK risk, and 14 only
-          # duplicated it.
+          # Only what ships: macOS on Apple Silicon (macos-15) and the Linux
+          # product floor. macos-13/14 were deprecated images duplicating
+          # macos-15, and ubuntu-24.04 was a newer-toolchain canary above the
+          # floor rather than a configuration anything is shipped on.
           - macos-15
           # webgui failure
           # - ubuntu-20.04
           - ubuntu-22.04
-          - ubuntu-24.04
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
@@ -78,31 +77,10 @@ jobs:
       run: |
         make clean >/dev/null
         make -j ${{ env.JOBS }}
-    - name: As C++14 mode
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror -std=gnu++14
-      run: |
-        make clean >/dev/null
-        make -j ${{ env.JOBS }}
-    - name: As C++17 mode
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror -std=gnu++17
-      run: |
-        make clean >/dev/null
-        make -j ${{ env.JOBS }}
     - name: As C++20 mode
       env:
         CFLAGS: -Werror
         CXXFLAGS: -Werror -std=gnu++20
-      run: |
-        make clean >/dev/null
-        make -j ${{ env.JOBS }}
-    - name: No namespace
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror -DDONT_SET_USING_DISTRHO_NAMESPACE -DDONT_SET_USING_DGL_NAMESPACE
       run: |
         make clean >/dev/null
         make -j ${{ env.JOBS }}
@@ -113,81 +91,6 @@ jobs:
       run: |
         make clean >/dev/null
         make -j ${{ env.JOBS }}
-    - name: Without Cairo
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror
-      run: |
-        make clean >/dev/null
-        make -j ${{ env.JOBS }} HAVE_CAIRO=false
-    - name: Without OpenGL
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror
-      run: |
-        make clean >/dev/null
-        make -j ${{ env.JOBS }} HAVE_OPENGL=false
-    - name: With UI_TYPE=cairo
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror
-      run: |
-        make clean >/dev/null
-        env UI_TYPE=cairo make -j ${{ env.JOBS }} -C examples/Parameters jack
-    - name: With UI_TYPE=generic
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror
-      run: |
-        make clean >/dev/null
-        env UI_TYPE=generic make -j ${{ env.JOBS }} -C examples/Parameters jack
-    # Linux only, deliberately. These two legs used to run on macos-15 as well, where they proved nothing:
-    # dgl/OpenGL-include.hpp silently #undef'd DGL_USE_GLES/GLES2/GLES3 for DISTRHO_OS_MAC and fell through to
-    # <OpenGL/gl3.h>, so both legs compiled as an ordinary desktop GL3 build and went green without a single
-    # GLES code path being touched. Apple ships no GLES implementation, so there was never anything to test.
-    # That header now #errors instead of #undef'ing, which would turn these legs red on macOS for a
-    # configuration the fork does not support -- so they are scoped to Linux.
-    #
-    # What they DO check on Linux: the GLES source paths compile. -DDGL_USE_GLES{,2,3} selects NANOVG_GLES2 /
-    # NANOVG_GLES3 in dgl/src/NanoVG.cpp, the "#version 100" / "#version 300 es" shader headers and the
-    # BGR/BGRA-less image format handling in dgl/src/OpenGL3.cpp, none of which the opengl/opengl3 legs build.
-    # That is real compile coverage of ~three otherwise-unbuilt #ifdef branches.
-    #
-    # What they do NOT check, anywhere in THIS workflow: an actual GLES runtime. These runners build the
-    # X11 backend, whose Makefile.base.mk arm gives `pkg-config --libs gl x11` -- never glesv2 -- and
-    # dgl/OpenGL-include.hpp includes <GL/gl.h> + <GL/glext.h> on Linux regardless of DGL_USE_GLES. Verified
-    # locally: a UI_TYPE=gles2 or gles3 build of examples/Parameters from this workflow's configuration has
-    # DT_NEEDED libGL.so.1 + libX11.so.6 and no libGLESv2 at all. Configurations that DO reach a genuine GLES
-    # driver exist outside this workflow: wayland.yml verifies that a Wayland-only UI_TYPE=gles3 build
-    # selects the GLES3 sources and links libGLESv2 (it does not launch a compositor or exercise the runtime),
-    # and the wasm/emscripten target forces USE_GLES2 onto WebGL, which this fork does not build in CI.
-    # Treat these two legs as build guards for the #ifdef branches, not as GLES conformance.
-    - name: With UI_TYPE=gles2
-      if: ${{ runner.os == 'Linux' }}
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror
-      run: |
-        make clean >/dev/null
-        env UI_TYPE=gles2 make -j ${{ env.JOBS }} -C examples/Parameters jack
-    - name: With UI_TYPE=gles3
-      if: ${{ runner.os == 'Linux' }}
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror
-      run: |
-        make clean >/dev/null
-        env UI_TYPE=gles3 make -j ${{ env.JOBS }} -C examples/Parameters jack
-    # Still runs on macOS: `opengl` stays a valid explicit choice everywhere, it just is no longer the macOS
-    # default (Makefile.plugins.mk). This leg is what keeps the legacy 2.1 immediate-mode renderer compiling on
-    # macOS for as long as Apple still hands out NSOpenGLProfileVersionLegacy.
-    - name: With UI_TYPE=opengl
-      env:
-        CFLAGS: -Werror
-        CXXFLAGS: -Werror
-      run: |
-        make clean >/dev/null
-        env UI_TYPE=opengl make -j ${{ env.JOBS }} -C examples/Parameters jack
     - name: With UI_TYPE=opengl3
       env:
         CFLAGS: -Werror

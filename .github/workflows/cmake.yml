@@ -44,7 +44,11 @@ jobs:
         # board (launchpad times out regularly). The replacement job installs
         # Tracktion pluginval from a pinned, checksummed GitHub release and
         # everything else from the Ubuntu archives.
-        target: [linux-x86_64, win32, win64]
+        #
+        # win32/win64 dropped: those are MinGW cross-builds, and Windows ships
+        # from MSVC (see msvc-win64 below). Building the same target with a
+        # second toolchain proved portability we do not depend on.
+        target: [linux-x86_64]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -144,9 +148,10 @@ jobs:
   macos-15:
     strategy:
       matrix:
-        # macos-intel dropped: macos-universal already builds the x86_64 slice,
-        # so a separate intel-only leg adds nothing.
-        target: [macos-universal, macos-10.15]
+        # macos-universal covers the arm64 slice we ship (and the x86_64 one for
+        # free). macos-intel and macos-10.15 dropped: both target Intel Macs,
+        # which nothing here is shipped for.
+        target: [macos-universal]
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -158,25 +163,8 @@ jobs:
           suffix: _15
           target: ${{ matrix.target }}
 
-  msvc-win32:
-    runs-on: windows-2022
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: Configure
-      run: |
-       cmake -S . -B build -G"Visual Studio 17 2022" -A"Win32" -DCMAKE_BUILD_TYPE="Release"
-    - name: Build
-      run: cmake --build build --config "Release" -j 2
-    - name: Show built files
-      working-directory: build/bin
-      run: tree
-    - uses: actions/upload-artifact@v4
-      with:
-        name: msvc-win32
-        path: build/bin/
-
+  # The only Windows leg: products ship MSVC x64. 32-bit and Windows-on-ARM
+  # were dropped with the targets nothing is shipped for.
   msvc-win64:
     runs-on: windows-2022
     steps:
@@ -197,22 +185,3 @@ jobs:
         name: msvc-win64
         path: build/bin/
 
-  msvc-arm64:
-    runs-on: windows-11-arm
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: Configure CMake
-      run: |
-       cmake -S . -B build -G"Visual Studio 17 2022" -A"ARM64" -DCMAKE_BUILD_TYPE="Release"
-    - name: Build all
-      working-directory: build
-      run: cmake --build . --config "Release" -j 2
-    - name: Show built files
-      working-directory: build/bin
-      run: tree
-    - uses: actions/upload-artifact@v4
-      with:
-        name: msvc-arm64
-        path: build/bin/

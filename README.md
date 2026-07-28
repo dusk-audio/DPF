@@ -59,9 +59,11 @@ affected `bin/` bundles, otherwise objects and binaries from the other backend a
   host chunk, CLAP loads state written by a differently configured build of the same plugin
   (parameters or states compiled out), and AU factory preset data is allocated and freed as an
   array.
-- **CI reworked for the support surface we ship.** 16 checks: `build.yml`, `cmake.yml` (including a
-  native ARM Linux runner and three MSVC legs) and `wayland.yml` (Wayland-only, X11 regression,
-  clap-validator and pluginval runs with no external package repositories).
+- **CI covers the shipped surface and nothing else.** `build.yml` (Makefile, macOS arm64 + the
+  Ubuntu 22.04 floor), `cmake.yml` (Linux x86_64, native ARM Linux, macOS, MSVC x64) and
+  `wayland.yml` (Wayland-only build, X11 regression, clap-validator and pluginval runs with no
+  external package repositories). Formats, UI types and architectures that are not shipped are not
+  built: no 32-bit anything, no macOS Intel, no MinGW, no Cairo or GLES UI legs.
 
 
 ## Licensing
