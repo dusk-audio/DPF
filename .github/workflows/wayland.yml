@@ -400,7 +400,11 @@ jobs:
                 for name in sorted(failed - baseline):
                     print('::error::%s: %s failed: %s' % (subject, name, details[name]))
                     status = 1
-                for name in sorted(baseline - failed):
+                # Only a baselined test that actually reported success has stopped needing its
+                # entry. "not in failed" is not the same thing: it also covers a test that
+                # crashed, that was skipped for want of preconditions, or that is missing from
+                # the report entirely because it was renamed upstream.
+                for name in sorted(n for n in baseline if codes.get(n) == 'success'):
                     print('::notice::%s: %s now passes, drop it from KNOWN_FAILURES' % (subject, name))
                 # Surfaced, not fatal: 'warning' is reserved for timing-dependent tests, and
                 # 'skipped' means the preconditions were not met on this runner.
