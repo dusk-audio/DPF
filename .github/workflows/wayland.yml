@@ -63,6 +63,9 @@ jobs:
     #   egl                                         -> libegl-dev
     #   gl                                          -> libgl-dev       (HAVE_OPENGL; the Wayland arm still
     #                                                                   calls desktop GL entry points)
+    #   glesv2                                      -> libgles-dev     (the GLES3 linkage step below links
+    #                                                                   libGLESv2 instead of libGL; drags in
+    #                                                                   no X11 development files)
     # Deliberately absent: libcairo2-dev. cairo.pc has `Requires.private: x11 xext xrender xcb ...`, so on
     # Debian/Ubuntu Cairo development files cannot exist without X11 development files. HAVE_CAIRO is
     # therefore expected to be No here and dgl builds its gles2/gles3/opengl/opengl3/stub variants only.
@@ -75,7 +78,7 @@ jobs:
         apt-get update -qq
         apt-get install -yq --no-install-recommends \
           build-essential ca-certificates git pkg-config \
-          libegl-dev libgl-dev libwayland-dev libxkbcommon-dev
+          libegl-dev libgl-dev libgles-dev libwayland-dev libxkbcommon-dev
     # Build dependencies for the source-built Cairo the tail of this job needs; see the long comment
     # down there for what it is for and why the distro package cannot be used.
     #
@@ -123,7 +126,7 @@ jobs:
             status=1
           fi
         done
-        for mod in egl gl wayland-client wayland-cursor wayland-egl xkbcommon; do
+        for mod in egl gl glesv2 wayland-client wayland-cursor wayland-egl xkbcommon; do
           if ! pkg-config --exists $mod; then
             echo "::error::${mod}.pc is missing, the Wayland arm cannot be selected"
             status=1
