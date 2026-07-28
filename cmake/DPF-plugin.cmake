@@ -144,46 +144,72 @@ function(dpf_add_plugin NAME)
     message(FATAL_ERROR "UI_TYPE ${_dpf_plugin_UI_TYPE} is not supported on macOS, use opengl3 instead")
   endif()
 
+  # Plain booleans, not the $<BOOL:...> generator expressions these used to pass: the
+  # dpf__add_dgl_* functions test their arguments with if(), which sees any generator expression
+  # as a non-empty string and therefore always took the "enabled" branch. That silently ignored
+  # NO_SHARED_RESOURCES and turned the file browser and the web view on for every plugin, WebKit
+  # linkage included. All three options are fixed at configure time, so real booleans are all
+  # they need; the functions that do use these in a generator-expression context ($<BOOL:${...}>)
+  # are equally happy with TRUE/FALSE.
+  if(_dpf_plugin_NO_SHARED_RESOURCES)
+    set(_dpf_shared_resources FALSE)
+  else()
+    set(_dpf_shared_resources TRUE)
+  endif()
+
+  if(_dpf_plugin_USE_FILE_BROWSER)
+    set(_dpf_file_browser TRUE)
+  else()
+    set(_dpf_file_browser FALSE)
+  endif()
+
+  if(_dpf_plugin_USE_WEB_VIEW)
+    set(_dpf_web_view TRUE)
+  else()
+    set(_dpf_web_view FALSE)
+  endif()
+
   set(_dgl_library)
   if(_dpf_plugin_FILES_UI)
     if(_dpf_plugin_UI_TYPE STREQUAL "cairo")
-      dpf__add_dgl_cairo($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                         $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                         $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+      dpf__add_dgl_cairo(${_dpf_shared_resources}
+                         ${_dpf_file_browser}
+                         ${_dpf_web_view})
       set(_dgl_library dgl-cairo)
     elseif(_dpf_plugin_UI_TYPE STREQUAL "external")
-      dpf__add_dgl_external($<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                            $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+      dpf__add_dgl_external(${_dpf_file_browser}
+                            ${_dpf_web_view})
       set(_dgl_library dgl-external)
     elseif(_dpf_plugin_UI_TYPE STREQUAL "gles2")
-      dpf__add_dgl_gles2($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                         $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                         $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+      dpf__add_dgl_gles2(${_dpf_shared_resources}
+                         ${_dpf_file_browser}
+                         ${_dpf_web_view})
       set(_dgl_library dgl-gles2)
     elseif(_dpf_plugin_UI_TYPE STREQUAL "gles3")
-      dpf__add_dgl_gles3($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                         $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                         $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+      dpf__add_dgl_gles3(${_dpf_shared_resources}
+                         ${_dpf_file_browser}
+                         ${_dpf_web_view})
       set(_dgl_library dgl-gles3)
     elseif(_dpf_plugin_UI_TYPE STREQUAL "opengl")
-      dpf__add_dgl_opengl($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                          $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                          $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+      dpf__add_dgl_opengl(${_dpf_shared_resources}
+                          ${_dpf_file_browser}
+                          ${_dpf_web_view})
       set(_dgl_library dgl-opengl)
     elseif(_dpf_plugin_UI_TYPE STREQUAL "opengl3")
-      dpf__add_dgl_opengl3($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                           $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                           $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+      dpf__add_dgl_opengl3(${_dpf_shared_resources}
+                           ${_dpf_file_browser}
+                           ${_dpf_web_view})
       set(_dgl_library dgl-opengl3)
     elseif(_dpf_plugin_UI_TYPE STREQUAL "vulkan")
-      dpf__add_dgl_vulkan($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                          $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                          $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+      dpf__add_dgl_vulkan(${_dpf_shared_resources}
+                          ${_dpf_file_browser}
+                          ${_dpf_web_view})
       set(_dgl_library dgl-vulkan)
     elseif(_dpf_plugin_UI_TYPE STREQUAL "webview")
       set(_dpf_plugin_USE_WEB_VIEW TRUE)
-      dpf__add_dgl_external($<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                            $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+      set(_dpf_web_view TRUE)
+      dpf__add_dgl_external(${_dpf_file_browser}
+                            ${_dpf_web_view})
       set(_dgl_library dgl-external)
     else()
       message(FATAL_ERROR "Unrecognized UI type for plugin: ${_dpf_plugin_UI_TYPE}")
@@ -334,45 +360,71 @@ function(dpf_add_executable NAME)
     message(FATAL_ERROR "UI_TYPE ${_dpf_plugin_UI_TYPE} is not supported on macOS, use opengl3 instead")
   endif()
 
+  # Plain booleans, not the $<BOOL:...> generator expressions these used to pass: the
+  # dpf__add_dgl_* functions test their arguments with if(), which sees any generator expression
+  # as a non-empty string and therefore always took the "enabled" branch. That silently ignored
+  # NO_SHARED_RESOURCES and turned the file browser and the web view on for every plugin, WebKit
+  # linkage included. All three options are fixed at configure time, so real booleans are all
+  # they need; the functions that do use these in a generator-expression context ($<BOOL:${...}>)
+  # are equally happy with TRUE/FALSE.
+  if(_dpf_plugin_NO_SHARED_RESOURCES)
+    set(_dpf_shared_resources FALSE)
+  else()
+    set(_dpf_shared_resources TRUE)
+  endif()
+
+  if(_dpf_plugin_USE_FILE_BROWSER)
+    set(_dpf_file_browser TRUE)
+  else()
+    set(_dpf_file_browser FALSE)
+  endif()
+
+  if(_dpf_plugin_USE_WEB_VIEW)
+    set(_dpf_web_view TRUE)
+  else()
+    set(_dpf_web_view FALSE)
+  endif()
+
   set(_dgl_library)
   if(_dpf_plugin_UI_TYPE STREQUAL "cairo")
-    dpf__add_dgl_cairo($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                       $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                       $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+    dpf__add_dgl_cairo(${_dpf_shared_resources}
+                       ${_dpf_file_browser}
+                       ${_dpf_web_view})
     set(_dgl_library dgl-cairo)
   elseif(_dpf_plugin_UI_TYPE STREQUAL "external")
-    dpf__add_dgl_external($<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                          $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+    dpf__add_dgl_external(${_dpf_file_browser}
+                          ${_dpf_web_view})
     set(_dgl_library dgl-external)
   elseif(_dpf_plugin_UI_TYPE STREQUAL "gles2")
-    dpf__add_dgl_gles2($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                       $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                       $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+    dpf__add_dgl_gles2(${_dpf_shared_resources}
+                       ${_dpf_file_browser}
+                       ${_dpf_web_view})
     set(_dgl_library dgl-gles2)
   elseif(_dpf_plugin_UI_TYPE STREQUAL "gles3")
-    dpf__add_dgl_gles3($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                       $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                       $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+    dpf__add_dgl_gles3(${_dpf_shared_resources}
+                       ${_dpf_file_browser}
+                       ${_dpf_web_view})
     set(_dgl_library dgl-gles3)
   elseif(_dpf_plugin_UI_TYPE STREQUAL "opengl")
-    dpf__add_dgl_opengl($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                        $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                        $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+    dpf__add_dgl_opengl(${_dpf_shared_resources}
+                        ${_dpf_file_browser}
+                        ${_dpf_web_view})
     set(_dgl_library dgl-opengl)
   elseif(_dpf_plugin_UI_TYPE STREQUAL "opengl3")
-    dpf__add_dgl_opengl3($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                         $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                         $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+    dpf__add_dgl_opengl3(${_dpf_shared_resources}
+                         ${_dpf_file_browser}
+                         ${_dpf_web_view})
     set(_dgl_library dgl-opengl3)
   elseif(_dpf_plugin_UI_TYPE STREQUAL "vulkan")
-    dpf__add_dgl_vulkan($<NOT:$<BOOL:${_dpf_plugin_NO_SHARED_RESOURCES}>>
-                        $<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                        $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+    dpf__add_dgl_vulkan(${_dpf_shared_resources}
+                        ${_dpf_file_browser}
+                        ${_dpf_web_view})
     set(_dgl_library dgl-vulkan)
   elseif(_dpf_plugin_UI_TYPE STREQUAL "webview")
     set(_dpf_plugin_USE_WEB_VIEW TRUE)
-    dpf__add_dgl_external($<BOOL:${_dpf_plugin_USE_FILE_BROWSER}>
-                          $<BOOL:${_dpf_plugin_USE_WEB_VIEW}>)
+    set(_dpf_web_view TRUE)
+    dpf__add_dgl_external(${_dpf_file_browser}
+                          ${_dpf_web_view})
     set(_dgl_library dgl-external)
   else()
     message(FATAL_ERROR "Unrecognized UI type for executable: ${_dpf_plugin_UI_TYPE}")
@@ -1603,7 +1655,9 @@ function(dpf__add_dgl_system_libs)
       endif()
       if(X11_XSync_FOUND)
         target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_XSYNC")
-        target_link_libraries(dgl-system-libs INTERFACE "${X11_XSync_LIB}")
+        # FindX11 only looks for X11/extensions/sync.h here and defines no X11_XSync_LIB: the XSync
+        # entry points live in libXext, so that is what has to be linked.
+        target_link_libraries(dgl-system-libs INTERFACE "${X11_Xext_LIB}")
       endif()
       message(STATUS "DGL windowing backend: X11")
     else()
