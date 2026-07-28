@@ -56,8 +56,9 @@ extern "C" {
 //    Most init() / deinit() pairs we have seen are the relatively trivial {return true;} and {}. But
 //    if your init() function does non-trivial one time work, the plugin author must maintain a counter
 //    and must manage a mutex lock. The most obvious implementation will maintain a static counter and a
-//    global mutex, increment the counter on each init, decrement it on each deinit, and only undertake
-//    the init or deinit action when the counter is zero.
+//    global mutex, undertake the init action when the counter is zero and then increment it on each
+//    init, and on each deinit decrement the counter first and undertake the deinit action only when
+//    the resulting count is zero.
 typedef struct clap_plugin_entry {
    clap_version_t clap_version; // initialized to CLAP_VERSION
 

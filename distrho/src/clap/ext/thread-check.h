@@ -18,7 +18,7 @@ extern "C" {
 ///    On macOS and Windows, this must be the thread on which gui and timer events are received
 ///    (i.e., the main thread of the program).
 ///    It isn't a realtime thread, yet this thread needs to respond fast enough to allow responsive
-///    user interaction, so it is strongly recommended plugins run long,and expensive or blocking
+///    user interaction, so it is strongly recommended that plugins run long, expensive or blocking
 ///    tasks such as preset indexing or asset loading in dedicated background threads started by the
 ///    plugin.
 ///
@@ -29,7 +29,7 @@ extern "C" {
 ///    mutexes, I/O, waiting, and so forth.
 ///
 ///    The audio-thread is symbolic, there isn't one OS thread that remains the
-///    audio-thread for the plugin lifetime. A host is may opt to have a
+///    audio-thread for the plugin lifetime. A host may opt to have a
 ///    thread pool and the plugin.process() call may be scheduled on different OS threads over time.
 ///    However, the host must guarantee that single plugin instance will not be two audio-threads
 ///    at the same time.
@@ -55,10 +55,10 @@ extern "C" {
 ///    main-thread.
 ///
 ///    Only a few extensions use the background thread and in a very explicit way. If
-///    the plugin implement a background interfaces, it must take the necessary thread-safety
+///    the plugin implements a background interface, it must take the necessary thread-safety
 ///    precautions.
 ///
-///    It is the host's responsiblity to execute background operations in a way that guarentee
+///    It is the host's responsibility to execute background operations in a way that guarantees
 ///    a race-free and deterministic execution.
 ///
 ///  Clap also tags some functions as [thread-safe]. Functions tagged as [thread-safe] can be called
