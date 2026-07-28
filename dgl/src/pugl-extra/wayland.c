@@ -501,13 +501,16 @@ puglWaylandFrameDone(void* const               data,
   PuglView* const      view = (PuglView*)data;
   PuglInternals* const impl = view->impl;
 
-  wl_callback_destroy(callback);
-
-  impl->frameCallbackWorks = true;
-
+  /* Compare before destroying: once the proxy is freed the pointer is dead, and reading it back
+     (even just to compare) is undefined.  puglWaylandCanDraw() can have dropped a stale callback
+     and started another one, so this really can be a different object than the one we track. */
   if (impl->frameCallback == callback) {
     impl->frameCallback = NULL;
   }
+
+  wl_callback_destroy(callback);
+
+  impl->frameCallbackWorks = true;
 
   if (impl->needsRedisplay) {
     impl->needsRedisplay = false;
@@ -1791,6 +1794,31 @@ puglWaylandDataDeviceOffer(void* const                  data,
   impl->unclaimedOffer = po;
 }
 
+/**
+   Take ownership of the offer the compositor introduced just before naming it here.
+
+   Deliberately not wl_data_offer_get_user_data(): puglWaylandDataDeviceOffer() destroys the proxy
+   outright when it cannot allocate the bookkeeping for it, and the enter/selection naming that same
+   offer still arrives afterwards, so the proxy handed over here is not guaranteed to be alive.  The
+   protocol always sends wl_data_device.data_offer immediately before the event that uses it, so the
+   one still held as unclaimed is the one being named -- and if it is not, it never will be.
+*/
+static PuglWaylandOffer*
+puglWaylandClaimOffer(PuglWorldInternals* const   impl,
+                      struct wl_data_offer* const offer)
+{
+  PuglWaylandOffer* const po = impl->unclaimedOffer;
+
+  impl->unclaimedOffer = NULL;
+
+  if (po && po->offer == offer) {
+    return po;
+  }
+
+  puglWaylandFreeOffer(po);
+  return NULL;
+}
+
 static void
 puglWaylandDataDeviceEnter(void* const                  data,
                            struct wl_data_device* const PUGL_UNUSED(device),
@@ -1808,11 +1836,11 @@ puglWaylandDataDeviceEnter(void* const                  data,
   impl->dndOffer = NULL;
 
   if (offer) {
-    wl_data_offer_accept(offer, serial, NULL);
-    impl->dndOffer = (PuglWaylandOffer*)wl_data_offer_get_user_data(offer);
+    impl->dndOffer = puglWaylandClaimOffer(impl, offer);
 
-    if (impl->unclaimedOffer == impl->dndOffer) {
-      impl->unclaimedOffer = NULL;
+    // only once the proxy is known to be one we are still holding, see puglWaylandClaimOffer
+    if (impl->dndOffer) {
+      wl_data_offer_accept(offer, serial, NULL);
     }
   }
 }
@@ -1857,13 +1885,9 @@ puglWaylandDataDeviceSelection(void* const                  data,
   impl->selectionOffer = NULL;
 
   if (offer) {
-    impl->selectionOffer =
-      (PuglWaylandOffer*)wl_data_offer_get_user_data(offer);
-
-    if (impl->unclaimedOffer == impl->selectionOffer) {
-      impl->unclaimedOffer = NULL;
-    }
+    impl->selectionOffer = puglWaylandClaimOffer(impl, offer);
   } else {
+    // The selection was cleared, so whatever offer was introduced for it is never going to be used
     puglWaylandFreeOffer(impl->unclaimedOffer);
     impl->unclaimedOffer = NULL;
   }

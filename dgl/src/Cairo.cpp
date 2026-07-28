@@ -868,6 +868,13 @@ void Window::PrivateData::destroyContext()
 
 void Window::PrivateData::startContext()
 {
+    // graphicsContext is a raw byte array sized by hand, so make outgrowing it a build error rather
+    // than a silent write over whatever Window::PrivateData keeps after it
+    static_assert(sizeof(CairoGraphicsContext) <= kGraphicsContextSize,
+                  "CairoGraphicsContext outgrew Window::PrivateData::graphicsContext, enlarge it");
+    static_assert(alignof(CairoGraphicsContext) <= kGraphicsContextAlign,
+                  "CairoGraphicsContext needs more alignment than Window::PrivateData::graphicsContext has");
+
     reinterpret_cast<CairoGraphicsContext&>(graphicsContext).handle = static_cast<cairo_t*>(puglGetContext(view));
 }
 
