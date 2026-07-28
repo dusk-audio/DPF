@@ -78,10 +78,10 @@ include(CMakeParseArguments)
 #       the user interface type, can be one of the following:
 #          - cairo
 #          - external
-#          - gles2
-#          - gles3
-#          - opengl (default)
-#          - opengl3
+#          - gles2 (not available on macOS)
+#          - gles3 (not available on macOS)
+#          - opengl (default everywhere except macOS)
+#          - opengl3 (default on macOS)
 #          - vulkan
 #          - webview
 #
@@ -122,8 +122,27 @@ function(dpf_add_plugin NAME)
   set(multiValueArgs FILES_COMMON FILES_DSP FILES_UI TARGETS)
   cmake_parse_arguments(_dpf_plugin "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
+  # macOS defaults to opengl3, every other platform keeps opengl. Mirrors the same default in
+  # Makefile.plugins.mk.
+  #
+  # WHY: UI_TYPE=opengl builds dgl/src/OpenGL2.cpp, which draws with glBegin/glEnd immediate mode, and makes
+  # dgl/src/pugl.cpp ask for a *compatibility* profile at version 2, which mac_gl.m turns into
+  # NSOpenGLProfileVersionLegacy -- the frozen OpenGL 2.1 context. Immediate mode exists in no replacement
+  # Apple has shipped or is likely to: ANGLE, Metal and every other GL-exit path speaks core profile only.
+  # opengl3 builds dgl/src/OpenGL3.cpp (shaders + VBOs, NANOVG_GL3) against NSOpenGLProfileVersion3_2Core,
+  # which is the only renderer with a future on macOS. An explicit UI_TYPE still wins.
   if("${_dpf_plugin_UI_TYPE}" STREQUAL "")
-    set(_dpf_plugin_UI_TYPE "opengl")
+    if(APPLE)
+      set(_dpf_plugin_UI_TYPE "opengl3")
+    else()
+      set(_dpf_plugin_UI_TYPE "opengl")
+    endif()
+  endif()
+
+  # There is no OpenGL ES on macOS; dgl/OpenGL-include.hpp errors out on DGL_USE_GLES for DISTRHO_OS_MAC.
+  # Caught here so the failure names the fix instead of surfacing as a preprocessor error inside DGL.
+  if(APPLE AND (_dpf_plugin_UI_TYPE STREQUAL "gles2" OR _dpf_plugin_UI_TYPE STREQUAL "gles3"))
+    message(FATAL_ERROR "UI_TYPE ${_dpf_plugin_UI_TYPE} is not supported on macOS, use opengl3 instead")
   endif()
 
   set(_dgl_library)
@@ -281,10 +300,10 @@ endfunction()
 #       the user interface type, can be one of the following:
 #          - cairo
 #          - external
-#          - gles2
-#          - gles3
-#          - opengl (default)
-#          - opengl3
+#          - gles2 (not available on macOS)
+#          - gles3 (not available on macOS)
+#          - opengl (default everywhere except macOS)
+#          - opengl3 (default on macOS)
 #          - vulkan
 #          - webview
 #
@@ -302,8 +321,18 @@ function(dpf_add_executable NAME)
   set(oneValueArgs UI_TYPE)
   cmake_parse_arguments(_dpf_plugin "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
+  # macOS defaults to opengl3; see the long rationale in dpf_add_plugin above.
   if("${_dpf_plugin_UI_TYPE}" STREQUAL "")
-    set(_dpf_plugin_UI_TYPE "opengl")
+    if(APPLE)
+      set(_dpf_plugin_UI_TYPE "opengl3")
+    else()
+      set(_dpf_plugin_UI_TYPE "opengl")
+    endif()
+  endif()
+
+  # There is no OpenGL ES on macOS; see dpf_add_plugin above.
+  if(APPLE AND (_dpf_plugin_UI_TYPE STREQUAL "gles2" OR _dpf_plugin_UI_TYPE STREQUAL "gles3"))
+    message(FATAL_ERROR "UI_TYPE ${_dpf_plugin_UI_TYPE} is not supported on macOS, use opengl3 instead")
   endif()
 
   set(_dgl_library)

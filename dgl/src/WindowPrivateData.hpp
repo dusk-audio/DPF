@@ -44,8 +44,10 @@ struct Window::PrivateData : IdleCallback {
     /** Pugl view instance. */
     PuglView* view;
 
-    /** Reserved space for graphics context. */
-    mutable uint8_t graphicsContext[sizeof(int) * 9];
+    /** Reserved space for graphics context.
+        Must be at least as large as the biggest *GraphicsContext in use, currently OpenGL3GraphicsContext:
+        program, color, bounds, textureMap, usingTexture, buffers[2], vao, width, height = 10 x GLuint. */
+    mutable uint8_t graphicsContext[sizeof(int) * 10];
     void createContextIfNeeded();
     void destroyContext();
     void startContext();

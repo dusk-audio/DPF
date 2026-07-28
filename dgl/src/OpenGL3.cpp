@@ -88,6 +88,13 @@ DGL_EXT(PFNGLUNIFORM1IPROC,                glUniform1i)
 DGL_EXT(PFNGLUNIFORM4FVPROC,               glUniform4fv)
 DGL_EXT(PFNGLUSEPROGRAMPROC,               glUseProgram)
 DGL_EXT(PFNGLVERTEXATTRIBPOINTERPROC,      glVertexAttribPointer)
+# ifndef DGL_USE_GLES2
+// vertex array objects, needed by every draw call in a core profile (see the note further down).
+// GLESv2 has none, so it does not load them.
+DGL_EXT(PFNGLBINDVERTEXARRAYPROC,          glBindVertexArray)
+DGL_EXT(PFNGLDELETEVERTEXARRAYSPROC,       glDeleteVertexArrays)
+DGL_EXT(PFNGLGENVERTEXARRAYSPROC,          glGenVertexArrays)
+# endif
 # undef DGL_EXT
 #endif
 
@@ -97,6 +104,56 @@ static void notImplemented(const char* const name)
 {
     d_stderr2("OpenGL3 function not implemented: %s", name);
 }
+
+// --------------------------------------------------------------------------------------------------------------------
+// Vertex array object handling
+//
+// An OpenGL 3.2+ *core* profile has no default vertex array object: name zero is not a valid VAO there, so
+// glVertexAttribPointer and every draw call made with nothing bound fail with GL_INVALID_OPERATION and the draw
+// is dropped without any other symptom. This bites on macOS in particular, where mac_gl.m maps a core profile
+// request straight to NSOpenGLProfileVersion3_2Core with no compatibility fallback. It does NOT bite on X11,
+// because pugl asks GLX for version 3.0 and GLX ignores the profile mask below 3.2, so Linux quietly hands back
+// a compatibility context where name zero still works -- which is why this went unnoticed.
+//
+// One VAO is created per graphics context in createContextIfNeeded() and destroyed in destroyContext(). It is
+// bound at the top of every drawing helper below rather than once per frame, because NanoVG's GL3 backend binds
+// its own VAO while flushing and leaves zero bound afterwards (nanovg_gl.h), so no binding survives a NanoVG
+// frame. Rebinding is a cheap state change and costs nothing per draw.
+//
+// GLESv2 has no vertex array objects at all (they only exist there via OES_vertex_array_object), and its name
+// zero is a real default, so this is compiled out entirely for GLESv2 -- matching NanoVG, which also guards its
+// glGenVertexArrays call away from the GLESv2 backend. GLESv3 does have them in core, so it uses them here.
+
+#ifdef DGL_USE_GLES2
+static inline void createVertexArray(OpenGL3GraphicsContext& gl3context) noexcept
+{
+    gl3context.vao = 0;
+}
+static inline void destroyVertexArray(OpenGL3GraphicsContext&) noexcept {}
+static inline void bindVertexArray(const OpenGL3GraphicsContext&) noexcept {}
+static inline void unbindVertexArray() noexcept {}
+#else
+static inline void createVertexArray(OpenGL3GraphicsContext& gl3context) noexcept
+{
+    glGenVertexArrays(1, &gl3context.vao);
+}
+static inline void destroyVertexArray(OpenGL3GraphicsContext& gl3context) noexcept
+{
+    if (gl3context.vao != 0)
+    {
+        glDeleteVertexArrays(1, &gl3context.vao);
+        gl3context.vao = 0;
+    }
+}
+static inline void bindVertexArray(const OpenGL3GraphicsContext& gl3context) noexcept
+{
+    glBindVertexArray(gl3context.vao);
+}
+static inline void unbindVertexArray() noexcept
+{
+    glBindVertexArray(0);
+}
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 // Color
@@ -124,6 +181,8 @@ void Line<T>::draw(const GraphicsContext& context, const T width)
 
     if (gl3context.program == 0)
         return;
+
+    bindVertexArray(gl3context);
 
     const GLfloat x1 = (static_cast<double>(posStart.x) / gl3context.width) * 2 - 1;
     const GLfloat y1 = (static_cast<double>(posStart.y) / gl3context.height) * -2 + 1;
@@ -185,6 +244,8 @@ static void drawCircle(const GraphicsContext& context,
     if (gl3context.program == 0)
         return;
 
+    bindVertexArray(gl3context);
+
     const double origx = static_cast<double>(pos.getX());
     const double origy = static_cast<double>(pos.getY());
     double t;
@@ -202,8 +263,14 @@ static void drawCircle(const GraphicsContext& context,
         y = sin * t + cos * y;
     }
 
+    // center position, used by the fill path as vertex numSegments; must be written before the upload
+    // below or the GPU copy keeps whatever garbage was in the array
+    vertices[numSegments * 2 + 0] = (origx / gl3context.width) * 2 - 1;
+    vertices[numSegments * 2 + 1] = (origy / gl3context.height) * -2 + 1;
+
     glBindBuffer(GL_ARRAY_BUFFER, gl3context.buffers[0]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * (numSegments + 1), vertices, GL_STREAM_DRAW);
+    // 2 floats per vertex, numSegments rim vertices plus the center
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * (numSegments + 1) * 2, vertices, GL_STREAM_DRAW);
     glEnableVertexAttribArray(gl3context.bounds);
     glVertexAttribPointer(gl3context.bounds, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl3context.buffers[1]);
@@ -223,10 +290,6 @@ static void drawCircle(const GraphicsContext& context,
     }
     else
     {
-        // center position
-        vertices[numSegments * 2 + 0] = (origx / gl3context.width) * 2 - 1;
-        vertices[numSegments * 2 + 1] = (origy / gl3context.height) * -2 + 1;
-
         GLushort order[MAX_CIRCLE_SEGMENTS * 3];
         for (uint i = 0; i < numSegments; ++i)
         {
@@ -297,6 +360,8 @@ static void drawTriangle(const GraphicsContext& context,
 
     if (gl3context.program == 0)
         return;
+
+    bindVertexArray(gl3context);
 
     const GLfloat x1 = (static_cast<double>(pos1.getX()) / gl3context.width) * 2 - 1;
     const GLfloat y1 = (static_cast<double>(pos1.getY()) / gl3context.height) * -2 + 1;
@@ -377,6 +442,8 @@ static void drawRectangle(const GraphicsContext& context, const Rectangle<T>& re
 
     if (gl3context.program == 0)
         return;
+
+    bindVertexArray(gl3context);
 
     const GLfloat x = (static_cast<double>(rect.getX()) / gl3context.width) * 2 - 1;
     const GLfloat y = (static_cast<double>(rect.getY()) / gl3context.height) * -2 + 1;
@@ -524,6 +591,8 @@ void OpenGLImage::drawAt(const GraphicsContext& context, const Point<int>& pos)
         setupOpenGLImage(*this, textureId);
         setupCalled = true;
     }
+
+    bindVertexArray(gl3context);
 
     const GLfloat x = (static_cast<double>(pos.getX()) / gl3context.width) * 2 - 1;
     const GLfloat y = (static_cast<double>(pos.getY()) / gl3context.height) * -2 + 1;
@@ -689,6 +758,8 @@ void ImageBaseKnob<OpenGLImage>::onDisplay()
 
     if (gl3context.program == 0)
         return;
+
+    bindVertexArray(gl3context);
 
     const ImageFormat imageFormat = pData->image.getFormat();
     const float normValue = getNormalizedValue();
@@ -903,6 +974,11 @@ DGL_EXT(PFNGLUNIFORM1IPROC,                glUniform1i)
 DGL_EXT(PFNGLUNIFORM4FVPROC,               glUniform4fv)
 DGL_EXT(PFNGLUSEPROGRAMPROC,               glUseProgram)
 DGL_EXT(PFNGLVERTEXATTRIBPOINTERPROC,      glVertexAttribPointer)
+# ifndef DGL_USE_GLES2
+DGL_EXT(PFNGLBINDVERTEXARRAYPROC,          glBindVertexArray)
+DGL_EXT(PFNGLDELETEVERTEXARRAYSPROC,       glDeleteVertexArrays)
+DGL_EXT(PFNGLGENVERTEXARRAYSPROC,          glGenVertexArrays)
+# endif
 # undef DGL_EXT
 # undef DGL_EXT2
     needsInit = false;
@@ -922,28 +998,52 @@ DGL_EXT(PFNGLVERTEXATTRIBPOINTERPROC,      glVertexAttribPointer)
     const GLuint program = glCreateProgram();
     DISTRHO_SAFE_ASSERT_RETURN(program != 0,);
 
+    // Shader dialect per header. The two shaders below are identical apart from the spelling of stage inputs,
+    // stage outputs, the fragment colour and the texture lookup, so those four are tokens rather than two full
+    // copies of every shader.
+    //
+    // "#version 100" (GLESv2) only has attribute/varying/gl_FragColor/texture2D.
+    // "#version 300 es" (GLESv3) only has in/out, a user-declared fragment output, and texture().
+    // "#version 150 core" (desktop GL3 core) is the same as GLESv3: attribute, varying, gl_FragColor and
+    // texture2D were deprecated in GLSL 1.30 and *removed* in the 1.40/1.50 core profile (GLSL 1.50.11 spec,
+    // "Summary of Deprecations and Removals" -- gl_FragColor and texture2D go in section 9, attribute and
+    // varying in section 8), so a conforming core-profile compiler rejects them. Writing the GLESv2 spelling
+    // under a "core" header, as this used to, is invalid GLSL even though Mesa accepts it -- which is exactly
+    // why it survived: X11 hands DGL a compatibility context, so Linux never compiled these shaders under a
+    // strict core-profile front end. Apple's does reject them, and macOS now defaults to this renderer.
    #if defined(DGL_USE_GLES2)
-    #define DGL_SHADER_HEADER "#version 100\n"
-   #elif defined(DGL_USE_GLES3)
-    #define DGL_SHADER_HEADER "#version 300 es\n"
+    #define DGL_SHADER_HEADER    "#version 100\n"
+    #define DGL_SHADER_IN        "attribute"    // vertex stage input
+    #define DGL_SHADER_VARY_OUT  "varying"      // vertex -> fragment, as written by the vertex shader
+    #define DGL_SHADER_VARY_IN   "varying"      // vertex -> fragment, as read by the fragment shader
+    #define DGL_SHADER_FRAG_DECL ""             // gl_FragColor is built in, nothing to declare
+    #define DGL_SHADER_FRAG_OUT  "gl_FragColor"
+    #define DGL_SHADER_TEXTURE   "texture2D"
    #else
-    #define DGL_SHADER_HEADER "#version 150 core\n"
+    #if defined(DGL_USE_GLES3)
+     #define DGL_SHADER_HEADER   "#version 300 es\n"
+    #else
+     #define DGL_SHADER_HEADER   "#version 150 core\n"
+    #endif
+    #define DGL_SHADER_IN        "in"
+    #define DGL_SHADER_VARY_OUT  "out"
+    #define DGL_SHADER_VARY_IN   "in"
+    #define DGL_SHADER_FRAG_DECL "out vec4 FragColor;"
+    #define DGL_SHADER_FRAG_OUT  "FragColor"
+    #define DGL_SHADER_TEXTURE   "texture"
    #endif
 
     {
+        // the default float precision statement is required by GLES fragment shaders and, since GLSL 1.30,
+        // accepted and ignored by desktop GL, so it can stay unconditional
         static constexpr const char* const src = DGL_SHADER_HEADER
             "precision mediump float;"
             "uniform vec4 color;"
             "uniform sampler2D stex;"
             "uniform bool texok;"
-           #ifdef DGL_USE_GLES3
-            "in vec2 vtex;"
-            "out vec4 FragColor;"
-            "void main() { FragColor = texok ? texture(stex, vtex) : color; }";
-           #else
-            "varying vec2 vtex;"
-            "void main() { gl_FragColor = texok ? texture2D(stex, vtex) : color; }";
-           #endif
+            DGL_SHADER_VARY_IN " vec2 vtex;"
+            DGL_SHADER_FRAG_DECL
+            "void main() { " DGL_SHADER_FRAG_OUT " = texok ? " DGL_SHADER_TEXTURE "(stex, vtex) : color; }";
 
         glShaderSource(fragment, 1, &src, nullptr);
         glCompileShader(fragment);
@@ -954,15 +1054,9 @@ DGL_EXT(PFNGLVERTEXATTRIBPOINTERPROC,      glVertexAttribPointer)
 
     {
         static constexpr const char* const src = DGL_SHADER_HEADER
-           #ifdef DGL_USE_GLES3
-            "in vec4 pos;"
-            "in vec2 tex;"
-            "out vec2 vtex;"
-           #else
-            "attribute vec4 pos;"
-            "attribute vec2 tex;"
-            "varying vec2 vtex;"
-           #endif
+            DGL_SHADER_IN " vec4 pos;"
+            DGL_SHADER_IN " vec2 tex;"
+            DGL_SHADER_VARY_OUT " vec2 vtex;"
             "void main() { gl_Position = pos; vtex = tex; }";
 
         glShaderSource(vertex, 1, &src, nullptr);
@@ -983,6 +1077,9 @@ DGL_EXT(PFNGLVERTEXATTRIBPOINTERPROC,      glVertexAttribPointer)
     DISTRHO_SAFE_ASSERT_RETURN(gl3context.buffers[0] != 0, contextCreationFail(program, fragment, vertex));
     DISTRHO_SAFE_ASSERT_RETURN(gl3context.buffers[1] != 0, contextCreationFail(program, fragment, vertex));
 
+    // no default vertex array object exists in a core profile, see the note near the top of this file
+    createVertexArray(gl3context);
+
     glDeleteShader(fragment);
     glDeleteShader(vertex);
 
@@ -1000,6 +1097,7 @@ void Window::PrivateData::destroyContext()
     if (gl3context.program == 0)
         return;
 
+    destroyVertexArray(gl3context);
     glDeleteBuffers(2, gl3context.buffers);
     glDeleteProgram(gl3context.program);
     gl3context.program = 0;
@@ -1013,10 +1111,14 @@ void Window::PrivateData::startContext()
     gl3context.width = size.width;
     gl3context.height = size.height;
     glUseProgram(gl3context.program);
+
+    // so that custom onDisplay() code drawing through context.bounds/buffers has a valid VAO bound too
+    bindVertexArray(gl3context);
 }
 
 void Window::PrivateData::endContext()
 {
+    unbindVertexArray();
     glUseProgram(0);
 }
 

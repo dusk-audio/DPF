@@ -150,8 +150,13 @@ TARGETS += $(BUILD_DIR)/libdgl-cairo.a
 endif
 
 ifeq ($(HAVE_OPENGL),true)
+# No GLES variants on macOS: Apple ships no GLES implementation, and dgl/OpenGL-include.hpp now errors out on
+# DGL_USE_GLES for DISTRHO_OS_MAC instead of silently #undef'ing it and building desktop GL3 behind your back.
+# Building these here would just be a guaranteed failure; there is no macOS product that could link them.
+ifneq ($(MACOS),true)
 TARGETS += $(BUILD_DIR)/libdgl-gles2.a
 TARGETS += $(BUILD_DIR)/libdgl-gles3.a
+endif
 TARGETS += $(BUILD_DIR)/libdgl-opengl.a
 TARGETS += $(BUILD_DIR)/libdgl-opengl3.a
 endif

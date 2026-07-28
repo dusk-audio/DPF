@@ -9,8 +9,10 @@
 # extra useful variables to define before including this file:
 # - DPF_BUILD_DIR: where to place temporary build files
 # - DPF_TARGET_DIR: where to place final binary files
-# - UI_TYPE: one of cairo, external, gles2, gles3, opengl, opengl3 or webview, with opengl being default
+# - UI_TYPE: one of cairo, external, gles2, gles3, opengl, opengl3 or webview.
+#            default is opengl everywhere except macOS, which defaults to opengl3 (see below for why).
 #            ("generic" is also allowed if only using basic DPF classes like image widgets)
+#            gles2/gles3 are not available on macOS at all.
 
 # override the "all" target after including this file to define which plugin formats to build, like so:
 # all: au clap jack lv2_sep vst2 vst3
@@ -46,6 +48,38 @@ else
 BASE_PATH = $(patsubst %/,%,$(dir $(DPF_PATH)))
 endif
 
+endif
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Pick the default UI_TYPE
+#
+# macOS defaults to opengl3, every other platform keeps opengl.
+#
+# WHY: UI_TYPE=opengl builds dgl/src/OpenGL2.cpp, which draws with glBegin/glEnd immediate mode, and makes
+# dgl/src/pugl.cpp ask for a *compatibility* profile at version 2. On macOS dgl/src/pugl-upstream/src/mac_gl.m
+# turns that request into NSOpenGLProfileVersionLegacy, i.e. the frozen OpenGL 2.1 context. Immediate mode
+# exists in no replacement Apple has ever shipped or is likely to: ANGLE, Metal and every other GL-exit path
+# speaks core profile (or an ES/Metal translation of it) only. Keeping opengl as the macOS default means every
+# plugin built here would have to be rewritten the day that context stops being handed out. opengl3 builds
+# dgl/src/OpenGL3.cpp (shaders + VBOs, NANOVG_GL3) and asks for core profile 3.x, which mac_gl.m maps to
+# NSOpenGLProfileVersion3_2Core -- the only renderer with a future on macOS, so it is what plugins get by
+# default there.
+#
+# An explicit UI_TYPE from a plugin Makefile or the environment still wins: this only fills in a blank.
+#
+# Platform detection is duplicated from Makefile.base.mk (same $(CC) -dumpmachine probe, same "already set by
+# the caller" guards) rather than reused, because base.mk is included further down but *consumes* the
+# USE_GLES2 / USE_GLES3 / USE_OPENGL3 variables that the UI_TYPE check right below sets. base.mk also guards
+# itself against multiple inclusion, so it cannot be included early and then again after the check. The
+# default therefore has to be resolved before the include.
+ifeq ($(UI_TYPE),)
+ifeq ($(MACOS),true)
+UI_TYPE = opengl3
+else ifeq (,$(filter true,$(BSD) $(HAIKU) $(HURD) $(LINUX) $(WASM) $(WINDOWS)))
+ifneq (,$(findstring apple,$(shell $(CC) -dumpmachine)))
+UI_TYPE = opengl3
+endif
+endif
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -208,7 +242,20 @@ ifeq ($(UI_TYPE),)
 ifeq ($(WASM),true)
 UI_TYPE = gles2
 else
+# NOTE macOS never reaches here with an empty UI_TYPE: its opengl3 default is resolved near the top of this
+#      file, before Makefile.base.mk is included, because base.mk reads USE_OPENGL3 and this block runs
+#      after it. Changing the macOS default here instead would silently drop -DDGL_USE_OPENGL3.
 UI_TYPE = opengl
+endif
+endif
+
+# There is no OpenGL ES on macOS. Apple never shipped a desktop GLES implementation, and dgl/OpenGL-include.hpp
+# has no GLES include path for DISTRHO_OS_MAC -- it used to silently #undef DGL_USE_GLES* and build desktop GL3
+# instead, so a "gles2" build on macOS quietly produced a non-GLES binary. That header now errors out, and this
+# check exists only to fail with a sentence a human can act on instead of a preprocessor error deep in DGL.
+ifeq ($(MACOS),true)
+ifneq (,$(filter $(UI_TYPE),gles2 gles3))
+$(error UI_TYPE=$(UI_TYPE) is not supported on macOS, use UI_TYPE=opengl3 instead)
 endif
 endif
 
