@@ -19,11 +19,20 @@ cmake_minimum_required(VERSION 3.8...3.31)
 # project() call. The default below only kicks in when DPF is the top-level project, and never
 # overrides an explicit choice.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
-   AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin"
    AND NOT DEFINED CMAKE_SYSTEM_NAME
    AND NOT CMAKE_OSX_DEPLOYMENT_TARGET
    AND NOT DEFINED ENV{MACOSX_DEPLOYMENT_TARGET})
-  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version to target")
+  # CMAKE_HOST_SYSTEM_NAME is filled in by CMakeDetermineSystem, which runs as part of project(),
+  # so it cannot be relied on this early. Ask the host directly instead; on hosts without uname
+  # (Windows) the call is a silent no-op and leaves the variable empty, which is fine here.
+  execute_process(COMMAND uname -s
+                  OUTPUT_VARIABLE DPF_HOST_UNAME
+                  OUTPUT_STRIP_TRAILING_WHITESPACE
+                  ERROR_QUIET)
+  if(DPF_HOST_UNAME STREQUAL "Darwin")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version to target")
+  endif()
+  unset(DPF_HOST_UNAME)
 endif()
 
 project(DPF)
@@ -54,11 +63,11 @@ if(DPF_LIBRARIES)
   if(PKG_CONFIG_FOUND)
     pkg_check_modules(CAIRO "cairo")
     if(CAIRO_FOUND AND (NOT HAIKU))
-      dpf__add_dgl_cairo(TRUE, TRUE, TRUE)
+      dpf__add_dgl_cairo(TRUE TRUE TRUE)
     endif()
   endif()
-  dpf__add_dgl_external(TRUE, TRUE)
-  dpf__add_dgl_opengl(TRUE, TRUE, TRUE)
+  dpf__add_dgl_external(TRUE TRUE)
+  dpf__add_dgl_opengl(TRUE TRUE TRUE)
 endif()
 
 if(DPF_EXAMPLES)
