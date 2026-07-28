@@ -48,10 +48,12 @@ to the *parent of the fork network*, which no git config can override. Guards in
 
 - `.vscode/settings.json` restricts the VS Code extension to the `origin` remote and stops it
   offering a PR after every push.
-- The repository should be detached from DISTRHO's fork network (GitHub → Settings → General →
-  Danger Zone → "Leave fork network"), which removes DISTRHO as a selectable base entirely.
-  `git fetch upstream` keeps working afterwards; the fork network and git remotes are unrelated.
-  Check with `gh api repos/dusk-audio/DPF --jq .fork` — it must report `false`.
+- The repository left DISTRHO's fork network on 2026-07-28, so DISTRHO is no longer a selectable
+  base anywhere in the UI: `gh api repos/dusk-audio/DPF --jq '{fork,parent}'` reports
+  `{"fork": false, "parent": null}`. This is a standalone repository now, not a fork of anything.
+  `git fetch upstream` is unaffected, as expected — the fork network and git remotes are unrelated.
+  If a future clone ever reports `"fork": true` again, something was re-created from the wrong
+  place.
 
 ## CI
 
