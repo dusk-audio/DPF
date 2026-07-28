@@ -382,8 +382,15 @@ jobs:
               ;;
           esac
         done
-        objdump -p "$CAIRO_PREFIX"/lib/libcairo.so.2.* | grep NEEDED
-        if objdump -p "$CAIRO_PREFIX"/lib/libcairo.so.2.* | grep -qE '[[:space:]](libX[a-zA-Z0-9]*|libxcb[a-z-]*)\.so'; then
+        # The trailing soname digits move with the Cairo version, so resolve the file instead of
+        # handing objdump a glob: an unmatched glob would reach it as a literal path and turn a
+        # missing library into an unexplained objdump failure.
+        lib=$(ls -1 "$CAIRO_PREFIX"/lib/libcairo.so.2.* 2>/dev/null | head -n 1)
+        [ -n "$lib" ] && [ -f "$lib" ] \
+          || { echo "::error::no libcairo.so.2.* in $CAIRO_PREFIX/lib, the Cairo build did not install a shared library"; exit 1; }
+        echo "libcairo: $lib"
+        objdump -p "$lib" | grep NEEDED
+        if objdump -p "$lib" | grep -qE '[[:space:]](libX[a-zA-Z0-9]*|libxcb[a-z-]*)\.so'; then
           echo "::error::libcairo.so links X11 libraries"
           status=1
         fi
@@ -435,7 +442,7 @@ jobs:
         fi
         ui=bin/d_cairoui.lv2/d_cairoui_ui.so
         [ -f "$ui" ] || { echo "::error::$ui was not built"; exit 1; }
-        objdump -p "$ui" | grep NEEDED > needed.txt
+        objdump -p "$ui" | grep NEEDED > needed.txt || true
         cat needed.txt
         for lib in libcairo.so.2 libwayland-client.so.0 libwayland-cursor.so.0 libxkbcommon.so.0; do
           grep -q "[[:space:]]${lib}\$" needed.txt \
@@ -571,6 +578,7 @@ jobs:
           bin/d_info.clap bin/d_latency.clap bin/d_meters.clap > report.json || true
         python3 - <<'PY'
         import json
+        import os
         import sys
 
         KNOWN_FAILURES = {
@@ -625,7 +633,11 @@ jobs:
 
         status = 0
 
-        missing = EXPECTED_LIBRARIES - set(libraries)
+        # Compared by basename: 0.3.2 echoes the paths it was given, but CLAP requires an absolute
+        # path in entry.init(), so a later version reporting canonicalized keys must not read as
+        # "library missing". Every expected library lives in bin/, so the names cannot collide.
+        reported = {os.path.basename(key) for key in libraries}
+        missing = {p for p in EXPECTED_LIBRARIES if os.path.basename(p) not in reported}
         if missing:
             print('::error::clap-validator did not report on %s' % ', '.join(sorted(missing)))
             status = 1
@@ -641,14 +653,27 @@ jobs:
                     status = 1
                     continue
                 baseline = KNOWN_FAILURES.get(subject, set())
-                failed = {t['name'] for t in tests if t['status']['code'] == 'failed'}
-                details = {t['name']: t['status'].get('details') or '' for t in tests}
+                # Read through .get rather than indexing: a report shape this does not understand
+                # must turn into a reported error, not a traceback and not a silent pass.
+                codes = {}
+                details = {}
+                for test in tests:
+                    name = test.get('name') if isinstance(test, dict) else None
+                    result = test.get('status') if isinstance(test, dict) else None
+                    code = result.get('code') if isinstance(result, dict) else None
+                    if not name or not code:
+                        print('::error::%s: unreadable test entry in the report: %r' % (subject, test))
+                        status = 1
+                        continue
+                    codes[name] = code
+                    details[name] = (result.get('details') or '')
+                failed = {name for name, code in codes.items() if code == 'failed'}
                 for name in sorted(failed - baseline):
                     print('::error::%s: %s failed: %s' % (subject, name, details[name]))
                     status = 1
                 for name in sorted(baseline - failed):
                     print('::notice::%s: %s now passes, drop it from KNOWN_FAILURES' % (subject, name))
-                passed = sum(1 for t in tests if t['status']['code'] == 'success')
+                passed = sum(1 for code in codes.values() if code == 'success')
                 print('%s: %d tests, %d passed, %d failed (%d baselined)'
                       % (subject, len(tests), passed, len(failed), len(failed & baseline)))
 
@@ -749,9 +774,11 @@ jobs:
           [ -f "$bundle/manifest.ttl" ] \
             || { echo "::error::$bundle has no manifest.ttl, ttl generation did not run"; exit 1; }
         done
-        lv2_validate bin/*.lv2/*.ttl > lv2_validate.log 2>&1 || true
+        rc=0
+        lv2_validate bin/*.lv2/*.ttl > lv2_validate.log 2>&1 || rc=$?
         cat lv2_validate.log
-        python3 - <<'PY'
+        LV2_VALIDATE_RC="$rc" python3 - <<'PY'
+        import os
         import re
         import sys
 
@@ -786,6 +813,20 @@ jobs:
 
         status = 0
         baselined = 0
+
+        # The exit status is ignored above because it also fires on the baselined diagnostics, but it
+        # is the only signal left when the run failed without printing anything this parser
+        # recognises - an unreadable file, a crash, a usage error. Green on no output would mean the
+        # turtle was never validated at all.
+        try:
+            rc = int(os.environ.get('LV2_VALIDATE_RC') or 0)
+        except ValueError:
+            rc = 1
+        if rc and not records:
+            print('::error::lv2_validate exited %d without a single parseable diagnostic, '
+                  'see the log above' % rc)
+            status = 1
+
         for record in records:
             text = ' '.join('\n'.join(record).split())
             if record[0].startswith('warning:'):

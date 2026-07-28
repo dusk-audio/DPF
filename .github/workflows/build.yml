@@ -143,9 +143,9 @@ jobs:
     # dgl/OpenGL-include.hpp includes <GL/gl.h> + <GL/glext.h> on Linux regardless of DGL_USE_GLES. Verified
     # locally: a UI_TYPE=gles2 or gles3 build of examples/Parameters from this workflow's configuration has
     # DT_NEEDED libGL.so.1 + libX11.so.6 and no libGLESv2 at all. Configurations that DO reach a genuine GLES
-    # driver exist outside this workflow: a Wayland-only build with UI_TYPE=gles2/gles3 links libGLESv2
-    # (Makefile.base.mk selects glesv2 on that arm; runtime-verified locally, though no CI job covers it yet),
-    # and the wasm/emscripten target forces USE_GLES2 onto WebGL, which this fork does not build in CI either.
+    # driver exist outside this workflow: wayland.yml verifies that a Wayland-only UI_TYPE=gles3 build
+    # selects the GLES3 sources and links libGLESv2 (it does not launch a compositor or exercise the runtime),
+    # and the wasm/emscripten target forces USE_GLES2 onto WebGL, which this fork does not build in CI.
     # Treat these two legs as build guards for the #ifdef branches, not as GLES conformance.
     - name: With UI_TYPE=gles2
       if: ${{ runner.os == 'Linux' }}
