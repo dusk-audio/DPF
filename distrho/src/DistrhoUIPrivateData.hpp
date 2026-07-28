@@ -54,6 +54,18 @@
 # define DISTRHO_UI_USES_SIZE_REQUEST 0
 #endif
 
+// NOTE: the AU override below clobbers the plugin's requested value, which is unrecoverable
+//       afterwards. The AU wrapper still needs it to tell the host whether the plugin window may
+//       be resized at all (see DistrhoUIAU.mm), so stash it first. Expand eagerly, a lazy alias
+//       would just resolve to the 0 below at its point of use.
+#if defined(DISTRHO_PLUGIN_TARGET_AU)
+# if DISTRHO_UI_USER_RESIZABLE
+#  define DISTRHO_UI_USER_RESIZABLE_AS_REQUESTED 1
+# else
+#  define DISTRHO_UI_USER_RESIZABLE_AS_REQUESTED 0
+# endif
+#endif
+
 #if defined(DISTRHO_PLUGIN_TARGET_AU) || defined(DISTRHO_PLUGIN_TARGET_VST2)
 # undef DISTRHO_UI_USER_RESIZABLE
 # define DISTRHO_UI_USER_RESIZABLE 0
@@ -180,7 +192,8 @@ public:
             puglBackendEnter(pData->view);
     }
 
-   #if DISTRHO_UI_USES_SIZE_REQUEST
+    // NOTE: AU has no size request/negotiation, but hosts do resize the parent view on their own
+   #if DISTRHO_UI_USES_SIZE_REQUEST || defined(DISTRHO_PLUGIN_TARGET_AU)
     void setSizeFromHost(const uint width, const uint height)
     {
         puglSetSizeAndDefault(pData->view, width, height);
