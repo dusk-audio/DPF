@@ -164,6 +164,7 @@ Known limitations
 
 * **Vulkan is not implemented** (DGL's Vulkan drawing layer is a stub anyway).
 
-* **getDesktopScaleFactor() returns 1.0** on Wayland, in distrho/src/DistrhoUI.cpp. There is no
-  window-independent scale to query before a surface exists; the real value arrives through
-  puglGetScaleFactor() once the window maps, and DGL picks it up from the configure event.
+* **getDesktopScaleFactor() returns the "unknown" sentinel** on Wayland, in
+  distrho/src/DistrhoUI.cpp. There is no window-independent scale to query before a surface exists;
+  the real value arrives through puglGetScaleFactor() once the window maps, and DGL picks it up from
+  the configure event. A host-provided scale or DPF_SCALE_FACTOR remains authoritative.

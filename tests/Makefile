@@ -51,6 +51,10 @@ UNIT_TESTS   += Window.vulkan
 endif
 endif
 
+ifeq ($(DGL_BACKEND_WAYLAND),true)
+UNIT_TESTS   += Wayland
+endif
+
 MANUAL_TARGETS = $(MANUAL_TESTS:%=../build/tests/%$(APP_EXT))
 UNIT_TARGET    = $(UNIT_TESTS:%=../build/tests/%$(APP_EXT))
 

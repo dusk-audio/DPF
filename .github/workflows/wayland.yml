@@ -149,6 +149,10 @@ jobs:
     - name: Build DGL
       run: |
         make -C dgl -j$(nproc)
+    - name: Run Wayland backend unit tests
+      run: |
+        make -C tests ../build/tests/Wayland -j$(nproc)
+        ./build/tests/Wayland
     # Config-level detection can be right while the objects still come out wrong, so check the link-time
     # view too: the Wayland backend must be what actually got compiled in.
     - name: Verify the built objects use the Wayland backend

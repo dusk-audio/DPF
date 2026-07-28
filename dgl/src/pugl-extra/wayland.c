@@ -203,6 +203,34 @@ puglWaylandDamageSurface(struct wl_surface* const surface,
 // --------------------------------------------------------------------------------------------
 // Pending event accumulation (mirrors the x11 backend)
 
+static bool
+puglWaylandClipExpose(PuglExposeEvent* const event,
+                      const PuglArea         viewSize,
+                      const int              x,
+                      const int              y,
+                      const unsigned         width,
+                      const unsigned         height)
+{
+  const int32_t left   = MAX(0, x);
+  const int32_t top    = MAX(0, y);
+  const int32_t right  = MIN((int32_t)viewSize.width, x + (int32_t)width);
+  const int32_t bottom = MIN((int32_t)viewSize.height, y + (int32_t)height);
+
+  if (right <= left || bottom <= top) {
+    return false;
+  }
+
+  const PuglExposeEvent clipped = {PUGL_EXPOSE,
+                                   0U,
+                                   (PuglCoord)left,
+                                   (PuglCoord)top,
+                                   (PuglSpan)(right - left),
+                                   (PuglSpan)(bottom - top)};
+
+  *event = clipped;
+  return true;
+}
+
 static void
 mergeExposeEvents(PuglExposeEvent* const dst, const PuglExposeEvent* const src)
 {
@@ -832,9 +860,43 @@ puglWaylandOutputMode(void* const             PUGL_UNUSED(data),
 }
 
 static void
-puglWaylandOutputDone(void* const             PUGL_UNUSED(data),
+puglWaylandOutputDone(void* const             data,
                       struct wl_output* const PUGL_UNUSED(output))
 {
+  PuglWaylandOutput* const out = (PuglWaylandOutput*)data;
+
+  if (!out->scaleChanged) {
+    return;
+  }
+
+  out->scaleChanged = false;
+
+  if (!out->wimpl || !out->wimpl->world) {
+    return;
+  }
+
+  PuglWorld* const world = out->wimpl->world;
+  for (size_t i = 0; i < world->numViews; ++i) {
+    PuglView* const view = world->views[i];
+    if (!view || !view->impl) {
+      continue;
+    }
+
+    PuglInternals* const impl    = view->impl;
+    bool                 entered = false;
+    for (uint32_t j = 0; j < impl->numEnteredOutputs; ++j) {
+      if (impl->enteredOutputs[j] == out->output) {
+        entered = true;
+        break;
+      }
+    }
+
+    if (entered && puglWaylandUpdateScale(view) && impl->configured) {
+      puglWaylandSetSize(view, impl->requestedLogicalSize);
+      puglWaylandQueueConfigure(view);
+      puglWaylandQueueFullExpose(view);
+    }
+  }
 }
 
 static void
@@ -843,8 +905,12 @@ puglWaylandOutputScale(void* const             data,
                        const int32_t           factor)
 {
   PuglWaylandOutput* const out = (PuglWaylandOutput*)data;
+  const int32_t             nextScale = factor > 0 ? factor : 1;
 
-  out->scale = factor > 0 ? factor : 1;
+  if (out->scale != nextScale) {
+    out->scale        = nextScale;
+    out->scaleChanged = true;
+  }
 }
 
 #if defined(WL_OUTPUT_NAME_SINCE_VERSION)
@@ -1850,19 +1916,31 @@ static const struct wl_data_device_listener puglWaylandDataDeviceListener = {
   puglWaylandDataDeviceDrop,
   puglWaylandDataDeviceSelection};
 
-/// Append whatever is readable to a receive in progress; sets done at end of stream
+/// Append whatever is readable to a receive in progress; sets done at end of stream or on failure
 static void
 puglWaylandRecvRead(PuglWaylandPipeRecv* const recv)
 {
-  if (recv->done || recv->failed) {
+  if (recv->done || recv->status) {
     return;
   }
 
   if (recv->len == recv->capacity) {
     if (recv->capacity >= (size_t)PUGL_WAYLAND_CLIPBOARD_MAX_SIZE) {
-      // Buffer is full at the ceiling and the peer is still writing, so give up on the transfer
-      recv->failed = true;
-      recv->done   = true;
+      /* Probe once past the ceiling so an exactly-full transfer can still finish successfully.
+         Any additional byte means the payload is too large and the transfer must be rejected. */
+      uint8_t       excess = 0U;
+      const ssize_t n      = read(recv->fd, &excess, 1U);
+
+      if (n > 0) {
+        recv->status = PUGL_FAILURE;
+        recv->done   = true;
+      } else if (n == 0) {
+        recv->done = true;
+      } else if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+        recv->status = PUGL_UNKNOWN_ERROR;
+        recv->done   = true;
+      }
+
       return;
     }
 
@@ -1871,7 +1949,7 @@ puglWaylandRecvRead(PuglWaylandPipeRecv* const recv)
     uint8_t* const grown = (uint8_t*)realloc(recv->buffer, capacity);
 
     if (!grown) {
-      recv->failed = true;
+      recv->status = PUGL_NO_MEMORY;
       recv->done   = true;
       return;
     }
@@ -1888,8 +1966,28 @@ puglWaylandRecvRead(PuglWaylandPipeRecv* const recv)
   } else if (n == 0) {
     recv->done = true; // Writer closed the pipe, transfer complete
   } else if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
-    recv->done = true;
+    recv->status = PUGL_UNKNOWN_ERROR;
+    recv->done   = true;
   }
+}
+
+static PuglStatus
+puglWaylandReceiveStatus(const PuglWaylandPipeRecv* const recv,
+                         const PuglStatus                  loopStatus)
+{
+  if (recv->status) {
+    return recv->status;
+  }
+
+  if (recv->done) {
+    return PUGL_SUCCESS;
+  }
+
+  if (loopStatus) {
+    return loopStatus;
+  }
+
+  return PUGL_FAILURE;
 }
 
 static void
@@ -2025,6 +2123,9 @@ puglWaylandDataSourceSend(void* const                  data,
 
       if (alsoRecv && (pfds[1].revents & (POLLIN | POLLERR | POLLHUP))) {
         puglWaylandRecvRead(recv);
+        if (recv->status) {
+          break;
+        }
       }
 
       if (ret > 0 && !(pfds[0].revents & POLLOUT) &&
@@ -2226,7 +2327,7 @@ puglWaylandReadPipe(PuglWorldInternals* const impl,
   recv.capacity = 4096U;
   recv.len      = 0U;
   recv.done     = false;
-  recv.failed   = false;
+  recv.status   = PUGL_SUCCESS;
   recv.buffer   = (uint8_t*)malloc(recv.capacity);
 
   if (!recv.buffer) {
@@ -2251,9 +2352,16 @@ puglWaylandReadPipe(PuglWorldInternals* const impl,
   const int64_t deadline =
     puglWaylandMonotonicMs() + PUGL_WAYLAND_CLIPBOARD_RECV_TIMEOUT_MS;
 
+  PuglStatus status = PUGL_SUCCESS;
+
   while (!recv.done) {
     // Same prepare_read/poll/read_events dance as puglWaylandDispatchEvents, plus the pipe
     if (wl_display_dispatch_pending(display) < 0) {
+      status = PUGL_UNKNOWN_ERROR;
+      break;
+    }
+
+    if (recv.done || recv.status) {
       break;
     }
 
@@ -2261,23 +2369,30 @@ puglWaylandReadPipe(PuglWorldInternals* const impl,
     while (wl_display_prepare_read(display) != 0) {
       if (wl_display_dispatch_pending(display) < 0) {
         readPrepared = false;
+        status       = PUGL_UNKNOWN_ERROR;
+        break;
+      }
+
+      if (recv.done || recv.status) {
         break;
       }
     }
 
-    if (!readPrepared) {
+    if (!readPrepared || recv.done || recv.status) {
       break;
     }
 
     if (wl_display_flush(display) < 0 && errno != EAGAIN) {
       wl_display_cancel_read(display);
+      status = PUGL_UNKNOWN_ERROR;
       break;
     }
 
     const int64_t now = puglWaylandMonotonicMs();
     if (now >= deadline) {
       wl_display_cancel_read(display);
-      break; // Timed out, take what we have
+      status = PUGL_FAILURE;
+      break;
     }
 
     struct pollfd pfds[2];
@@ -2295,17 +2410,20 @@ puglWaylandReadPipe(PuglWorldInternals* const impl,
       if (errno == EINTR) {
         continue;
       }
+      status = PUGL_UNKNOWN_ERROR;
       break;
     }
 
     if (ret == 0) {
       wl_display_cancel_read(display);
-      break; // Timed out, take what we have
+      status = PUGL_FAILURE;
+      break;
     }
 
     if (pfds[1].revents & (POLLIN | POLLERR | POLLHUP)) {
       // On failure read_events releases the read intent itself, so no cancel here
       if (wl_display_read_events(display) < 0) {
+        status = PUGL_UNKNOWN_ERROR;
         break;
       }
     } else {
@@ -2315,6 +2433,7 @@ puglWaylandReadPipe(PuglWorldInternals* const impl,
     /* This is what lets a self-paste complete: our own wl_data_source.send handler runs from here,
        and for anything bigger than the pipe buffer it drains recv itself as it goes. */
     if (wl_display_dispatch_pending(display) < 0) {
+      status = PUGL_UNKNOWN_ERROR;
       break;
     }
 
@@ -2322,14 +2441,20 @@ puglWaylandReadPipe(PuglWorldInternals* const impl,
       puglWaylandRecvRead(&recv);
     }
 
-    if (recv.failed) {
-      free(recv.buffer);
-      impl->activeRecv = previousRecv;
-      return PUGL_NO_MEMORY;
+    if (recv.status) {
+      status = recv.status;
+      break;
     }
   }
 
   impl->activeRecv = previousRecv;
+
+  status = puglWaylandReceiveStatus(&recv, status);
+
+  if (status) {
+    free(recv.buffer);
+    return status;
+  }
 
   const PuglStatus st = puglSetBlob(out, recv.buffer, recv.len);
   free(recv.buffer);
@@ -2519,8 +2644,10 @@ puglWaylandRegistryGlobal(void* const               data,
         name,
         &wl_output_interface,
         MIN(version, PUGL_WAYLAND_OUTPUT_VERSION));
-      out->globalName = name;
-      out->scale      = 1;
+      out->wimpl        = impl;
+      out->globalName   = name;
+      out->scale        = 1;
+      out->scaleChanged = false;
 
       wl_output_add_listener(out->output, &puglWaylandOutputListener, out);
       ++impl->numOutputs;
@@ -3129,11 +3256,37 @@ puglHide(PuglView* const view)
   return PUGL_SUCCESS;
 }
 
+static void
+puglWaylandRemoveTimer(PuglWorldInternals* const impl, const size_t index)
+{
+  close(impl->timers[index].fd);
+
+  if (index + 1U < impl->numTimers) {
+    memmove(impl->timers + index,
+            impl->timers + index + 1U,
+            sizeof(PuglWaylandTimer) * (impl->numTimers - index - 1U));
+  }
+
+  --impl->numTimers;
+}
+
+static void
+puglWaylandRemoveViewTimers(PuglWorldInternals* const impl,
+                            const PuglView* const      view)
+{
+  for (size_t i = impl->numTimers; i > 0; --i) {
+    if (impl->timers[i - 1U].view == view) {
+      puglWaylandRemoveTimer(impl, i - 1U);
+    }
+  }
+}
+
 void
 puglFreeViewInternals(PuglView* const view)
 {
   if (view && view->impl) {
     puglUnrealize(view);
+    puglWaylandRemoveViewTimers(view->world->impl, view);
 
     for (uint32_t i = 0; i < view->impl->clipboard.numFormats; ++i) {
       free(view->impl->clipboard.formatStrings[i]);
@@ -3219,7 +3372,8 @@ puglWaylandHandleTimers(PuglWorldInternals* const impl)
 
     /* The dispatch above can start or stop timers, which would move the array out from under this
        loop.  Bail out and pick up the rest on the next pass rather than risk a stale index. */
-    if (i >= impl->numTimers || impl->timers[i].id != timer.id) {
+    if (i >= impl->numTimers || impl->timers[i].view != timer.view ||
+        impl->timers[i].id != timer.id || impl->timers[i].fd != timer.fd) {
       break;
     }
   }
@@ -3459,15 +3613,11 @@ puglObscureRegion(PuglView* const view,
     return PUGL_BAD_CALL;
   }
 
-  const PuglSpan viewWidth  = view->impl->size.width;
-  const PuglSpan viewHeight = view->impl->size.height;
-
-  const PuglCoord cx = MAX((PuglCoord)0, (PuglCoord)x);
-  const PuglCoord cy = MAX((PuglCoord)0, (PuglCoord)y);
-  const PuglSpan  cw = MIN(viewWidth, (PuglSpan)width);
-  const PuglSpan  ch = MIN(viewHeight, (PuglSpan)height);
-
-  const PuglExposeEvent event = {PUGL_EXPOSE, 0U, cx, cy, cw, ch};
+  PuglExposeEvent event;
+  if (!puglWaylandClipExpose(
+        &event, view->impl->size, x, y, width, height)) {
+    return PUGL_SUCCESS;
+  }
 
   /* Unlike X11 there is no server side event queue to bounce an expose off, so a redraw request is
      always just recorded here and picked up by the next puglUpdate(). */
@@ -3742,15 +3892,7 @@ puglStopTimer(PuglView* const view, const uintptr_t id)
 
   for (size_t i = 0; i < impl->numTimers; ++i) {
     if (impl->timers[i].view == view && impl->timers[i].id == id) {
-      close(impl->timers[i].fd);
-
-      if (i != impl->numTimers - 1U) {
-        memmove(impl->timers + i,
-                impl->timers + i + 1U,
-                sizeof(PuglWaylandTimer) * (impl->numTimers - i - 1U));
-      }
-
-      --impl->numTimers;
+      puglWaylandRemoveTimer(impl, i);
       return PUGL_SUCCESS;
     }
   }
@@ -3837,6 +3979,9 @@ puglAcceptOffer(PuglView* const                 view,
   if (!mimeType) {
     return PUGL_FAILURE;
   }
+
+  // Do not leave data from a previous acceptance visible if this transfer fails
+  board->acceptedFormatIndex = UINT32_MAX;
 
   /* Close-on-exec matters here: this runs inside somebody else's host, which may fork and exec at
      any moment, and the write end staying open in a child would keep the transfer from ever ending.

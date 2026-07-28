@@ -113,6 +113,7 @@ Window::PrivateData::PrivateData(Application& a, Window* const s)
       isClosed(true),
       isVisible(false),
       isEmbed(false),
+      followsPuglScaleFactor(true),
       usesScheduledRepaints(false),
       usesSizeRequest(false),
       scaleFactor(DGL_NAMESPACE::getScaleFactor(view)),
@@ -146,6 +147,7 @@ Window::PrivateData::PrivateData(Application& a, Window* const s, PrivateData* c
       isClosed(true),
       isVisible(false),
       isEmbed(false),
+      followsPuglScaleFactor(ppData->followsPuglScaleFactor),
       usesScheduledRepaints(false),
       usesSizeRequest(false),
       scaleFactor(ppData->scaleFactor),
@@ -181,6 +183,7 @@ Window::PrivateData::PrivateData(Application& a, Window* const s,
       isClosed(parentWindowHandle == 0),
       isVisible(parentWindowHandle != 0),
       isEmbed(parentWindowHandle != 0),
+      followsPuglScaleFactor(d_isZero(scale)),
       usesScheduledRepaints(false),
       usesSizeRequest(false),
       scaleFactor(scale != 0.0 ? scale : DGL_NAMESPACE::getScaleFactor(view)),
@@ -219,6 +222,7 @@ Window::PrivateData::PrivateData(Application& a, Window* const s,
       isClosed(parentWindowHandle == 0),
       isVisible(parentWindowHandle != 0 && view != nullptr),
       isEmbed(parentWindowHandle != 0),
+      followsPuglScaleFactor(d_isZero(scale)),
       usesScheduledRepaints(_usesScheduledRepaints),
       usesSizeRequest(_usesSizeRequest),
       scaleFactor(scale != 0.0 ? scale : DGL_NAMESPACE::getScaleFactor(view)),
@@ -645,6 +649,19 @@ void Window::PrivateData::onPuglConfigure(const uint width, const uint height)
     DISTRHO_SAFE_ASSERT_INT2_RETURN(width > 1 && height > 1, width, height,);
 
     DGL_DBGp("PUGL: onReshape : %d %d\n", width, height);
+
+   #ifdef HAVE_WAYLAND
+    if (followsPuglScaleFactor)
+    {
+        const double nextScaleFactor = DGL_NAMESPACE::getScaleFactor(view);
+
+        if (d_isNotEqual(scaleFactor, nextScaleFactor))
+        {
+            scaleFactor = nextScaleFactor;
+            self->onScaleFactorChanged(scaleFactor);
+        }
+    }
+   #endif
 
    #ifndef DPF_TEST_WINDOW_CPP
     createContextIfNeeded();
