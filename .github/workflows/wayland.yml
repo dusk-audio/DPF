@@ -317,7 +317,10 @@ jobs:
     - name: Build Cairo without its X11 surfaces
       run: |
         url="https://cairographics.org/releases/cairo-${CAIRO_VERSION}.tar.xz"
-        curl -sSfL -o cairo.tar.xz "$url"
+        # cairographics.org is a small project server, not a CDN: bound the fetch and retry transient
+        # failures instead of hanging the job until the 6-hour default timeout on a stalled connection.
+        curl -sSfL --connect-timeout 15 --max-time 300 --retry 3 --retry-delay 5 \
+          -o cairo.tar.xz "$url"
         echo "${CAIRO_SHA256}  cairo.tar.xz" | sha256sum -c -
         tar xf cairo.tar.xz
         cd "cairo-${CAIRO_VERSION}"
