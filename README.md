@@ -49,9 +49,13 @@ affected `bin/` bundles, otherwise objects and binaries from the other backend a
 - **Windows on ARM.** VST3 bundles emit the `arm64-win` binary directory.
 - **macOS deployment target defaults to 10.15**, overridable via `MACOSX_DEPLOYMENT_TARGET`. The
   universal build keeps 10.8-compatible sources while targeting 10.15 for the arm64 slice.
+- **AU windows follow the host.** The AU wrapper tracks parent view frame and backing scale
+  changes, so hosts that resize the plugin view (Logic Pro restoring a saved window size, a display
+  change between 1x and 2x) reach the UI; see [UI host-resize](FEATURES.md#au-host-resize).
 - **State and preset fixes.** VST3 and CLAP `setState` no longer read one byte past the end of the
-  host chunk, CLAP accepts the zero-parameter zero-state fast-path stream, and AU factory preset
-  data is allocated and freed as an array.
+  host chunk, CLAP loads state written by a differently configured build of the same plugin
+  (parameters or states compiled out), and AU factory preset data is allocated and freed as an
+  array.
 - **CI reworked for this fork's support surface.** 16 checks: `build.yml`, `cmake.yml` (including a
   native ARM Linux runner and three MSVC legs) and `wayland.yml` (Wayland-only, X11 regression,
   clap-validator and pluginval runs with no external package repositories).
