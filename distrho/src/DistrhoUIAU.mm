@@ -66,6 +66,8 @@ public:
         : fComponent(component),
           fParentView(view),
           fTimerRef(nullptr),
+          fFrameObserver(nullptr),
+          fInFrameSizeChange(false),
           fUI(this,
               reinterpret_cast<uintptr_t>(view),
               sampleRate,
@@ -134,10 +136,40 @@ public:
        #if DISTRHO_PLUGIN_WANT_STATE
         AudioUnitAddPropertyListener(fComponent, 'DPFs', auPropertyChangedCallback, this);
        #endif
+
+        // setup parent view frame listener
+        //
+        // AU has no size negotiation of its own, hosts simply resize the view we hand them.
+        // Logic Pro does this right after creating the UI, restoring the plugin window size it
+        // saved with the session. Size otherwise only ever flows plugin -> host in this wrapper,
+        // so without listening for this the UI would stay at its creation size while the rest of
+        // the host window is left empty.
+        [fParentView setPostsFrameChangedNotifications:YES];
+
+        NSNotificationCenter* const notificationCenter = [NSNotificationCenter defaultCenter];
+
+        fFrameObserver = [notificationCenter addObserverForName:NSViewFrameDidChangeNotification
+                                                         object:fParentView
+                                                          queue:nil
+                                                     usingBlock:^(NSNotification*)
+        {
+            parentViewFrameChanged();
+        }];
+
+        // the returned token is autoreleased, keep it alive until we remove the observer again
+        [fFrameObserver retain];
     }
 
     ~DPF_UI_AU()
     {
+        // stop the frame listener first, its block calls back into us and into fUI
+        if (fFrameObserver != nullptr)
+        {
+            [[NSNotificationCenter defaultCenter] removeObserver:fFrameObserver];
+            [fFrameObserver release];
+            fFrameObserver = nullptr;
+        }
+
         AudioUnitRemovePropertyListenerWithUserData(fComponent, kAudioUnitProperty_SampleRate, auPropertyChangedCallback, this);
         AudioUnitRemovePropertyListenerWithUserData(fComponent, 'DPFp', auPropertyChangedCallback, this);
        #if DISTRHO_PLUGIN_WANT_PROGRAMS
@@ -156,11 +188,27 @@ public:
 
     void postSetup()
     {
-        const double scaleFactor = fUI.getScaleFactor();
-        const NSSize size = NSMakeSize(fUI.getWidth() / scaleFactor, fUI.getHeight() / scaleFactor);
+        resizeParentView(fUI.getWidth(), fUI.getHeight());
 
-        [fParentView setFrameSize:size];
         [fParentView setHidden:NO];
+    }
+
+    // called by the parent view when its backing scale factor changes, see COCOA_VIEW_CLASS_NAME
+    //
+    // pugl has no viewDidChangeBackingProperties handler of its own (grep mac.m), so nothing
+    // dispatches a configure event when the backing scale changes under an already realized view.
+    // The point size of every view in the hierarchy survives such a change untouched, so the frame
+    // listener does not fire either, yet the pixel size the UI has to render at just halved or
+    // doubled. Push the unchanged point size back through the host resize path to re-derive it.
+    //
+    // Two cases reach this in practice:
+    //  - the host window migrating between a 1x and a 2x display
+    //  - the view being added to its window, which is the first moment the real display is known.
+    //    Until then both this wrapper and pugl fall back to [NSScreen mainScreen], which is not
+    //    necessarily the screen the plugin window ends up on.
+    void backingScaleChanged()
+    {
+        parentViewFrameChanged();
     }
 
 private:
@@ -168,11 +216,64 @@ private:
     NSView* const fParentView;
     CFRunLoopTimerRef fTimerRef;
 
+    // parent view frame listener, see constructor
+    id fFrameObserver;
+    bool fInFrameSizeChange;
+
     UIExporter fUI;
 
    #if DISTRHO_PLUGIN_WANT_STATE
     std::vector<String> fStateKeys;
    #endif
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Pixel <-> point conversion
+    //
+    // DGL and pugl work in backing pixels, AppKit view frames are in points. On a 2x display the UI
+    // reports twice the size of the frame the host has to be given.
+    //
+    // NOTE: fUI.getScaleFactor() must not be used for this. It is informational state captured
+    //       while the DGL window is initialized, so it can be based on the main screen and does
+    //       not track a later move to a display with a different backing scale.
+
+    // mirrors pugl's viewScreen() fallback exactly (see dgl/src/pugl-upstream/src/mac.m), so that
+    // both layers always agree on the conversion, including before the view is added to a window
+    double backingScaleFactor() const
+    {
+        NSWindow* const window = [fParentView window];
+        const double scaleFactor = window != nil ? [[window screen] backingScaleFactor]
+                                                 : [[NSScreen mainScreen] backingScaleFactor];
+
+        return scaleFactor > 0.0 ? scaleFactor : 1.0;
+    }
+
+    // resize the host-owned parent view to match the pugl view, plugin -> host
+    void resizeParentView(const uint width, const uint height)
+    {
+        // pugl keeps its own wrapper view at the point size matching its pixel size, so copy that
+        // frame outright and leave pugl as the single source of truth.
+        //
+        // The ordering works out for both callers: puglRealize() sizes the wrapper view before
+        // postSetup() runs, and puglSetWindowSize() resizes it *before* dispatching the configure
+        // event that ends up here as setSize() (see dispatchCurrentChildViewConfiguration in mac.m,
+        // which derives the very pixel size we are given from that same wrapper frame).
+        NSSize sizePt = NSMakeSize(0.0, 0.0);
+
+        if (NSView* const wrapperView = reinterpret_cast<NSView*>(fUI.getNativeWindowHandle()))
+            sizePt = [wrapperView frame].size;
+
+        // fallback in case pugl has no wrapper view for us, keeping the conversion rule identical
+        if (sizePt.width <= 0.0 || sizePt.height <= 0.0)
+        {
+            const double scaleFactor = backingScaleFactor();
+            sizePt = NSMakeSize(width / scaleFactor, height / scaleFactor);
+        }
+
+        const bool wasInFrameSizeChange = fInFrameSizeChange;
+        fInFrameSizeChange = true;
+        [fParentView setFrameSize:sizePt];
+        fInFrameSizeChange = wasInFrameSizeChange;
+    }
 
     // ----------------------------------------------------------------------------------------------------------------
     // Idle setup
@@ -369,15 +470,40 @@ private:
 
     void setSize(const uint width, const uint height)
     {
-        const double scaleFactor = fUI.getScaleFactor();
-        const NSSize size = NSMakeSize(width / scaleFactor, height / scaleFactor);
-
-        [fParentView setFrameSize:size];
+        resizeParentView(width, height);
     }
 
     static void setSizeCallback(void* const ptr, const uint width, const uint height)
     {
         static_cast<DPF_UI_AU*>(ptr)->setSize(width, height);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Host callbacks
+
+    // called from the parent view frame listener, always on the main thread
+    void parentViewFrameChanged()
+    {
+        // ignore the notifications caused by our own plugin -> host resizes
+        if (fInFrameSizeChange)
+            return;
+
+        const NSSize sizePt = [fParentView frame].size;
+
+        // hosts can momentarily set an empty frame while tearing the view down
+        if (sizePt.width <= 0.0 || sizePt.height <= 0.0)
+            return;
+
+        const double scaleFactor = backingScaleFactor();
+        const uint width = d_roundToUnsignedInt(sizePt.width * scaleFactor);
+        const uint height = d_roundToUnsignedInt(sizePt.height * scaleFactor);
+
+        // pt -> px and px -> pt do not round the same way, so never trust the flag alone
+        if (width == fUI.getWidth() && height == fUI.getHeight())
+            return;
+
+        d_debug("host->plugin frame change %u %u", width, height);
+        fUI.setWindowSizeFromHost(width, height);
     }
 };
 
@@ -412,12 +538,32 @@ using DISTRHO_NAMESPACE::d_nextSampleRate;
     ui = nullptr;
     self = [super initWithFrame: NSMakeRect(0, 0, size.width, size.height)];
     [self setHidden:YES];
+
+   #if DISTRHO_UI_USER_RESIZABLE_AS_REQUESTED
+    // AU v2 has no resizability flag of its own, hosts key the plugin window resize affordance off
+    // the autoresizing mask of the view we hand them. Logic Pro only shows a resize grip when this
+    // view is both width and height sizable, and leaves it out entirely for NSViewNotSizable.
+    // This just makes the host willing to resize us, the actual resizing is handled by the parent
+    // view frame change observer in DPF_UI_AU, see NSViewFrameDidChangeNotification there.
+    [self setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+   #endif
+
     return self;
 }
 
 - (BOOL) acceptsFirstResponder
 {
   return YES;
+}
+
+- (void) viewDidChangeBackingProperties
+{
+    [super viewDidChangeBackingProperties];
+
+    // fires when the host window moves between displays of different backing scale, and when this
+    // view is moved into a window with a different one. pugl does not handle either on its own.
+    if (ui != nullptr)
+        ui->backingScaleChanged();
 }
 
 - (void) dealloc

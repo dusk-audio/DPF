@@ -286,7 +286,8 @@ public:
         uiData->window->setOffset(x, y);
     }
 
-   #if DISTRHO_UI_USES_SIZE_REQUEST
+    // NOTE: AU has no size request/negotiation, but hosts do resize the parent view on their own
+   #if DISTRHO_UI_USES_SIZE_REQUEST || defined(DISTRHO_PLUGIN_TARGET_AU)
     void setWindowSizeFromHost(const uint width, const uint height)
     {
         uiData->window->setSizeFromHost(width, height);
