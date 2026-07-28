@@ -14,6 +14,14 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+// pugl-extra/wayland_cairo.c, included at the end of this unity build, calls memfd_create() and
+// mkostemp(), which glibc only declares under _GNU_SOURCE. g++ and clang++ pass -D_GNU_SOURCE for
+// C++ on Linux themselves, but that is a driver default rather than a guarantee, and the define has
+// to be in place before the first system header of the translation unit, hence here.
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+# define _GNU_SOURCE
+#endif
+
 #include "pugl.hpp"
 
 // --------------------------------------------------------------------------------------------------------------------
