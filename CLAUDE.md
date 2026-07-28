@@ -42,9 +42,17 @@ fresh clone, so re-add it when setting up a new checkout.
 No AI attribution: no `Co-Authored-By: Claude ...`, no `🤖 Generated with [Claude Code]`, no
 `Claude-Session:` trailer. Write the message as the author of the change.
 
-`.claude/settings.json` blanks the attribution the tooling would otherwise append, and
-`.git/hooks/commit-msg` strips those lines if anything adds them anyway. Like `pre-push`, that hook
-does not survive a fresh clone, so re-add it when setting up a new checkout.
+Three layers, because the tooling adds these by default and asking it not to is not enough:
+
+- `.claude/settings.json` (and the same keys in `~/.claude/settings.json`) blank the attribution,
+  so nothing appends it in the first place.
+- `.git/hooks/commit-msg` strips the lines as commits are written, whatever wrote them.
+- `.git/hooks/pre-push` refuses to publish a commit that still carries them, which catches anything
+  arriving from another checkout, a rebase, an amend or a cherry-pick.
+
+The history was rewritten on 2026-07-28 to remove the trailers that had already been pushed, so
+every commit in this repository is clean. Neither hook survives a fresh clone: re-add both when
+setting up a new checkout, or the guarantee is only as good as the settings file.
 
 ## Pull requests
 
