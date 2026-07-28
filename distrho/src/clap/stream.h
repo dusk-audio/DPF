@@ -14,8 +14,9 @@
 /// or written. You need to use a loop to ensure that you read or write the
 /// entirety of your state. Don't forget to also consider the other return
 /// values: a read returns 0 at end of file, and either call returns a negative
-/// value on an IO error. A write never reports end of file, so a zero-byte
-/// write result is not a reason to stop a save loop.
+/// value on an IO error. A write has no end-of-file condition, so a return of 0
+/// means the stream accepted nothing at all; a writer that keeps looping on
+/// that either spins or hangs, so treat it as an error.
 
 #ifdef __cplusplus
 extern "C" {

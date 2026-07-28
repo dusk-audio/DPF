@@ -654,28 +654,42 @@ jobs:
                     continue
                 baseline = KNOWN_FAILURES.get(subject, set())
                 # Read through .get rather than indexing: a report shape this does not understand
-                # must turn into a reported error, not a traceback and not a silent pass.
+                # must turn into a reported error, not a traceback and not a silent pass. The five
+                # codes are clap-validator's TestStatus enum (src/tests.rs, serialized kebab-case
+                # under "code"); anything else means the report format moved and the gate fails
+                # closed rather than counting the test as neither passed nor failed.
+                KNOWN_CODES = ('success', 'crashed', 'failed', 'skipped', 'warning')
                 codes = {}
                 details = {}
                 for test in tests:
                     name = test.get('name') if isinstance(test, dict) else None
                     result = test.get('status') if isinstance(test, dict) else None
                     code = result.get('code') if isinstance(result, dict) else None
-                    if not name or not code:
+                    if not name or code not in KNOWN_CODES:
                         print('::error::%s: unreadable test entry in the report: %r' % (subject, test))
                         status = 1
                         continue
                     codes[name] = code
                     details[name] = (result.get('details') or '')
+                # A crash is a hard failure and is never baselined: KNOWN_FAILURES exists for
+                # validator false positives, and a plugin taking the process down is not one.
+                for name in sorted(name for name, code in codes.items() if code == 'crashed'):
+                    print('::error::%s: %s crashed: %s' % (subject, name, details[name]))
+                    status = 1
                 failed = {name for name, code in codes.items() if code == 'failed'}
                 for name in sorted(failed - baseline):
                     print('::error::%s: %s failed: %s' % (subject, name, details[name]))
                     status = 1
                 for name in sorted(baseline - failed):
                     print('::notice::%s: %s now passes, drop it from KNOWN_FAILURES' % (subject, name))
-                passed = sum(1 for code in codes.values() if code == 'success')
-                print('%s: %d tests, %d passed, %d failed (%d baselined)'
-                      % (subject, len(tests), passed, len(failed), len(failed & baseline)))
+                # Surfaced, not fatal: 'warning' is reserved for timing-dependent tests, and
+                # 'skipped' means the preconditions were not met on this runner.
+                for name in sorted(name for name, code in codes.items() if code == 'warning'):
+                    print('::warning::%s: %s: %s' % (subject, name, details[name]))
+                tally = {code: sum(1 for c in codes.values() if c == code) for code in KNOWN_CODES}
+                print('%s: %d tests, %d passed, %d failed (%d baselined), %d crashed, %d skipped, %d warned'
+                      % (subject, len(tests), tally['success'], len(failed), len(failed & baseline),
+                         tally['crashed'], tally['skipped'], tally['warning']))
 
         sys.exit(status)
         PY
