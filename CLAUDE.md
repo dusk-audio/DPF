@@ -37,6 +37,15 @@ gh repo set-default dusk-audio/DPF
 `.git/hooks/pre-push` refuses any push whose URL points at DISTRHO/DPF. Hooks do not survive a
 fresh clone, so re-add it when setting up a new checkout.
 
+## Commit messages
+
+No AI attribution: no `Co-Authored-By: Claude ...`, no `🤖 Generated with [Claude Code]`, no
+`Claude-Session:` trailer. Write the message as the author of the change.
+
+`.claude/settings.json` blanks the attribution the tooling would otherwise append, and
+`.git/hooks/commit-msg` strips those lines if anything adds them anyway. Like `pre-push`, that hook
+does not survive a fresh clone, so re-add it when setting up a new checkout.
+
 ## Pull requests
 
 PRs are opened against `dusk-audio/DPF` `main`. This repository takes same-repo PRs only, which is
