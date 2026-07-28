@@ -3,11 +3,13 @@
 [![cmake](https://github.com/dusk-audio/DPF/actions/workflows/cmake.yml/badge.svg)](https://github.com/dusk-audio/DPF/actions/workflows/cmake.yml)
 [![wayland](https://github.com/dusk-audio/DPF/actions/workflows/wayland.yml/badge.svg)](https://github.com/dusk-audio/DPF/actions/workflows/wayland.yml)
 
-This is the [Dusk Audio](https://github.com/dusk-audio) fork of
-[DISTRHO/DPF](https://github.com/DISTRHO/DPF), maintained as the plugin framework for our own
-products. It tracks upstream and adds native Wayland support, MSVC/arm64 build coverage and a
-set of state-handling fixes; see [Differences from upstream](#differences-from-upstream).
-Fork-specific changes are not submitted upstream, so file issues here rather than with DISTRHO.
+This is the [Dusk Audio](https://github.com/dusk-audio) plugin framework, forked from
+[DISTRHO/DPF](https://github.com/DISTRHO/DPF) at `4238e1c7` (2025-10-23) and developed
+independently since. It adds native Wayland support, MSVC/arm64 build coverage and a set of
+state-handling fixes; see [Differences from upstream](#differences-from-upstream).
+
+Development is one-way: nothing here is submitted to DISTRHO, and no upstream commit is merged
+back in. File issues here rather than with DISTRHO.
 
 DPF is designed to make development of new plugins an easy and enjoyable task.  
 It allows developers to create plugins with custom UIs using a simple C++ API.  
@@ -69,9 +71,10 @@ Some plugin formats may have additional restrictions, see [LICENSING.md](LICENSI
 
 ## Help and documentation
 
-Bug reports for this fork happen on the [dusk-audio/DPF issue tracker](https://github.com/dusk-audio/DPF/issues).  
-Issues that reproduce on upstream DPF are better reported to the
-[DISTRHO/DPF project](https://github.com/DISTRHO/DPF/issues).
+Bug reports belong on the [dusk-audio/DPF issue tracker](https://github.com/dusk-audio/DPF/issues),
+including for code inherited from DISTRHO: this tree is maintained here, so nothing reported to
+DISTRHO reaches it. If a bug also reproduces on upstream DPF, reporting it there as well helps
+their users, but it is not a substitute.
 
 Online documentation for the core API is available at [https://distrho.github.io/DPF/](https://distrho.github.io/DPF/)
 and applies to this fork, which does not change the public API.

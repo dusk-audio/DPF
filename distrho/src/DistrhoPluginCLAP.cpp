@@ -126,7 +126,8 @@ struct ClapEventQueue
 
         ~Queue()
         {
-            delete[] events;
+            // std::free, not delete[]: the buffer comes from std::malloc/std::realloc below
+            std::free(events);
         }
 
         void addEventFromUI(const Event& event)
