@@ -149,14 +149,22 @@ puglWaylandCairoOpenPool(PuglView* const view, const PuglArea size)
     return PUGL_BAD_CONFIGURATION;
   }
 
-  const size_t bufferSize = (size_t)stride * (size_t)size.height;
-  const size_t poolSize   = bufferSize * PUGL_WAYLAND_CAIRO_NUM_BUFFERS;
+  /* Computed in 64 bits: a maximum-sized view is 65535x65535 buffer pixels, whose pool is well
+     past what a 32-bit size_t can hold, and the product has to survive long enough to be compared
+     against the limit rather than wrapping on the way there. */
+  const uint64_t wantedBufferSize = (uint64_t)stride * (uint64_t)size.height;
+  const uint64_t wantedPoolSize =
+    wantedBufferSize * (uint64_t)PUGL_WAYLAND_CAIRO_NUM_BUFFERS;
 
   /* wl_shm_create_pool and wl_shm_pool_create_buffer take int32_t, so an extreme size times an
      extreme scale could silently wrap into a negative size or offset. */
-  if (poolSize > (size_t)INT32_MAX) {
+  if (wantedPoolSize > (uint64_t)INT32_MAX) {
     return PUGL_BAD_CONFIGURATION;
   }
+
+  // Both fit in a size_t on every target now that they are known to be at most INT32_MAX
+  const size_t bufferSize = (size_t)wantedBufferSize;
+  const size_t poolSize   = (size_t)wantedPoolSize;
 
   const int fd = puglWaylandCairoCreateShmFile(poolSize);
   if (fd < 0) {
@@ -374,8 +382,20 @@ puglWaylandCairoLeave(PuglView* const view, const PuglExposeEvent* const expose)
   } else
 #endif
   {
-    wl_surface_damage(
-      wlSurface, expose->x, expose->y, expose->width, expose->height);
+    /* wl_surface_damage takes surface-local coordinates while expose is in buffer pixels, so the
+       rectangle has to be divided by the buffer scale.  That scale is 1 from puglInitViewInternals()
+       onwards and only ever set to a positive output scale, but division is unforgiving: check
+       rather than risk a SIGFPE if it is ever left at zero. */
+    const int32_t scale = view->impl->bufferScale;
+
+    if (scale > 0) {
+      const int32_t x      = expose->x / scale;
+      const int32_t y      = expose->y / scale;
+      const int32_t right  = (expose->x + expose->width + scale - 1) / scale;
+      const int32_t bottom = (expose->y + expose->height + scale - 1) / scale;
+
+      wl_surface_damage(wlSurface, x, y, right - x, bottom - y);
+    }
   }
 
   wl_surface_commit(wlSurface);
