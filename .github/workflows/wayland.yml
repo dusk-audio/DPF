@@ -202,6 +202,72 @@ jobs:
         grep -rq 'ui:idleInterface' bin/d_meters.lv2/*.ttl \
           || { echo "::error::the UI no longer declares ui:idleInterface"; status=1; }
         exit $status
+    # The one point in this fork's CI where DPF links a real GLES library.
+    #
+    # build.yml has UI_TYPE=gles2/gles3 legs, but they run on machines that have X11 development files, and
+    # the X11 arm of Makefile.base.mk hands out `pkg-config --libs gl x11` whatever UI_TYPE says: GLX cannot
+    # create an ES context at all, so an X11 GLES build is desktop GL by construction. Only the Wayland arm
+    # (EGL + wl_egl_window) switches to glesv2 when USE_GLES2/USE_GLES3 is set, and this container is the
+    # only runner in this repository without X11 development files, so it is the only job that can reach
+    # that arm. Outside CI the same is true of the wasm target, which this fork does not build.
+    #
+    # Both halves are asserted because either one alone passes in configurations that are not what this step
+    # is for. Checked by hand on a dual-stack machine: an X11 UI_TYPE=gles3 build of this same example does
+    # contain the "#version 300 es" shader -- the GLES sources really were compiled -- while still coming out
+    # with DT_NEEDED libGL.so.1 and libX11.so.6 and no libGLESv2 whatsoever. So the shader proves the
+    # compile-time choice and the DT_NEEDED list proves the link-time one, and neither substitutes for the
+    # other.
+    #
+    # examples/Parameters rather than examples/Meters: Meters was built above with the default UI_TYPE and
+    # its bundle is exactly what the turtle assertions just read, so reusing it would clobber a checked
+    # artifact. Parameters is built nowhere else in this job, has a UI (FILES_UI) and an lv2_sep target, and
+    # is the example build.yml's GLES legs already use. examples/Latency is not a candidate despite being
+    # smaller: it has no FILES_UI, so it produces no UI module to inspect.
+    #
+    # BUILD_DIR_SUFFIX puts every object of this configuration in build-gles3/ so none are shared with the
+    # default build above. bin/ has no such separation, so this example's link outputs are removed first:
+    # a stale bin/ artifact surviving a configuration flip is a recurring trap in this tree. The container is
+    # fresh per run, so today this only guards against a future step building Parameters earlier.
+    #
+    # No HAVE_X11= override on purpose, even though a dual-stack machine needs one to reproduce this
+    # locally. This container genuinely has no x11.pc -- asserted at the top of the job -- so plain make
+    # already lands on the Wayland arm, and forcing the variable would hide a regression in which X11
+    # development files crept back into the image.
+    #
+    # Deliberately not covered: running any of it. A GLES context needs a compositor, so runtime coverage
+    # would mean bringing up `weston --backend=headless` in this container and driving the UI under it.
+    # That is the known next step if it is ever wanted; this step is a build-and-link gate only.
+    - name: Verify a Wayland GLES3 build links a real GLES library
+      run: |
+        rm -rf bin/d_parameters*
+        make -C examples/Parameters lv2_sep UI_TYPE=gles3 BUILD_DIR_SUFFIX=-gles3 -j$(nproc)
+        ui=bin/d_parameters.lv2/d_parameters_ui.so
+        [ -f "$ui" ] || { echo "::error::$ui was not built"; exit 1; }
+        # `|| true` so that a module with no dynamic dependencies at all falls through to the assertions
+        # below and reports which ones are missing, instead of aborting the step with no message.
+        objdump -p "$ui" | grep NEEDED > needed.txt || true
+        cat needed.txt
+        status=0
+        grep -q 'libGLESv2\.so' needed.txt \
+          || { echo "::error::the gles3 UI does not link libGLESv2"; status=1; }
+        # Matched as 'libGL.so', not 'libGL': the soname libGLESv2.so.2 does not contain the substring
+        # 'libGL.so', so this assertion and the one above cannot both be satisfied by the same entry.
+        if grep -q 'libGL\.so' needed.txt; then
+          echo "::error::the gles3 UI still links desktop libGL"
+          status=1
+        fi
+        # The Wayland client libraries must survive the switch: swapping the GL client API changes which
+        # library the drawing calls come from, not how the window is created.
+        grep -q 'libwayland-client\.so' needed.txt \
+          || { echo "::error::the gles3 UI does not link libwayland-client"; status=1; }
+        grep -q 'libwayland-egl\.so' needed.txt \
+          || { echo "::error::the gles3 UI does not link libwayland-egl"; status=1; }
+        # dgl/src/OpenGL3.cpp emits the "#version 300 es" shader header only under DGL_USE_GLES3, and
+        # dgl/src/NanoVG.cpp compiles its GLES3 shaders only under NANOVG_GLES3. Finding the string in the
+        # module is what separates "linked glesv2" from "actually built the GLES3 source paths".
+        strings "$ui" | grep -qF '#version 300 es' \
+          || { echo "::error::the UI has no '#version 300 es' shader, DGL_USE_GLES3 did not select the GLES sources"; status=1; }
+        exit $status
 
     # -----------------------------------------------------------------------------------------------------------------
     # Everything above only ever reaches the OpenGL and stub halves of the Wayland backend. The one
