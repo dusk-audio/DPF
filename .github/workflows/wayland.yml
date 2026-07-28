@@ -5,7 +5,10 @@ name: wayland
 # The other CI here (build.yml, cmake.yml) always runs on machines that have the X11
 # development files installed, so it only ever exercises the X11 arm of the DGL backend selection.
 # The jobs below cover the two things that arm hides:
-#   - wayland-only          the Wayland backend actually compiles when X11 dev files are absent
+#   - wayland-only          the Wayland backend actually compiles when X11 dev files are absent,
+#                           for both of its variants: OpenGL/stub, and Cairo against a Cairo that
+#                           was built without its X11 surfaces (see the tail of that job for why
+#                           the distro package cannot be used)
 #   - wayland-x11-regression  a dual-stack machine still picks X11, exactly as it did before
 # plus two conformance gates that load the built plugins instead of only compiling them:
 #   - clap-validation       CLAP, which upstream does not run at all
@@ -42,6 +45,14 @@ jobs:
   wayland-only:
     runs-on: ubuntu-latest
     container: ubuntu:24.04
+    env:
+      # 1.18.4 (2025-02-14) is the current cairo release; the checksum is upstream's own
+      # cairo-1.18.4.tar.xz.sha256sum from cairographics.org. Bump the version and the checksum
+      # together, the same way CLAP_VALIDATOR_* and PLUGINVAL_* are bumped below.
+      CAIRO_VERSION: 1.18.4
+      CAIRO_SHA256: 445ed8208a6e4823de1226a74ca319d3600e83f6369f99b14265006599c32ccb
+      # Outside the source tree's build/ and bin/, so nothing here can be mistaken for a DPF artifact.
+      CAIRO_PREFIX: ${{ github.workspace }}/cairo-prefix
     steps:
     # Installed before checkout on purpose: actions/checkout only clones submodules when git is already
     # available, otherwise it silently falls back to the tarball API and dgl/src/pugl-upstream stays empty.
@@ -55,6 +66,8 @@ jobs:
     # Deliberately absent: libcairo2-dev. cairo.pc has `Requires.private: x11 xext xrender xcb ...`, so on
     # Debian/Ubuntu Cairo development files cannot exist without X11 development files. HAVE_CAIRO is
     # therefore expected to be No here and dgl builds its gles2/gles3/opengl/opengl3/stub variants only.
+    # The Cairo variant is covered separately at the end of this job, against a Cairo built from source
+    # with those surfaces switched off; the steps between here and there stay a no-Cairo build.
     - name: Set up dependencies
       env:
         DEBIAN_FRONTEND: noninteractive
@@ -63,6 +76,32 @@ jobs:
         apt-get install -yq --no-install-recommends \
           build-essential ca-certificates git pkg-config \
           libegl-dev libgl-dev libwayland-dev libxkbcommon-dev
+    # Build dependencies for the source-built Cairo the tail of this job needs; see the long comment
+    # down there for what it is for and why the distro package cannot be used.
+    #
+    # They have to be installed here, several steps before anything uses them, because the next step
+    # but one rips libx11-dev out with `dpkg --remove --force-depends`. That leaves libegl-dev and
+    # libglx-dev with an unsatisfied dependency, and apt refuses to plan any further transaction
+    # while the database is in that state ("Unmet dependencies. Try 'apt --fix-broken install'"), so
+    # this is the last point in the job where apt-get install still works.
+    #
+    # Installing them before the X11 checks is what makes those checks cover this list too: not one
+    # of these packages depends on libx11-dev today, and "Verify the environment really has no X11"
+    # below is what keeps that true if the list ever grows.
+    #   curl                    not in the ubuntu:24.04 base image; needed to fetch the tarball
+    #   xz-utils                already in the base image, listed so a slimmer one cannot break this
+    #   meson, ninja-build      Cairo 1.18 requires meson >= 1.3.0, and noble ships 1.3.2
+    #   libpixman-1-dev         Cairo's one mandatory dependency
+    #   libpng-dev, zlib1g-dev  the png feature
+    #   libfreetype-dev,
+    #   libfontconfig-dev       the font backends
+    - name: Set up Cairo build dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        apt-get install -yq --no-install-recommends \
+          curl xz-utils meson ninja-build \
+          libfontconfig-dev libfreetype-dev libpixman-1-dev libpng-dev zlib1g-dev
     - uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -162,6 +201,178 @@ jobs:
           || { echo "::error::the UI no longer declares ui:showInterface"; status=1; }
         grep -rq 'ui:idleInterface' bin/d_meters.lv2/*.ttl \
           || { echo "::error::the UI no longer declares ui:idleInterface"; status=1; }
+        exit $status
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # Everything above only ever reaches the OpenGL and stub halves of the Wayland backend. The one
+    # file it cannot touch is dgl/src/pugl-extra/wayland_cairo.c: dgl/Makefile builds a Cairo variant
+    # only when HAVE_CAIRO is true, and HAVE_CAIRO is `pkg-config --exists cairo`, which cannot
+    # succeed in this container. Debian/Ubuntu's cairo.pc carries
+    #     Requires.private: ... x11, xext, xrender >= 0.6, xcb >= 1.6, xcb-render >= 1.6, xcb-shm ...
+    # so pkg-config resolves that whole graph and fails the moment x11.pc is gone -- and installing
+    # libcairo2-dev to make it succeed would put the X11 development files straight back, which is
+    # the single thing this job exists to keep out. Until now that left wayland_cairo.c with no CI
+    # coverage at all.
+    #
+    # The escape is that those surfaces are optional in Cairo itself; the distro build merely turns
+    # them on. A source build with -Dxlib=disabled -Dxcb=disabled installs a cairo.pc whose
+    # Requires.private is libpng/fontconfig/freetype2/pixman-1 and nothing else, and a libcairo.so.2
+    # with no X11 entry in DT_NEEDED -- so `pkg-config --exists cairo` resolves here, HAVE_CAIRO
+    # turns true, and the container still has no X11 development files anywhere.
+    #
+    # The enabled feature set is exactly what this repository calls, and no more, because every
+    # extra surface lengthens Cairo's own dependency chain:
+    #   image surfaces  always built, and they are the whole of wayland_cairo.c: it draws into
+    #                   cairo_image_surface_create_for_data() over a wl_shm mapping and hands the
+    #                   compositor the matching wl_buffer, which is why there is no
+    #                   "Cairo surface for a Wayland window" backend to enable in the first place
+    #   png             dgl/src/Cairo.cpp loads images via cairo_image_surface_create_from_png_stream()
+    #   freetype +
+    #   fontconfig      dgl/src/Cairo.cpp and examples/CairoUI draw labels with cairo_show_text() and
+    #                   cairo_text_extents(); with no font backend compiled in, the toy text API can
+    #                   only ever resolve to the nil font face
+    # Everything else is off: xlib/xcb (the point of the exercise), tee, zlib (script/ps/pdf), glib,
+    # spectre, lzo, quartz, dwrite, symbol-lookup and the test suite. DPF calls into none of them.
+    #
+    # No actions/cache for the built prefix, deliberately. Nothing in this repository caches anything
+    # today and this is not the place to be the first, because a cache would barely save anything:
+    # measured in this container, the whole thing is ~40s, of which apt-get is ~23s and the fetch,
+    # configure and 122-object compile together are ~16s. The apt half is not cacheable by a cached
+    # prefix either -- the installed cairo.pc still says `Requires.private: libpng, fontconfig,
+    # freetype2, pixman-1`, so `pkg-config --exists cairo` needs those .pc files whether or not
+    # libcairo.so.2 had to be rebuilt. And a correct key would have to cover more than the pinned
+    # version: Cairo links against the container's pixman/freetype/fontconfig, so a prefix restored
+    # under a different base image would be quietly wrong, making the key
+    # cairo-${CAIRO_VERSION}-${CAIRO_SHA256}-<container image digest>. Revisit if the build grows.
+
+    - name: Build Cairo without its X11 surfaces
+      run: |
+        url="https://cairographics.org/releases/cairo-${CAIRO_VERSION}.tar.xz"
+        curl -sSfL -o cairo.tar.xz "$url"
+        echo "${CAIRO_SHA256}  cairo.tar.xz" | sha256sum -c -
+        tar xf cairo.tar.xz
+        cd "cairo-${CAIRO_VERSION}"
+        # --libdir=lib instead of meson's distro-shaped default, so the PKG_CONFIG_PATH below is one
+        # fixed path rather than a guess at the host triplet.
+        # --default-library=shared so the DT_NEEDED assertion further down has something to read.
+        # --wrap-mode=nodownload because Cairo ships subproject wraps for pixman, libpng, freetype2,
+        # fontconfig and friends: without it a missing -dev package turns into a silent network fetch
+        # and a bundled copy built with whatever defaults the wrap carries, instead of a hard failure.
+        meson setup _build \
+          --prefix="$CAIRO_PREFIX" \
+          --libdir=lib \
+          --buildtype=release \
+          --default-library=shared \
+          --wrap-mode=nodownload \
+          -Dxlib=disabled \
+          -Dxcb=disabled \
+          -Dxlib-xcb=disabled \
+          -Dpng=enabled \
+          -Dfreetype=enabled \
+          -Dfontconfig=enabled \
+          -Dzlib=disabled \
+          -Dtee=disabled \
+          -Dglib=disabled \
+          -Dspectre=disabled \
+          -Dlzo=disabled \
+          -Dquartz=disabled \
+          -Ddwrite=disabled \
+          -Dsymbol-lookup=disabled \
+          -Dgtk2-utils=disabled \
+          -Dtests=disabled \
+          -Dgtk_doc=false
+        ninja -C _build
+        meson install -C _build
+    # A Cairo that still had the X11 surfaces would build and install perfectly happily; it would just
+    # quietly reintroduce the dependency this whole job is about. Read the result back before letting
+    # DPF near it.
+    - name: Verify the built Cairo has no X11 surfaces
+      run: |
+        export PKG_CONFIG_PATH="$CAIRO_PREFIX/lib/pkgconfig"
+        status=0
+        pkg-config --exists cairo \
+          || { echo "::error::cairo.pc was not installed into $CAIRO_PREFIX"; exit 1; }
+        # Also catches the reverse mistake, a libcairo2-dev that crept into an apt line above.
+        found=$(pkg-config --variable=prefix cairo)
+        [ "$found" = "$CAIRO_PREFIX" ] \
+          || { echo "::error::pkg-config resolved cairo to $found, not the source build"; status=1; }
+        version=$(pkg-config --modversion cairo)
+        [ "$version" = "$CAIRO_VERSION" ] \
+          || { echo "::error::cairo.pc reports $version, expected the pinned $CAIRO_VERSION"; status=1; }
+        requires=$(pkg-config --print-requires-private cairo | tr '\n' ' ')
+        echo "cairo $version from $found"
+        echo "Requires.private: $requires"
+        for mod in x11 xext xrender xcb xcb-render xcb-shm; do
+          case " $requires " in
+            *" $mod "*)
+              echo "::error::cairo.pc still requires $mod, the X11 surfaces were not disabled"
+              status=1
+              ;;
+          esac
+        done
+        objdump -p "$CAIRO_PREFIX"/lib/libcairo.so.2.* | grep NEEDED
+        if objdump -p "$CAIRO_PREFIX"/lib/libcairo.so.2.* | grep -qE '[[:space:]](libX[a-zA-Z0-9]*|libxcb[a-z-]*)\.so'; then
+          echo "::error::libcairo.so links X11 libraries"
+          status=1
+        fi
+        exit $status
+    # Same shape as the "Show detected features" step near the top of this job, but with the source
+    # built Cairo on PKG_CONFIG_PATH. HAVE_X11 must still be No: the prefix adds a cairo.pc and
+    # nothing else, so the backend choice is unchanged and only the Cairo variant is switched on.
+    - name: Show detected features with Cairo
+      run: |
+        export PKG_CONFIG_PATH="$CAIRO_PREFIX/lib/pkgconfig"
+        make features | tee features-cairo.txt
+        assert() {
+          grep -qx "$1" features-cairo.txt || { echo "::error::expected 'make features' to report '$1'"; exit 1; }
+        }
+        assert 'HAVE_CAIRO: Yes'
+        assert 'HAVE_X11: No'
+        assert 'HAVE_WAYLAND: Yes'
+        assert 'DGL_BACKEND_WAYLAND: Yes'
+    # BUILD_DIR_SUFFIX, not the default build/: the steps above already filled that directory from a
+    # HAVE_CAIRO=false configuration, and DGL shares OBJS_common between its Cairo and OpenGL
+    # variants, so reusing it would archive objects compiled under a different DGL_FLAGS into
+    # libdgl-cairo.a. A tree of its own costs seventeen recompiles and removes the question.
+    #
+    # lv2_sep rather than the example's full target list: it is the only one that links the UI into a
+    # binary of its own, so the DT_NEEDED check below reads the UI's libraries and nothing else.
+    - name: Build the Cairo example against it
+      run: |
+        export PKG_CONFIG_PATH="$CAIRO_PREFIX/lib/pkgconfig"
+        make -C examples/CairoUI lv2_sep BUILD_DIR_SUFFIX=-cairo -j$(nproc)
+    # Two levels, because either one alone can be satisfied by the wrong build:
+    #   the archive   proves wayland_cairo.c is the Cairo backend that got compiled in. Its functions
+    #                 are static, so they are local symbols; pugl's x11_cairo.c would put
+    #                 puglX11Cairo* and an undefined cairo_xlib_surface_create there instead, and
+    #                 those two sets cannot both be present.
+    #   the binary    proves the link came out Wayland-only. Note wayland-egl is absent on purpose:
+    #                 the Cairo backend goes through wl_shm, not EGL, so demanding it here would fail
+    #                 a perfectly correct build.
+    - name: Verify the Cairo UI uses the Wayland Cairo backend
+      run: |
+        status=0
+        nm build-cairo/libdgl-cairo.a > cairo-syms.txt
+        for sym in puglWaylandCairoEnter puglWaylandCairoLeave puglWaylandCairoGetContext; do
+          grep -q "$sym" cairo-syms.txt \
+            || { echo "::error::libdgl-cairo.a does not contain $sym, the Wayland Cairo backend was not compiled in"; status=1; }
+        done
+        if grep -qE 'puglX11Cairo|cairo_xlib_surface_create' cairo-syms.txt; then
+          echo "::error::libdgl-cairo.a still contains the X11 Cairo backend"
+          status=1
+        fi
+        ui=bin/d_cairoui.lv2/d_cairoui_ui.so
+        [ -f "$ui" ] || { echo "::error::$ui was not built"; exit 1; }
+        objdump -p "$ui" | grep NEEDED > needed.txt
+        cat needed.txt
+        for lib in libcairo.so.2 libwayland-client.so.0 libwayland-cursor.so.0 libxkbcommon.so.0; do
+          grep -q "[[:space:]]${lib}\$" needed.txt \
+            || { echo "::error::the Cairo UI does not link $lib"; status=1; }
+        done
+        if grep -qE '[[:space:]](libX[a-zA-Z0-9]*|libxcb[a-z-]*)\.so' needed.txt; then
+          echo "::error::the Cairo UI links X11 libraries"
+          status=1
+        fi
         exit $status
 
   # -------------------------------------------------------------------------------------------------------------------
