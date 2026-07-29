@@ -55,9 +55,19 @@ extern "C" {
 //
 //    Most init() / deinit() pairs we have seen are the relatively trivial {return true;} and {}. But
 //    if your init() function does non-trivial one time work, the plugin author must maintain a counter
-//    and must manage a mutex lock. The most obvious implementation will maintain a static counter and a
-//    global mutex, increment the counter on each init, decrement it on each deinit, and only undertake
-//    the init or deinit action when the counter is zero.
+//    and must manage a mutex lock. The most obvious implementation maintains a static counter and a
+//    global mutex, and under that lock:
+//
+//      init():   if the count is zero, do the initialization work, and return false without touching
+//                the count if it fails. Increment the count only once initialization has succeeded,
+//                so a failed init() cannot leave a count that a later deinit() would decrement.
+//      deinit(): if the count is already zero there is nothing to undo, so return without
+//                decrementing; the count must never go negative. Otherwise decrement it, and do the
+//                deinitialization work only on the resulting transition from one to zero.
+//
+//    Written that way, a redundant init() is a cheap increment, a redundant deinit() is a no-op
+//    rather than an underflow, and the DSO can still be re-initialized by a later init() once the
+//    count has genuinely reached zero.
 typedef struct clap_plugin_entry {
    clap_version_t clap_version; // initialized to CLAP_VERSION
 

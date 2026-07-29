@@ -4,6 +4,13 @@
 # Created by falkTX
 #
 
+# The Demo, FileBrowserDialog, NanoImage and NanoSubWidgets targets link ../build/libdgl-*.a, which the
+# top-level Makefile builds with USE_WEB_VIEW=true (it exports it for the example plugins). Match that
+# default, or the build config sentinels in dgl/src/Application.cpp resolve to the "off" variant here and
+# the "on" one in the library, and every one of those targets fails to link.
+# The unit tests do not link the library and do not care either way; an explicit USE_WEB_VIEW still wins.
+USE_WEB_VIEW ?= true
+
 include ../Makefile.base.mk
 
 # ---------------------------------------------------------------------------------------------------------------------

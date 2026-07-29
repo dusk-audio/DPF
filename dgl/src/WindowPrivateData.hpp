@@ -44,10 +44,18 @@ struct Window::PrivateData : IdleCallback {
     /** Pugl view instance. */
     PuglView* view;
 
-    /** Reserved space for graphics context.
-        Must be at least as large as the biggest *GraphicsContext in use, currently OpenGL3GraphicsContext:
-        program, color, bounds, textureMap, usingTexture, buffers[2], vao, width, height = 10 x GLuint. */
-    mutable uint8_t graphicsContext[sizeof(int) * 10];
+    /** Size and alignment of the reserved graphics context storage below.
+        The size must be at least that of the biggest *GraphicsContext in use, currently
+        OpenGL3GraphicsContext: program, color, bounds, textureMap, usingTexture, buffers[2], vao,
+        width, height = 10 x GLuint. The alignment covers the backends that keep a pointer in theirs
+        (CairoGraphicsContext), which a raw byte array does not provide on its own.
+        Each backend static_asserts its own context against these where it casts, so outgrowing this
+        storage fails the build instead of writing over the members that follow. */
+    static constexpr const size_t kGraphicsContextSize  = sizeof(int) * 10;
+    static constexpr const size_t kGraphicsContextAlign = alignof(void*);
+
+    /** Reserved space for graphics context. */
+    alignas(kGraphicsContextAlign) mutable uint8_t graphicsContext[kGraphicsContextSize];
     void createContextIfNeeded();
     void destroyContext();
     void startContext();

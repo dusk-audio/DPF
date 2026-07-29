@@ -168,8 +168,9 @@ struct PuglWorldInternalsImpl {
   PuglView* keyboardFocus;
   uint32_t  lastSerial;
 
-  // Clipboard, plus the drag-and-drop offer we decline but still have to clean up after
+  // Clipboard, plus unclaimed and drag-and-drop offers that still need to be cleaned up
   PuglWaylandOffer* selectionOffer;
+  PuglWaylandOffer* unclaimedOffer;
   PuglWaylandOffer* dndOffer;
 
   /* The selection this client currently owns, if any.  Ordinarily the wl_data_source.cancelled

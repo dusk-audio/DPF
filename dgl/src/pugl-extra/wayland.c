@@ -72,6 +72,9 @@
 #define PUGL_WAYLAND_BTN_SIDE 0x113U
 #define PUGL_WAYLAND_BTN_EXTRA 0x114U
 
+/// Returned for button codes that have no Pugl button number, such events are ignored
+#define PUGL_WAYLAND_BTN_UNKNOWN UINT32_MAX
+
 /// Highest interface versions this backend knows how to speak
 #define PUGL_WAYLAND_COMPOSITOR_VERSION 4U
 #define PUGL_WAYLAND_SEAT_VERSION 7U
@@ -498,13 +501,16 @@ puglWaylandFrameDone(void* const               data,
   PuglView* const      view = (PuglView*)data;
   PuglInternals* const impl = view->impl;
 
-  wl_callback_destroy(callback);
-
-  impl->frameCallbackWorks = true;
-
+  /* Compare before destroying: once the proxy is freed the pointer is dead, and reading it back
+     (even just to compare) is undefined.  puglWaylandCanDraw() can have dropped a stale callback
+     and started another one, so this really can be a different object than the one we track. */
   if (impl->frameCallback == callback) {
     impl->frameCallback = NULL;
   }
+
+  wl_callback_destroy(callback);
+
+  impl->frameCallbackWorks = true;
 
   if (impl->needsRedisplay) {
     impl->needsRedisplay = false;
@@ -1045,10 +1051,12 @@ puglWaylandButtonNumber(const uint32_t code)
     break;
   }
 
-  // Anything else keeps the order the device reports it in, after the five named buttons
+  // Anything above keeps the order the device reports it in, after the five named buttons.
+  // Codes below BTN_LEFT are not mouse buttons at all (BTN_MISC and friends) and have no slot
+  // in that order, so they are dropped rather than reported as the primary button.
   return (code > PUGL_WAYLAND_BTN_EXTRA)
            ? (5U + (code - PUGL_WAYLAND_BTN_EXTRA - 1U))
-           : 0U;
+           : PUGL_WAYLAND_BTN_UNKNOWN;
 }
 
 static void
@@ -1068,6 +1076,11 @@ puglWaylandPointerButton(void* const              data,
     return;
   }
 
+  const uint32_t number = puglWaylandButtonNumber(button);
+  if (number == PUGL_WAYLAND_BTN_UNKNOWN) {
+    return;
+  }
+
   PuglEvent event     = {{PUGL_NOTHING, 0U}};
   event.button.type   = (state == WL_POINTER_BUTTON_STATE_PRESSED)
                           ? PUGL_BUTTON_PRESS
@@ -1078,7 +1091,7 @@ puglWaylandPointerButton(void* const              data,
   event.button.xRoot  = impl->pointerX;
   event.button.yRoot  = impl->pointerY;
   event.button.state  = puglWaylandMods(impl);
-  event.button.button = puglWaylandButtonNumber(button);
+  event.button.button = number;
   puglDispatchEvent(view, &event);
 }
 
@@ -1759,10 +1772,15 @@ static const struct wl_data_offer_listener puglWaylandDataOfferListener = {
   puglWaylandDataOfferAction};
 
 static void
-puglWaylandDataDeviceOffer(void* const                  PUGL_UNUSED(data),
+puglWaylandDataDeviceOffer(void* const                  data,
                            struct wl_data_device* const PUGL_UNUSED(device),
                            struct wl_data_offer* const  offer)
 {
+  PuglWorldInternals* const impl = (PuglWorldInternals*)data;
+
+  puglWaylandFreeOffer(impl->unclaimedOffer);
+  impl->unclaimedOffer = NULL;
+
   PuglWaylandOffer* const po =
     (PuglWaylandOffer*)calloc(1, sizeof(PuglWaylandOffer));
 
@@ -1773,6 +1791,32 @@ puglWaylandDataDeviceOffer(void* const                  PUGL_UNUSED(data),
 
   po->offer = offer;
   wl_data_offer_add_listener(offer, &puglWaylandDataOfferListener, po);
+  impl->unclaimedOffer = po;
+}
+
+/**
+   Take ownership of the offer the compositor introduced just before naming it here.
+
+   Deliberately not wl_data_offer_get_user_data(): puglWaylandDataDeviceOffer() destroys the proxy
+   outright when it cannot allocate the bookkeeping for it, and the enter/selection naming that same
+   offer still arrives afterwards, so the proxy handed over here is not guaranteed to be alive.  The
+   protocol always sends wl_data_device.data_offer immediately before the event that uses it, so the
+   one still held as unclaimed is the one being named -- and if it is not, it never will be.
+*/
+static PuglWaylandOffer*
+puglWaylandClaimOffer(PuglWorldInternals* const   impl,
+                      struct wl_data_offer* const offer)
+{
+  PuglWaylandOffer* const po = impl->unclaimedOffer;
+
+  impl->unclaimedOffer = NULL;
+
+  if (po && po->offer == offer) {
+    return po;
+  }
+
+  puglWaylandFreeOffer(po);
+  return NULL;
 }
 
 static void
@@ -1792,8 +1836,12 @@ puglWaylandDataDeviceEnter(void* const                  data,
   impl->dndOffer = NULL;
 
   if (offer) {
-    wl_data_offer_accept(offer, serial, NULL);
-    impl->dndOffer = (PuglWaylandOffer*)wl_data_offer_get_user_data(offer);
+    impl->dndOffer = puglWaylandClaimOffer(impl, offer);
+
+    // only once the proxy is known to be one we are still holding, see puglWaylandClaimOffer
+    if (impl->dndOffer) {
+      wl_data_offer_accept(offer, serial, NULL);
+    }
   }
 }
 
@@ -1837,8 +1885,11 @@ puglWaylandDataDeviceSelection(void* const                  data,
   impl->selectionOffer = NULL;
 
   if (offer) {
-    impl->selectionOffer =
-      (PuglWaylandOffer*)wl_data_offer_get_user_data(offer);
+    impl->selectionOffer = puglWaylandClaimOffer(impl, offer);
+  } else {
+    // The selection was cleared, so whatever offer was introduced for it is never going to be used
+    puglWaylandFreeOffer(impl->unclaimedOffer);
+    impl->unclaimedOffer = NULL;
   }
 }
 
@@ -2606,6 +2657,7 @@ puglWaylandDestroyWorldInternals(PuglWorldInternals* const impl)
   }
 
   puglWaylandFreeOffer(impl->selectionOffer);
+  puglWaylandFreeOffer(impl->unclaimedOffer);
   puglWaylandFreeOffer(impl->dndOffer);
 
   /* If this client still owns the selection, nobody is going to deliver the cancelled event that
@@ -3129,11 +3181,47 @@ puglHide(PuglView* const view)
   return PUGL_SUCCESS;
 }
 
+#if PUGL_WAYLAND_HAVE_TIMERFD
+/// Drop every timer belonging to a view, the same way puglStopTimer() drops a single one
+static void
+puglWaylandRemoveViewTimers(PuglWorldInternals* const impl,
+                            const PuglView* const     view)
+{
+  size_t i = 0;
+
+  while (i < impl->numTimers) {
+    if (impl->timers[i].view != view) {
+      ++i;
+      continue;
+    }
+
+    close(impl->timers[i].fd);
+
+    if (i != impl->numTimers - 1U) {
+      memmove(impl->timers + i,
+              impl->timers + i + 1U,
+              sizeof(PuglWaylandTimer) * (impl->numTimers - i - 1U));
+    }
+
+    --impl->numTimers;
+  }
+}
+#endif
+
 void
 puglFreeViewInternals(PuglView* const view)
 {
   if (view && view->impl) {
     puglUnrealize(view);
+
+#if PUGL_WAYLAND_HAVE_TIMERFD
+    /* Timers live in the world and are keyed by view, so one left running here would keep a
+       pointer to memory that is about to be freed and puglWaylandHandleTimers() would dispatch
+       to it.  Applications are not required to stop their timers before destroying a view. */
+    if (view->world && view->world->impl) {
+      puglWaylandRemoveViewTimers(view->world->impl, view);
+    }
+#endif
 
     for (uint32_t i = 0; i < view->impl->clipboard.numFormats; ++i) {
       free(view->impl->clipboard.formatStrings[i]);
@@ -3219,7 +3307,8 @@ puglWaylandHandleTimers(PuglWorldInternals* const impl)
 
     /* The dispatch above can start or stop timers, which would move the array out from under this
        loop.  Bail out and pick up the rest on the next pass rather than risk a stale index. */
-    if (i >= impl->numTimers || impl->timers[i].id != timer.id) {
+    if (i >= impl->numTimers || impl->timers[i].view != timer.view ||
+        impl->timers[i].id != timer.id) {
       break;
     }
   }

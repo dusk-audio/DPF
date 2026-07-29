@@ -64,7 +64,8 @@
 /// - the plugin is responsible for updating its GUI
 ///
 /// V. Turning a knob via plugin's internal MIDI mapping
-/// - the plugin sends a CLAP_EVENT_PARAM_VALUE output event, set should_record to false
+/// - the plugin sends a CLAP_EVENT_PARAM_VALUE output event, with
+///   event.header.flags |= CLAP_EVENT_DONT_RECORD so the host doesn't record the parameter change
 /// - the plugin is responsible for updating its GUI
 ///
 /// VI. Adding or removing parameters

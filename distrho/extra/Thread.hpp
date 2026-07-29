@@ -280,7 +280,7 @@ public:
             // thread names are short by convention, a fixed buffer is plenty
             WCHAR wname[128];
 
-            if (MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, ARRAY_SIZE(wname)) > 0)
+            if (MultiByteToWideChar(CP_UTF8, 0, name, -1, wname, static_cast<int>(ARRAY_SIZE(wname))) > 0)
                 setThreadDescription(GetCurrentThread(), wname);
         }
        #endif

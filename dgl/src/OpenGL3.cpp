@@ -931,6 +931,13 @@ static void contextCreationFail(const GLuint program, const GLuint shader1, cons
 
 void Window::PrivateData::createContextIfNeeded()
 {
+    // graphicsContext is a raw byte array sized by hand, so make outgrowing it a build error rather
+    // than a silent write over whatever Window::PrivateData keeps after it
+    static_assert(sizeof(OpenGL3GraphicsContext) <= kGraphicsContextSize,
+                  "OpenGL3GraphicsContext outgrew Window::PrivateData::graphicsContext, enlarge it");
+    static_assert(alignof(OpenGL3GraphicsContext) <= kGraphicsContextAlign,
+                  "OpenGL3GraphicsContext needs more alignment than Window::PrivateData::graphicsContext has");
+
     OpenGL3GraphicsContext& gl3context = reinterpret_cast<OpenGL3GraphicsContext&>(graphicsContext);
 
     if (gl3context.program != 0)

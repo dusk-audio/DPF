@@ -126,7 +126,8 @@ struct ClapEventQueue
 
         ~Queue()
         {
-            delete[] events;
+            // std::free, not delete[]: the buffer comes from std::malloc/std::realloc below
+            std::free(events);
         }
 
         void addEventFromUI(const Event& event)
@@ -1740,6 +1741,9 @@ public:
         const char* buffer = state.buffer();
         const int32_t size = static_cast<int32_t>(state.length())+1;
 
+        // A short write is normal and simply loops again. A write of 0 is not: the stream made no
+        // progress on a non-empty request, and retrying it is either an immediate spin or a hang,
+        // so treat it as the failure it is rather than looping on a host that has stopped moving.
         for (int32_t wrtntotal = 0, wrtn; wrtntotal < size; wrtntotal += wrtn)
         {
             wrtn = stream->write(stream, buffer + wrtntotal, size - wrtntotal);
@@ -1757,13 +1761,10 @@ public:
         String key, value;
         bool hasValue = false;
         bool fillingKey = true; // if filling key or value
-        char queryingType = 'i'; // can be 'n', 's' or 'p' (none, states, parameters)
-        const uint32_t paramCount = fPlugin.getParameterCount();
-       #if DISTRHO_PLUGIN_WANT_STATE
-        const uint32_t stateCount = fPlugin.getStateCount();
-       #else
-        const uint32_t stateCount = 0;
-       #endif
+        // parser state: 'i' initial (nothing read yet), 'n' between sections (program and/or states
+        // done), 's' inside the states section, 'p' inside the parameters section, 'x' parameters
+        // section closed. Only 'i', 'n' and 'x' are valid places for the stream to end.
+        char queryingType = 'i';
 
         char buffer[512];
 
@@ -1782,8 +1783,10 @@ public:
                 // it writes a single null byte and never emits the '\xfe' terminator.
                 // Accept exactly that stream here, that is a lone empty key and nothing else
                 // parsed; a genuinely truncated state still fails.
-                if (paramCount == 0 && stateCount == 0
-                    && queryingType == 'i'
+                // What matters is what the stream contains, not how many parameters or states
+                // this build has, so that state saved by a differently configured build of the
+                // same plugin still loads.
+                if (queryingType == 'i'
                     && ! fillingKey
                     && ! hasValue
                     && key.isEmpty()
@@ -1798,12 +1801,14 @@ public:
                 // found terminator, stop here
                 if (buffer[i] == '\xfe')
                 {
-                    const bool validTerminalState =
-                        paramCount != 0
-                            ? queryingType == 'x'
-                            : stateCount != 0
-                                ? queryingType == 'n'
-                                : queryingType == 'i';
+                    // Which sections the stream carries depends on the build that wrote it, not
+                    // on this build's parameter and state counts, so every state that closes all
+                    // the sections it opened is valid here: 'i' (nothing but the terminator),
+                    // 'n' (program and/or states done) and 'x' (parameters done).
+                    // A stream stopping mid-section ('s' or 'p') or mid key/value pair is not.
+                    const bool validTerminalState = queryingType == 'i'
+                                                 || queryingType == 'n'
+                                                 || queryingType == 'x';
                     if (! validTerminalState
                         || ! fillingKey
                         || hasValue

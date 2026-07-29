@@ -24,7 +24,7 @@ If the limitation is within DPF, a link is provided to a description below on th
 | UI bg/fg colors     | No                                    | No                 | No                  | Yes                           | No                         | No?                        | No                         | No                         | UI bg/fg colors     |
 | UI direct access    | Yes                                   | No                 | No                  | Yes                           | Yes                        | Yes                        | Yes                        | Yes                        | UI direct access    |
 | UI host-filebrowser | No                                    | No                 | No                  | Yes                           | [No*](#vst2-deprecated)    | [No*](#work-in-progress)   | [No*](#work-in-progress)   | No                         | UI host-filebrowser |
-| UI host-resize      | Yes                                   | No                 | Yes                 | Yes                           | No                         | Yes                        | Yes                        | No                         | UI host-resize      |
+| UI host-resize      | Yes                                   | No                 | Yes                 | Yes                           | No                         | Yes                        | Yes                        | [Yes*](#au-host-resize)    | UI host-resize      |
 | UI remote control   | No                                    | No                 | Yes                 | Yes                           | No                         | Yes                        | No                         | Yes                        | UI remote control   |
 | UI send midi note   | Yes                                   | No                 | Yes                 | Yes                           | Yes                        | Yes                        | Yes                        | Yes                        | UI send midi note   |
 
@@ -92,6 +92,13 @@ VST2 program support requires saving state of all programs in memory, which is v
 
 Although VST3 officially supports CV (Control Voltage) tagged audio ports,
 at the moment no host supports such feature and thus it is not possible to validate it.
+
+## AU host-resize
+
+AU v2 has no size negotiation of its own: the host simply resizes the view the plugin handed it,
+and there is no way for the plugin to refuse a size or to ask for one other than by resizing itself.
+DPF follows those host-driven resizes, and offers the plugin window resize affordance when the
+plugin asked to be user-resizable, but the host has the final say on the size.
 
 ## Wayland support
 

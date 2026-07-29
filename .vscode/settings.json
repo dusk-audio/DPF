@@ -1,0 +1,10 @@
+{
+  // This tree is a hard fork of DISTRHO/DPF: nothing is ever submitted upstream.
+  //
+  // GitHub's fork network makes DISTRHO/DPF the default base for a new pull request, and no git
+  // config can override that. So the extension is pinned to this repository's own remote, and
+  // told not to offer a pull request after every push. Two PRs were opened against DISTRHO by
+  // accident before these were set.
+  "githubPullRequests.remotes": ["origin"],
+  "githubPullRequests.createOnPublishBranch": "never"
+}
