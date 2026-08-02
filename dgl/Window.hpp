@@ -252,6 +252,18 @@ public:
     void setOffset(const Point<int>& offset);
 
    /**
+      Set the offset of an embedded window relative to its parent.
+
+      Embedded windows are normally positioned by their host, so the regular
+      setOffset methods intentionally ignore them. This explicit variant is
+      for hosts that own both the parent and embedded child window.
+
+      @return Whether the platform accepted the position change.
+      @see isEmbed()
+    */
+    bool setEmbeddedOffset(int x, int y);
+
+   /**
       Get width.
     */
     uint getWidth() const noexcept;
