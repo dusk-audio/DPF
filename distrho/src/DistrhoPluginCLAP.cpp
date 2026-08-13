@@ -117,11 +117,15 @@ struct ClapEventQueue
         RecursiveMutex lock;
         uint allocated;
         uint used;
+        // How far into the queue the plugin has already been updated. Only relevant while events are
+        // held back for want of an output list, see PluginCLAP::sendUIEventsToHost.
+        uint appliedFromUI;
         Event* events;
 
         Queue()
             : allocated(0),
               used(0),
+              appliedFromUI(0),
               events(nullptr) {}
 
         ~Queue()
@@ -228,6 +232,7 @@ public:
     ClapUI(PluginExporter& plugin,
            ClapEventQueue* const eventQueue,
            const clap_host_t* const host,
+           const clap_host_params_t* const hostParams,
            const clap_host_gui_t* const hostGui,
           #if DPF_CLAP_USING_HOST_TIMER
            const clap_host_timer_support_t* const hostTimer,
@@ -246,6 +251,7 @@ public:
           fStateMap(eventQueue->fStateMap),
          #endif
           fHost(host),
+          fHostParams(hostParams),
           fHostGui(hostGui),
          #if DPF_CLAP_USING_HOST_TIMER
           fTimerId(0),
@@ -606,6 +612,7 @@ private:
     StringMap& fStateMap;
    #endif
     const clap_host_t* const fHost;
+    const clap_host_params_t* const fHostParams;
     const clap_host_gui_t* const fHostGui;
    #if DPF_CLAP_USING_HOST_TIMER
     clap_id fTimerId;
@@ -732,13 +739,56 @@ private:
     // ----------------------------------------------------------------------------------------------------------------
     // DPF callbacks
 
+    // The one way to queue an edit for the host. Queued events leave the plugin only from process()
+    // or clap_plugin_params::flush, and the host owes it neither while it is not processing this
+    // plugin (a bypassed or idle track), so every enqueue is paired with a request. Skipping that
+    // for even one event means the edit is never applied nor reported, and for a bypass-designated
+    // parameter it means the plugin can never switch itself back on.
+    //
+    // Asking per event is deliberate. The obvious optimisations are all unsound:
+    //  - only on the queue's empty-to-non-empty transition: the drain bails when its try-lock finds
+    //    this thread mid-enqueue, and with the queue non-empty no later edit asks again, so the
+    //    events sit there. Per event, the enqueuing thread always asks after releasing the lock, so
+    //    a bailed drain is always followed by a fresh request.
+    //  - re-asking from idleCallback while events are pending: that timer stops at gui destroy, so
+    //    an edit queued in the bail window just before the editor closes is stranded.
+    //  - gating on fPlugin.isActive(): skips exactly the active-but-not-processing case this exists
+    //    for. A flag driven by start/stop_processing strands events too, since stop_processing is
+    //    [audio-thread] while request_flush is [!audio-thread], so the flag holder cannot ask on the
+    //    way down.
+    // Hosts coalesce these into a flag and a wakeup, which is the cheap half of the trade.
+    void queueUIEvent(const ClapEventQueue::Event& ev) const
+    {
+        fEventQueue.addEventFromUI(ev);
+        requestHostParamFlush();
+    }
+
+    // request_flush is [thread-safe,!audio-thread]; the only caller runs on the UI thread.
+    void requestHostParamFlush() const
+    {
+        // Checking the member as well as the struct is defence against nonconforming hosts, not a
+        // documented option: this runs on every UI edit and hosts do ship extension structs with
+        // null entries.
+        if (fHostParams != nullptr && fHostParams->request_flush != nullptr)
+        {
+            fHostParams->request_flush(fHost);
+        }
+        else if (fHost->request_process != nullptr)
+        {
+            // Scenario III in clap/ext/params.h names request_process as the other lever, and it
+            // lives in clap_host_t itself, so a host without a usable params extension is still
+            // reachable.
+            fHost->request_process(fHost);
+        }
+    }
+
     void editParameter(const uint32_t rindex, const bool started) const
     {
         const ClapEventQueue::Event ev = {
             started ? ClapEventQueue::kEventGestureBegin : ClapEventQueue::kEventGestureEnd,
             rindex, 0.f
         };
-        fEventQueue.addEventFromUI(ev);
+        queueUIEvent(ev);
     }
 
     static void editParameterCallback(void* const ptr, const uint32_t rindex, const bool started)
@@ -752,7 +802,7 @@ private:
             ClapEventQueue::kEventParamSet,
             rindex, value
         };
-        fEventQueue.addEventFromUI(ev);
+        queueUIEvent(ev);
     }
 
     static void setParameterCallback(void* const ptr, const uint32_t rindex, const float value)
@@ -977,6 +1027,98 @@ public:
         }
     }
 
+   #if DISTRHO_PLUGIN_HAS_UI
+    // Reached from process() and from clap_plugin_params::flush. A host that is not processing this
+    // plugin still owes it one of the two after a request_flush (see ClapUI::requestHostParamFlush),
+    // which is why both entry points drain: an edit made in that state would otherwise never be
+    // applied nor reported. Non-blocking: the UI keeps its own copy of the value, so a queue busy
+    // with the UI thread simply drains on the next call. Guards its own arguments, as
+    // flushParameters() below does with its event lists.
+    //
+    // A refused try_push is ignored on purpose. The report is best effort, the value is not: a host
+    // whose output queue is full ends up with a stale cache entry it corrects on its next rescan,
+    // whereas skipping the apply would leave the DSP on the old value with nothing to trigger a
+    // retry. Retaining refused events instead was tried and is worse: a host that always rejects an
+    // event type blocks the queue head forever, and a retained old value can re-push over newer host
+    // automation.
+    //
+    // Known and deliberately left alone, so they are not rediscovered as regressions:
+    //  - a host value arriving in the same call is applied after the queued UI value has already
+    //    been pushed out, so the two can disagree until the next edit. Pre-existing in process(),
+    //    and a protocol-level ordering question rather than something this layer can settle.
+    //  - reached from the main thread while the plugin is deactivated, and a host that services
+    //    request_flush inline can re-enter from the UI callback stack. Legal: DPF's
+    //    setParameterValue is documented as callable from any context.
+    //  - stateLoad does not cancel queued edits, so an edit made before a state load can apply
+    //    after it. Pre-existing, though reachable in more situations now.
+    void sendUIEventsToHost(const clap_output_events_t* const outputEvents)
+    {
+        const RecursiveMutexTryLocker crmtl(fEventQueue.lock);
+
+        if (! crmtl.wasLocked())
+            return;
+
+        // reuse the same struct for gesture and parameters, they are compatible up to where it matters
+        clap_event_param_value_t clapEvent = {
+            { 0, 0, 0, 0, CLAP_EVENT_IS_LIVE },
+            0, nullptr, 0, 0, 0, 0, 0.0
+        };
+
+        for (uint32_t i=0; i<fEventQueue.used; ++i)
+        {
+            const Event& event(fEventQueue.events[i]);
+
+            switch (event.type)
+            {
+            case kEventGestureBegin:
+                clapEvent.header.size = sizeof(clap_event_param_gesture_t);
+                clapEvent.header.type = CLAP_EVENT_PARAM_GESTURE_BEGIN;
+                clapEvent.param_id = event.index;
+                break;
+            case kEventGestureEnd:
+                clapEvent.header.size = sizeof(clap_event_param_gesture_t);
+                clapEvent.header.type = CLAP_EVENT_PARAM_GESTURE_END;
+                clapEvent.param_id = event.index;
+                break;
+            case kEventParamSet:
+                clapEvent.header.size = sizeof(clap_event_param_value_t);
+                clapEvent.header.type = CLAP_EVENT_PARAM_VALUE;
+                clapEvent.param_id = event.index;
+                clapEvent.value = event.value;
+                // Applied even when there is nowhere to report it: a host servicing a flush with no
+                // output queue must still not lose the edit, or the parameter never moves at all.
+                // Applied once only, though: a held-back event is re-reported later but must not be
+                // re-set, because a trigger parameter fires on every set it receives.
+                if (i >= fEventQueue.appliedFromUI)
+                    fPlugin.setParameterValue(event.index, event.value);
+                break;
+            default:
+                continue;
+            }
+
+            if (outputEvents != nullptr)
+                outputEvents->try_push(outputEvents, &clapEvent.header);
+        }
+
+        // Held back when there was nowhere to report to, so the reports still reach the host on the
+        // next drain that has a real output list. Dropping them there would strand a gesture begin
+        // without its end and leave the host's automation lane stuck in touch state. The watermark
+        // keeps the values from being applied a second time when that happens; the remaining cost is
+        // that a held value is reported after any host automation that arrived in between, so it can
+        // overwrite it host-side. Both are reachable only through a host that passes no output list
+        // while asking for a flush, and losing gesture pairs outright is the worse of the two.
+        if (outputEvents != nullptr)
+        {
+            fEventQueue.used = 0;
+            fEventQueue.appliedFromUI = 0;
+        }
+        else
+        {
+            fEventQueue.appliedFromUI = fEventQueue.used;
+        }
+    }
+   #endif
+
     bool process(const clap_process_t* const process)
     {
        #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
@@ -984,51 +1126,7 @@ public:
        #endif
 
        #if DISTRHO_PLUGIN_HAS_UI
-        if (const clap_output_events_t* const outputEvents = process->out_events)
-        {
-            const RecursiveMutexTryLocker crmtl(fEventQueue.lock);
-
-            if (crmtl.wasLocked())
-            {
-                // reuse the same struct for gesture and parameters, they are compatible up to where it matters
-                clap_event_param_value_t clapEvent = {
-                    { 0, 0, 0, 0, CLAP_EVENT_IS_LIVE },
-                    0, nullptr, 0, 0, 0, 0, 0.0
-                };
-
-                for (uint32_t i=0; i<fEventQueue.used; ++i)
-                {
-                    const Event& event(fEventQueue.events[i]);
-
-                    switch (event.type)
-                    {
-                    case kEventGestureBegin:
-                        clapEvent.header.size = sizeof(clap_event_param_gesture_t);
-                        clapEvent.header.type = CLAP_EVENT_PARAM_GESTURE_BEGIN;
-                        clapEvent.param_id = event.index;
-                        break;
-                    case kEventGestureEnd:
-                        clapEvent.header.size = sizeof(clap_event_param_gesture_t);
-                        clapEvent.header.type = CLAP_EVENT_PARAM_GESTURE_END;
-                        clapEvent.param_id = event.index;
-                        break;
-                    case kEventParamSet:
-                        clapEvent.header.size = sizeof(clap_event_param_value_t);
-                        clapEvent.header.type = CLAP_EVENT_PARAM_VALUE;
-                        clapEvent.param_id = event.index;
-                        clapEvent.value = event.value;
-                        fPlugin.setParameterValue(event.index, event.value);
-                        break;
-                    default:
-                        continue;
-                    }
-
-                    outputEvents->try_push(outputEvents, &clapEvent.header);
-                }
-
-                fEventQueue.used = 0;
-            }
-        }
+        sendUIEventsToHost(process->out_events);
        #endif
 
        #if DISTRHO_PLUGIN_WANT_TIMEPOS
@@ -1442,6 +1540,12 @@ public:
     // this one cannot assume a restart may be requested.
     void flushParametersFromHost(const clap_input_events_t* const in, const clap_output_events_t* const out)
     {
+       #if DISTRHO_PLUGIN_HAS_UI
+        // Same order as process(): UI edits are applied first, so a value the host is delivering in
+        // this very call still wins over one the UI queued before it.
+        sendUIEventsToHost(out);
+       #endif
+
         flushParameters(in, out, 0);
 
        #if DISTRHO_PLUGIN_WANT_LATENCY
@@ -2004,7 +2108,7 @@ public:
         DISTRHO_SAFE_ASSERT_RETURN(hostTimer != nullptr, false);
        #endif
 
-        fUI = new ClapUI(fPlugin, this, fHost, hostGui,
+        fUI = new ClapUI(fPlugin, this, fHost, fHostExtensions.params, hostGui,
                         #if DPF_CLAP_USING_HOST_TIMER
                          hostTimer,
                         #endif
