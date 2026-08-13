@@ -179,6 +179,64 @@ public:
         }
     }
 
+    /* Called once the UI is fully constructed and no longer initializing, to hand the widget
+     * the size the window already has.
+     *
+     * This window is realized in its own constructor, which runs as part of constructing the
+     * UI, so where realizing a window is synchronous, as it is on Windows, the configure event
+     * that follows finds an empty top-level widget list and its size is dropped. An embedded
+     * view that the host never resizes afterwards gets no other configure, so the widget keeps
+     * the size the UI constructor asked for while the window, and with it the framebuffer, is
+     * at the scale factor multiplied size. Drawing code takes its clip and viewport region from
+     * the widget, so the plugin ends up painting into a fraction of its own window.
+     *
+     * Do here what that configure would have done. Deliberately not done any earlier: only
+     * from this point on does onResize reach an override in the concrete UI class, which is
+     * format independent, and only from this point on does UI::onResize hand the new size to
+     * the host on the formats that compile that branch in, VST2 and the other non size
+     * request ones. Size request formats do not need it, there the host reads the window size
+     * through UIExporter::getWidth and getHeight, which is correct throughout.
+     *
+     * Where the configure is merely deferred rather than lost, X11 being the case in point
+     * since realizing a view does not dispatch one synchronously, this does the same work the
+     * configure would have done, only earlier; the configure that follows then finds the sizes
+     * equal and changes nothing. It is a no-op whenever a configure did already land, and at
+     * scale 1.0 everywhere.
+     */
+    void reconcileWidgetSize()
+    {
+        if (pData->view == nullptr)
+            return;
+
+        /* Automatic scaling is reconciled by the configure event on purpose: setGeometryConstraints
+         * turns the mode on but leaves autoScaleFactor alone, and only onPuglConfigure derives it
+         * from the window and the minimum size. Reconciling here would divide by a factor of 1.0
+         * that is not yet the real one, hand the widget a size the next configure has to correct,
+         * and so report two resizes with a wrong one in between. Leave the mode alone; its own
+         * no-configure hole on Windows is a separate pre-existing defect, and half fixing it with
+         * a stale factor is worse than not touching it.
+         */
+        if (pData->autoScaling)
+            return;
+
+        const DGL_NAMESPACE::Size<uint> windowSize(getSize());
+
+        if (! windowSize.isValid())
+            return;
+
+        const double autoScaleFactor = pData->autoScaleFactor;
+        const DGL_NAMESPACE::Size<uint> widgetSize(
+            d_roundToUnsignedInt(windowSize.getWidth() / autoScaleFactor),
+            d_roundToUnsignedInt(windowSize.getHeight() / autoScaleFactor));
+
+        if (widgetSize == ui->getSize())
+            return;
+
+        puglBackendEnter(pData->view);
+        static_cast<DGL_NAMESPACE::Widget*>(ui)->setSize(widgetSize);
+        puglBackendLeave(pData->view);
+    }
+
     // used for temporary windows (VST/CLAP get size without active/visible view)
     void setIgnoreIdleCallbacks(const bool ignore = true)
     {
