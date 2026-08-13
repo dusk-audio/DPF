@@ -138,15 +138,24 @@ struct ClapEventQueue
         {
             const RecursiveMutexLocker crml(lock);
 
-            if (events == nullptr)
+            // realloc(nullptr, n) is malloc(n), so the first allocation and every growth after it
+            // share one path. Committing the new size before checking the result would leak the old
+            // block and then write through a null pointer on the next event, so keep the existing
+            // buffer and lose this one event instead. That loss is not symmetric: dropping a gesture
+            // begin while its end still goes through leaves the host's automation lane in touch
+            // state, and a dropped value leaves the host's cache stale until the next edit. Accepted
+            // as the least bad outcome at the point where allocation is already failing.
+            if (used + 1 > allocated)
             {
-                events = static_cast<Event*>(std::malloc(sizeof(Event) * 8));
-                allocated = 8;
-            }
-            else if (used + 1 > allocated)
-            {
-                allocated = used * 2;
-                events = static_cast<Event*>(std::realloc(events, sizeof(Event) * allocated));
+                const uint newAllocated = allocated != 0 ? allocated * 2 : 8;
+                Event* const newEvents = static_cast<Event*>(
+                    std::realloc(events, sizeof(Event) * newAllocated));
+
+                if (newEvents == nullptr)
+                    return;
+
+                events = newEvents;
+                allocated = newAllocated;
             }
 
             std::memcpy(&events[used++], &event, sizeof(Event));
