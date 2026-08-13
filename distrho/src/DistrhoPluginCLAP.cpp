@@ -870,6 +870,13 @@ private:
         midiData[2] = velocity;
         fNotesRingBuffer.writeCustomData(midiData, 3);
         fNotesRingBuffer.commitWrite();
+
+        // Notes are read only in process(), and unlike parameters they cannot travel through
+        // clap_plugin_params::flush, so ask the host to run one. Without this the UI keyboard is
+        // silent on a track the host is not processing and the queued note-ons all arrive at once
+        // when it resumes, long after their note-offs made sense.
+        if (fHost->request_process != nullptr)
+            fHost->request_process(fHost);
     }
 
     static void sendNoteCallback(void* const ptr, const uint8_t channel, const uint8_t note, const uint8_t velocity)
