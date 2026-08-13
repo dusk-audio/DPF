@@ -82,6 +82,9 @@ public:
         DISTRHO_SAFE_ASSERT_RETURN(uiPtr != nullptr,);
         ui = uiPtr;
         uiData->initializing = false;
+
+        // must come after the flag above, see DistrhoUIPrivateData.hpp
+        uiData->window->reconcileWidgetSize();
     }
 
     ~UIExporter()
