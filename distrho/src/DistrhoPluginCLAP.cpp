@@ -1059,9 +1059,11 @@ public:
             return;
 
         // reuse the same struct for gesture and parameters, they are compatible up to where it matters
+        // note_id/port_index/channel/key are -1: the edit is a global parameter change, and 0 would
+        // name voice 0, port 0, channel 0, key 0 (see the wildcard rules in clap/events.h).
         clap_event_param_value_t clapEvent = {
             { 0, 0, 0, 0, CLAP_EVENT_IS_LIVE },
-            0, nullptr, 0, 0, 0, 0, 0.0
+            0, nullptr, -1, -1, -1, -1, 0.0
         };
 
         for (uint32_t i=0; i<fEventQueue.used; ++i)
@@ -1509,9 +1511,11 @@ public:
 
         if (out != nullptr)
         {
+            // -1 for note_id/port_index/channel/key, as in sendUIEventsToHost: an output parameter
+            // reports one global value, not one belonging to voice 0 on channel 0.
             clap_event_param_value_t clapEvent = {
                 { sizeof(clap_event_param_value_t), frameOffset, 0, CLAP_EVENT_PARAM_VALUE, CLAP_EVENT_IS_LIVE },
-                0, nullptr, 0, 0, 0, 0, 0.0
+                0, nullptr, -1, -1, -1, -1, 0.0
             };
 
             float value;
