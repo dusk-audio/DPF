@@ -1059,7 +1059,16 @@ public:
 
        #if DISTRHO_PLUGIN_NUM_INPUTS != 0 && DISTRHO_PLUGIN_NUM_OUTPUTS != 0
         case kAudioUnitProperty_InPlaceProcessing:
-            *static_cast<UInt32*>(outData) = 1;
+            // Only when the host's single buffer list can serve both
+            // directions. With more inputs than outputs (a sidechain pair on
+            // a stereo effect) it cannot, and claiming otherwise makes hosts
+            // hand us a list too short for the inputs.
+           #ifdef DISTRHO_PLUGIN_EXTRA_IO
+            *static_cast<UInt32*>(outData) = fNumInputs == fNumOutputs ? 1 : 0;
+           #else
+            *static_cast<UInt32*>(outData) =
+                DISTRHO_PLUGIN_NUM_INPUTS == DISTRHO_PLUGIN_NUM_OUTPUTS ? 1 : 0;
+           #endif
             return noErr;
        #endif
 
@@ -1908,7 +1917,19 @@ public:
         {
             DISTRHO_SAFE_ASSERT_RETURN(fPlugin.isActive(), kAudio_ParamError);
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inBusNumber == 0, inBusNumber, kAudioUnitErr_InvalidElement);
-           #if DISTRHO_PLUGIN_NUM_INPUTS + DISTRHO_PLUGIN_NUM_OUTPUTS != 0
+           #if DISTRHO_PLUGIN_NUM_OUTPUTS != 0
+            // The host renders the output element, so the buffer list it hands
+            // us is sized for the outputs. For plugins with more inputs than
+            // outputs (e.g. a sidechain pair on a stereo effect) this is
+            // smaller than fAudioBufferList, which is sized max(in, out).
+           #ifdef DISTRHO_PLUGIN_EXTRA_IO
+            DISTRHO_SAFE_ASSERT_UINT_RETURN(ioData->mNumberBuffers == fNumOutputs,
+                                            ioData->mNumberBuffers, kAudio_ParamError);
+           #else
+            DISTRHO_SAFE_ASSERT_UINT_RETURN(ioData->mNumberBuffers == DISTRHO_PLUGIN_NUM_OUTPUTS,
+                                            ioData->mNumberBuffers, kAudio_ParamError);
+           #endif
+           #elif DISTRHO_PLUGIN_NUM_INPUTS != 0
             DISTRHO_SAFE_ASSERT_UINT_RETURN(ioData->mNumberBuffers == fAudioBufferList->mNumberBuffers,
                                             ioData->mNumberBuffers, kAudio_ParamError);
            #else
@@ -1987,7 +2008,10 @@ public:
         }
         else if (fInputRenderCallback.inputProc != nullptr)
         {
-            bool adjustDataByteSize, usingHostBuffer = true;
+            // The host buffer list can only stand in for the input pull when
+            // it has one buffer per input channel; with more inputs than
+            // outputs (sidechain pairs) the private list must be used.
+            bool adjustDataByteSize, usingHostBuffer = numInputs == ioData->mNumberBuffers;
             UInt32 prevDataByteSize;
 
             for (uint16_t i = 0; i < ioData->mNumberBuffers; ++i)
@@ -2006,7 +2030,7 @@ public:
 
                 if (adjustDataByteSize)
                 {
-                    for (uint16_t i = 0; i < ioData->mNumberBuffers; ++i)
+                    for (uint16_t i = 0; i < fAudioBufferList->mNumberBuffers; ++i)
                         fAudioBufferList->mBuffers[i].mDataByteSize = sizeof(float) * inFramesToProcess;
                 }
             }
@@ -2028,7 +2052,7 @@ public:
             {
                 if (adjustDataByteSize)
                 {
-                    for (uint16_t i = 0; i < ioData->mNumberBuffers; ++i)
+                    for (uint16_t i = 0; i < fAudioBufferList->mNumberBuffers; ++i)
                         fAudioBufferList->mBuffers[i].mDataByteSize = prevDataByteSize;
                 }
 
@@ -2064,6 +2088,15 @@ public:
            #if DISTRHO_PLUGIN_NUM_INPUTS != 0
             for (uint16_t i = 0; i < numInputs; ++i)
             {
+                // Inputs past the end of the host's (output-sized) list have
+                // no source at all here, so they read silence from ours.
+                if (i >= ioData->mNumberBuffers)
+                {
+                    std::memset(fAudioBufferList->mBuffers[i].mData, 0, sizeof(float) * inFramesToProcess);
+                    inputs[i] = static_cast<const float*>(fAudioBufferList->mBuffers[i].mData);
+                    continue;
+                }
+
                 if (ioData->mBuffers[i].mData == nullptr)
                 {
                     ioData->mBuffers[i].mData = fAudioBufferList->mBuffers[i].mData;
