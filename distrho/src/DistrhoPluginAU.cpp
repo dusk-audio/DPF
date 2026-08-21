@@ -1913,6 +1913,12 @@ public:
                       const UInt32 inFramesToProcess,
                       AudioBufferList* const ioData)
     {
+       #if defined(DISTRHO_PLUGIN_EXTRA_IO) && DISTRHO_PLUGIN_NUM_INPUTS != 0 && DISTRHO_PLUGIN_NUM_OUTPUTS != 0
+        // Do not use a safe-assert macro here: this can persist and must not log from the audio thread.
+        if (! isNumChannelsComboValid(fNumInputs, fNumOutputs))
+            return kAudio_ParamError;
+       #endif
+
         if ((actionFlags & kAudioUnitRenderAction_DoNotCheckRenderArgs) == 0x0)
         {
             DISTRHO_SAFE_ASSERT_RETURN(fPlugin.isActive(), kAudio_ParamError);
