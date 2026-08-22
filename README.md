@@ -68,6 +68,12 @@ affected `bin/` bundles, otherwise objects and binaries from the other backend a
   host chunk, CLAP loads state written by a differently configured build of the same plugin
   (parameters or states compiled out), and AU factory preset data is allocated and freed as an
   array.
+- **The public API is renamed.** `DISTRHO_*` macros are `DAF_*`, the namespace macros are
+  `START_NAMESPACE_DAF`/`END_NAMESPACE_DAF`, plugin headers live at `daf/DafPlugin.hpp` and
+  `daf/DafUI.hpp`, each plugin supplies `DafPluginInfo.h`, and CMake's entry point is
+  `daf_add_plugin()`. Porting a DPF plugin is a mechanical prefix substitution. Note one
+  deliberate exception: the four characters hashed into VST3 class UIDs are still `'D','P','F',' '`,
+  because changing them would orphan every already-shipped VST3 in every saved session.
 - **CI covers the shipped surface and nothing else.** `build.yml` (Makefile, macOS arm64 + the
   Ubuntu 22.04 floor), `cmake.yml` (Linux x86_64, native ARM Linux, macOS, MSVC x64) and
   `wayland.yml` (Wayland-only build, X11 regression, clap-validator and pluginval runs with no
@@ -94,9 +100,13 @@ including for code inherited from DPF: this tree is maintained here and nothing 
 DISTRHO reaches it. If a bug also reproduces on DISTRHO/DPF, reporting it there as well helps their
 users, but it is not a substitute.
 
-Online documentation for the core API is at [https://distrho.github.io/DPF/](https://distrho.github.io/DPF/).
-It still applies here, since the public plugin and UI API is unchanged; anything under
-`daf/src` or `dgl/src` may have diverged.
+DISTRHO's [online DPF documentation](https://distrho.github.io/DPF/) still describes the
+concepts, structure and semantics of this framework accurately, because they are theirs. What
+it does not describe are the names: as of 2026-08-22 the public API is renamed, so every
+`DISTRHO_*` macro reads `DAF_*` here, `START_NAMESPACE_DISTRHO` is `START_NAMESPACE_DAF`, the
+headers are `daf/DafPlugin.hpp` and `daf/DafUI.hpp`, and the CMake entry point is
+`daf_add_plugin()`. Mentally substitute the prefix and their docs apply. Anything under
+`daf/src` or `dgl/src` may also have diverged in behaviour.
 
 DISTRHO's [DPF discussions](https://github.com/DISTRHO/DPF/discussions) cover DPF itself. Questions
 about *this* tree belong in this repository's issue tracker instead, since its maintainers do not
