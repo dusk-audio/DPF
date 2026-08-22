@@ -1,22 +1,31 @@
-# DPF - DISTRHO Plugin Framework
-[![build](https://github.com/dusk-audio/DPF/actions/workflows/build.yml/badge.svg)](https://github.com/dusk-audio/DPF/actions/workflows/build.yml)
-[![cmake](https://github.com/dusk-audio/DPF/actions/workflows/cmake.yml/badge.svg)](https://github.com/dusk-audio/DPF/actions/workflows/cmake.yml)
-[![wayland](https://github.com/dusk-audio/DPF/actions/workflows/wayland.yml/badge.svg)](https://github.com/dusk-audio/DPF/actions/workflows/wayland.yml)
+# DAF - Dusk Audio Framework
+[![build](https://github.com/dusk-audio/DAF/actions/workflows/build.yml/badge.svg)](https://github.com/dusk-audio/DAF/actions/workflows/build.yml)
+[![cmake](https://github.com/dusk-audio/DAF/actions/workflows/cmake.yml/badge.svg)](https://github.com/dusk-audio/DAF/actions/workflows/cmake.yml)
+[![wayland](https://github.com/dusk-audio/DAF/actions/workflows/wayland.yml/badge.svg)](https://github.com/dusk-audio/DAF/actions/workflows/wayland.yml)
 
-This is the [Dusk Audio](https://github.com/dusk-audio) plugin framework, derived from
-[DISTRHO/DPF](https://github.com/DISTRHO/DPF) at `4238e1c7` (2025-10-23) and maintained
-independently since. It adds native Wayland support, MSVC/arm64 build coverage and a set of
-state-handling fixes; see [Differences from DISTRHO/DPF](#differences-from-distrhodpf).
+**DAF is a fork of the excellent [DISTRHO Plugin Framework (DPF)](https://github.com/DISTRHO/DPF)
+by Filipe Coelho and contributors.** Nearly all of the code here is theirs, it is very good, and
+this fork exists only because [Dusk Audio](https://github.com/dusk-audio) needed to move faster on
+a few platform-specific fixes than an upstream contribution cycle allows. If you are choosing a
+plugin framework, go get DPF.
+
+This tree was taken from [DISTRHO/DPF](https://github.com/DISTRHO/DPF) at `4238e1c7` (2025-10-23)
+and has been maintained independently since. It adds native Wayland support, MSVC/arm64 build
+coverage and a set of state-handling fixes; see [Differences from DISTRHO/DPF](#differences-from-distrhodpf).
+
+It was renamed from DPF to DAF in August 2026 for one practical reason: two repositories with the
+same name, one upstream and one ours, kept sending people and tooling to the wrong tree. The new
+name marks whose tree this is, not whose work it is.
 
 This is a standalone repository, not a GitHub fork, and development is one-way in both directions:
 nothing here is submitted to DISTRHO, and no DISTRHO commit is merged back in. Report bugs here,
 including in code inherited from DPF.
 
-DPF is designed to make development of new plugins an easy and enjoyable task.  
+DAF is designed to make development of new plugins an easy and enjoyable task.  
 It allows developers to create plugins with custom UIs using a simple C++ API.  
 The framework facilitates exporting various different plugin formats from the same code-base.
 
-DPF can build for LADSPA, DSSI, LV2, VST2, VST3, CLAP and AU formats.  
+DAF can build for LADSPA, DSSI, LV2, VST2, VST3, CLAP and AU formats.  
 A JACK/Standalone mode is also available, allowing you to quickly test plugins.
 
 Plugin DSP and UI communication is done via key-value string pairs.  
@@ -28,7 +37,7 @@ It uses the same format as the JACK Transport API, making porting some code easi
 
 Provided features and implementation status for specific plugin formats can be seen in [FEATURES.md](FEATURES.md).
 
-On Linux, DPF builds against X11 by default and against Wayland natively when the X11 development
+On Linux, DAF builds against X11 by default and against Wayland natively when the X11 development
 files are absent; see [Wayland support](FEATURES.md#wayland-support) for what each build can do.
 The Wayland backend needs `wayland-client`, `wayland-egl`, `wayland-cursor`, `xkbcommon` and `egl`.
 When switching a checkout between backends, set `BUILD_DIR_SUFFIX` per backend and remove the
@@ -70,7 +79,7 @@ affected `bin/` bundles, otherwise objects and binaries from the other backend a
 
 ## Licensing
 
-DPF is released under ISC, which basically means you can do whatever you want as long as you credit the original authors.  
+DAF is released under ISC, the same licence as DPF, which basically means you can do whatever you want as long as you credit the original authors.  
 Some plugin formats may have additional restrictions, see [LICENSING.md](LICENSING.md) for details.
 
 This tree is a derivative work of [DISTRHO/DPF](https://github.com/DISTRHO/DPF) by Filipe Coelho
@@ -80,7 +89,7 @@ retained in every file that carries them.
 
 ## Help and documentation
 
-Bug reports belong on the [dusk-audio/DPF issue tracker](https://github.com/dusk-audio/DPF/issues),
+Bug reports belong on the [dusk-audio/DAF issue tracker](https://github.com/dusk-audio/DAF/issues),
 including for code inherited from DPF: this tree is maintained here and nothing reported to
 DISTRHO reaches it. If a bug also reproduces on DISTRHO/DPF, reporting it there as well helps their
 users, but it is not a substitute.

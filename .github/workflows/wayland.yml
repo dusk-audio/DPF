@@ -1,6 +1,6 @@
 name: wayland
 
-# Fork-specific CI for dusk-audio/DPF.
+# Fork-specific CI for dusk-audio/DAF.
 #
 # The other CI here (build.yml, cmake.yml) always runs on machines that have the X11
 # development files installed, so it only ever exercises the X11 arm of the DGL backend selection.

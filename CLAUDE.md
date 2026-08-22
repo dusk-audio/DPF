@@ -1,4 +1,4 @@
-# DPF (Dusk Audio)
+# DAF - Dusk Audio Framework
 
 ## Hard fork: nothing goes out, nothing comes in
 
@@ -10,32 +10,34 @@ relationship is severed in **both** directions, deliberately:
 - **Inbound:** never `git merge upstream/*` or `git pull upstream`. This tree is owned here, and an
   upstream merge would drag in code that has not been through this repository's CI gates.
 
-`upstream` stays configured for one reason only: read-only reconnaissance. `git log
-upstream/develop -- <file>` is useful when a bug turns up in inherited code, and their issue
-tracker is worth reading for host-quirk reports. Anything worth having from there gets **written
-here by hand** as our own commit, never cherry-picked as theirs. Note upstream develops on
-`develop`; their `main` is a batch branch that sat still for the nine months after the fork point.
+- **No reconnaissance either.** The `upstream` remote has been **removed** (owner ruling,
+  2026-08-22). Do not re-add it, do not fetch DISTRHO/DPF, do not `git log upstream/*`, do not
+  diff against it, do not read it to explain a behaviour here, and do not cite it as a source. A
+  remote you must never fetch is a trap, not a safety net. If a bug turns up in inherited code,
+  it is our bug: fix it here from the code in front of you.
+
+The rename from DPF to DAF (2026-08-22) exists to make that unambiguous. Two repositories sharing
+the name "DPF" kept sending people and tooling to DISTRHO's tree by mistake. This one is DAF.
 
 Remotes are set up to match:
 
-| remote     | repository        | push                                    |
-|------------|-------------------|-----------------------------------------|
-| `origin`   | dusk-audio/DPF    | yes, the default for every branch        |
-| `upstream` | DISTRHO/DPF       | no, push URL disabled + `pre-push` hook  |
+| remote   | repository     | push                              |
+|----------|----------------|-----------------------------------|
+| `origin` | dusk-audio/DAF | yes, the default for every branch |
 
-`remote.pushDefault` is `origin` and `gh` resolves to `dusk-audio/DPF`, so `git push`, `gh pr
-create` and `gh run list` all target the fork without arguments. If a clone ever lacks this, run:
+There is no second remote, by design. `remote.pushDefault` is `origin` and `gh` resolves to
+`dusk-audio/DAF`, so `git push`, `gh pr create` and `gh run list` all target this repository
+without arguments. If a clone ever lacks this, run:
 
 ```sh
-git remote rename origin upstream && git remote rename dusk origin   # if inherited the old layout
-git remote set-url --push upstream DISABLED-push-to-origin-instead
+git remote set-url origin https://github.com/dusk-audio/DAF.git
 git config remote.pushDefault origin
-git config --add remote.upstream.fetch '+refs/heads/develop:refs/remotes/upstream/develop'
-gh repo set-default dusk-audio/DPF
+gh repo set-default dusk-audio/DAF
 ```
 
-`.git/hooks/pre-push` refuses any push whose URL points at DISTRHO/DPF. Hooks do not survive a
-fresh clone, so re-add it when setting up a new checkout.
+Attribution is a separate matter from isolation: DAF is a fork of DISTRHO's excellent work, says
+so in README.md, and keeps every original copyright notice and the ISC terms. Not merging from
+upstream is an engineering decision, not a claim of authorship.
 
 ## Commit messages
 
@@ -56,7 +58,7 @@ setting up a new checkout, or the guarantee is only as good as the settings file
 
 ## Pull requests
 
-PRs are opened against `dusk-audio/DPF` `main`. This repository takes same-repo PRs only, which is
+PRs are opened against `dusk-audio/DAF` `main`. This repository takes same-repo PRs only, which is
 why the workflows trigger on push to `**` rather than on `pull_request`.
 
 **Never against DISTRHO/DPF.** Two were opened there by accident (#533, #534, both closed within a
@@ -66,9 +68,10 @@ to the *parent of the fork network*, which no git config can override. Guards in
 - `.vscode/settings.json` restricts the VS Code extension to the `origin` remote and stops it
   offering a PR after every push.
 - The repository left DISTRHO's fork network on 2026-07-28, so DISTRHO is no longer a selectable
-  base anywhere in the UI: `gh api repos/dusk-audio/DPF --jq '{fork,parent}'` reports
-  `{"fork": false, "parent": null}`. This is a standalone repository now, not a fork of anything.
-  `git fetch upstream` is unaffected, as expected — the fork network and git remotes are unrelated.
+  base anywhere in the UI: `gh api repos/dusk-audio/DAF --jq '{fork,parent}'` reports
+  `{"fork": false, "parent": null}`. This is a standalone repository at the git-hosting level; the
+  `upstream` remote it once carried has since been removed as well (see the hard-fork section),
+  so there is nothing left pointing at DISTRHO from this checkout.
   If a future clone ever reports `"fork": true` again, something was re-created from the wrong
   place.
 
