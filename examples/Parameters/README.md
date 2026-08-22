@@ -1,6 +1,6 @@
 # Parameters example
 
-This example will show how parameters work in DPF.<br/>
+This example will show how parameters work in DAF.<br/>
 The plugin will not do any audio processing.<br/>
 
 In this example the UI will display a 3x3 grid of colors which can be changed or automated by the host.<br/>

@@ -9,7 +9,7 @@ fi
 
 set -e
 
-DPF_UTILS_DIR="$(dirname $(realpath ${0}))"
+DAF_UTILS_DIR="$(dirname $(realpath ${0}))"
 
 if [ -d bin ]; then
   cd bin

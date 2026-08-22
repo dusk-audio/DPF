@@ -72,7 +72,7 @@ void Color::setFor(const GraphicsContext&, const bool includeAlpha)
 template<typename T>
 static void drawLine(const Point<T>& posStart, const Point<T>& posEnd)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(posStart != posEnd,);
+    DAF_SAFE_ASSERT_RETURN(posStart != posEnd,);
 
     glBegin(GL_LINES);
 
@@ -87,7 +87,7 @@ static void drawLine(const Point<T>& posStart, const Point<T>& posEnd)
 template<typename T>
 void Line<T>::draw(const GraphicsContext&, const T width)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(width != 0,);
+    DAF_SAFE_ASSERT_RETURN(width != 0,);
 
     glLineWidth(static_cast<GLfloat>(width));
     drawLine<T>(posStart, posEnd);
@@ -119,7 +119,7 @@ static void drawCircle(const Point<T>& pos,
                        const float cos,
                        const bool outline)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(numSegments >= 3 && size > 0.0f,);
+    DAF_SAFE_ASSERT_RETURN(numSegments >= 3 && size > 0.0f,);
 
     const double origx = static_cast<double>(pos.getX());
     const double origy = static_cast<double>(pos.getY());
@@ -162,7 +162,7 @@ void Circle<T>::draw(const GraphicsContext& context)
 template<typename T>
 void Circle<T>::drawOutline(const GraphicsContext& context, const T lineWidth)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(lineWidth != 0,);
+    DAF_SAFE_ASSERT_RETURN(lineWidth != 0,);
 
     glLineWidth(static_cast<GLfloat>(lineWidth));
     drawCircle<T>(context, fPos, fNumSegments, fSize, fSin, fCos, true);
@@ -198,7 +198,7 @@ static void drawTriangle(const Point<T>& pos1,
                          const Point<T>& pos3,
                          const bool outline)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pos1 != pos2 && pos1 != pos3,);
+    DAF_SAFE_ASSERT_RETURN(pos1 != pos2 && pos1 != pos3,);
 
     glBegin(outline ? GL_LINE_LOOP : GL_TRIANGLES);
 
@@ -230,7 +230,7 @@ void Triangle<T>::draw(const GraphicsContext&)
 template<typename T>
 void Triangle<T>::drawOutline(const GraphicsContext&, const T lineWidth)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(lineWidth != 0,);
+    DAF_SAFE_ASSERT_RETURN(lineWidth != 0,);
 
     glLineWidth(static_cast<GLfloat>(lineWidth));
     drawTriangle<T>(pos1, pos2, pos3, true);
@@ -263,7 +263,7 @@ template class Triangle<ushort>;
 template<typename T>
 static void drawRectangle(const Rectangle<T>& rect, const bool outline)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(rect.isValid(),);
+    DAF_SAFE_ASSERT_RETURN(rect.isValid(),);
 
     glBegin(outline ? GL_LINE_LOOP : GL_QUADS);
 
@@ -298,7 +298,7 @@ void Rectangle<T>::draw(const GraphicsContext& context)
 template<typename T>
 void Rectangle<T>::drawOutline(const GraphicsContext& context, const T lineWidth)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(lineWidth != 0,);
+    DAF_SAFE_ASSERT_RETURN(lineWidth != 0,);
 
     glLineWidth(static_cast<GLfloat>(lineWidth));
     drawRectangle<T>(*this, true);
@@ -330,7 +330,7 @@ template class Rectangle<ushort>;
 
 static void setupOpenGLImage(const OpenGLImage& image, GLuint textureId)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(image.isValid(),);
+    DAF_SAFE_ASSERT_RETURN(image.isValid(),);
 
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, textureId);
@@ -490,8 +490,8 @@ void ImageBaseKnob<OpenGLImage>::onDisplay()
 
         if (pData->rotationAngle == 0)
         {
-            DISTRHO_SAFE_ASSERT_RETURN(pData->imgLayerCount > 0,);
-            DISTRHO_SAFE_ASSERT_RETURN(normValue >= 0.0f,);
+            DAF_SAFE_ASSERT_RETURN(pData->imgLayerCount > 0,);
+            DAF_SAFE_ASSERT_RETURN(normValue >= 0.0f,);
 
             const uint& v1(pData->isImgVertical ? pData->imgLayerWidth : pData->imgLayerHeight);
             const uint& v2(pData->isImgVertical ? pData->imgLayerHeight : pData->imgLayerWidth);

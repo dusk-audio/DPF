@@ -22,20 +22,20 @@
 // #define DGL_DEBUG_EVENTS
 
 #if defined(DEBUG) && defined(DGL_DEBUG_EVENTS)
-# ifdef DISTRHO_PROPER_CPP11_SUPPORT
+# ifdef DAF_PROPER_CPP11_SUPPORT
 #  include <cinttypes>
 # else
 #  include <inttypes.h>
 # endif
 #endif
 
-#ifdef DISTRHO_OS_WINDOWS
+#ifdef DAF_OS_WINDOWS
 # include <windows.h>
 #endif
 
 START_NAMESPACE_DGL
 
-#ifdef DISTRHO_OS_WINDOWS
+#ifdef DAF_OS_WINDOWS
 # include "pugl-upstream/src/win.h"
 #endif
 
@@ -61,7 +61,7 @@ START_NAMESPACE_DGL
 static double getScaleFactor(const PuglView* const view)
 {
     // allow custom scale for testing
-    if (const char* const scale = getenv("DPF_SCALE_FACTOR"))
+    if (const char* const scale = getenv("DAF_SCALE_FACTOR"))
         return std::max(1.0, std::atof(scale));
 
     if (view != nullptr)
@@ -268,7 +268,7 @@ Window::PrivateData::~PrivateData()
         isVisible = false;
     }
 
-   #ifndef DPF_TEST_WINDOW_CPP
+   #ifndef DAF_TEST_WINDOW_CPP
     destroyContext();
    #endif
     puglFreeView(view);
@@ -369,9 +369,9 @@ void Window::PrivateData::show()
         isClosed = false;
         appData->oneWindowShown();
 
-#if defined(DISTRHO_OS_WINDOWS)
+#if defined(DAF_OS_WINDOWS)
         puglWin32ShowCentered(view);
-#elif defined(DISTRHO_OS_MAC)
+#elif defined(DAF_OS_MAC)
         puglMacOSShowCentered(view);
 #else
         puglShow(view, PUGL_SHOW_RAISE);
@@ -379,7 +379,7 @@ void Window::PrivateData::show()
     }
     else
     {
-#ifdef DISTRHO_OS_WINDOWS
+#ifdef DAF_OS_WINDOWS
         puglWin32RestoreWindow(view);
 #else
         puglShow(view, PUGL_SHOW_RAISE);
@@ -445,7 +445,7 @@ void Window::PrivateData::focus()
 
 void Window::PrivateData::setResizable(const bool resizable)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(! isEmbed,);
+    DAF_SAFE_ASSERT_RETURN(! isEmbed,);
 
     DGL_DBG("Window setResizable called\n");
 
@@ -567,7 +567,7 @@ bool Window::PrivateData::createWebView(const char* const url, const DGL_NAMESPA
 void Window::PrivateData::startModal()
 {
     DGL_DBG("Window modal loop starting...");
-    DISTRHO_SAFE_ASSERT_RETURN(modal.parent != nullptr, show());
+    DAF_SAFE_ASSERT_RETURN(modal.parent != nullptr, show());
 
     // activate modal mode for this window
     modal.enabled = true;
@@ -579,7 +579,7 @@ void Window::PrivateData::startModal()
     modal.parent->show();
     show();
 
-#ifdef DISTRHO_OS_MAC
+#ifdef DAF_OS_MAC
     puglMacOSAddChildWindow(modal.parent->view, view);
 #endif
 
@@ -599,7 +599,7 @@ void Window::PrivateData::stopModal()
     if (modal.parent->modal.child != this)
         return;
 
-#ifdef DISTRHO_OS_MAC
+#ifdef DAF_OS_MAC
     puglMacOSRemoveChildWindow(modal.parent->view, view);
 #endif
 
@@ -624,7 +624,7 @@ void Window::PrivateData::runAsModal(const bool blockWait)
 
     if (blockWait)
     {
-        DISTRHO_SAFE_ASSERT_RETURN(appData->isStandalone,);
+        DAF_SAFE_ASSERT_RETURN(appData->isStandalone,);
 
         while (isVisible && modal.enabled)
             appData->idle(10);
@@ -642,11 +642,11 @@ void Window::PrivateData::runAsModal(const bool blockWait)
 
 void Window::PrivateData::onPuglConfigure(const uint width, const uint height)
 {
-    DISTRHO_SAFE_ASSERT_INT2_RETURN(width > 1 && height > 1, width, height,);
+    DAF_SAFE_ASSERT_INT2_RETURN(width > 1 && height > 1, width, height,);
 
     DGL_DBGp("PUGL: onReshape : %d %d\n", width, height);
 
-   #ifndef DPF_TEST_WINDOW_CPP
+   #ifndef DAF_TEST_WINDOW_CPP
     createContextIfNeeded();
    #endif
 
@@ -674,7 +674,7 @@ void Window::PrivateData::onPuglConfigure(const uint width, const uint height)
 
     self->onReshape(uwidth, uheight);
 
-#ifndef DPF_TEST_WINDOW_CPP
+#ifndef DAF_TEST_WINDOW_CPP
     FOR_EACH_TOP_LEVEL_WIDGET(it)
     {
         TopLevelWidget* const widget = *it;
@@ -701,7 +701,7 @@ void Window::PrivateData::onPuglExpose()
 
     puglOnDisplayPrepare(view);
 
-#ifndef DPF_TEST_WINDOW_CPP
+#ifndef DAF_TEST_WINDOW_CPP
     startContext();
 
     FOR_EACH_TOP_LEVEL_WIDGET(it)
@@ -728,7 +728,7 @@ void Window::PrivateData::onPuglClose()
 {
     DGL_DBG("PUGL: onClose\n");
 
-#ifndef DISTRHO_OS_MAC
+#ifndef DAF_OS_MAC
     // if we are running as standalone we can prevent closing in certain conditions
     if (appData->isStandalone)
     {
@@ -774,7 +774,7 @@ void Window::PrivateData::onPuglKey(const Widget::KeyboardEvent& ev)
     if (modal.child != nullptr)
         return modal.child->focus();
 
-#ifndef DPF_TEST_WINDOW_CPP
+#ifndef DAF_TEST_WINDOW_CPP
     FOR_EACH_TOP_LEVEL_WIDGET_INV(rit)
     {
         TopLevelWidget* const widget(*rit);
@@ -792,7 +792,7 @@ void Window::PrivateData::onPuglText(const Widget::CharacterInputEvent& ev)
     if (modal.child != nullptr)
         return modal.child->focus();
 
-#ifndef DPF_TEST_WINDOW_CPP
+#ifndef DAF_TEST_WINDOW_CPP
     FOR_EACH_TOP_LEVEL_WIDGET_INV(rit)
     {
         TopLevelWidget* const widget(*rit);
@@ -810,7 +810,7 @@ void Window::PrivateData::onPuglMouse(const Widget::MouseEvent& ev)
     if (modal.child != nullptr)
         return modal.child->focus();
 
-#ifndef DPF_TEST_WINDOW_CPP
+#ifndef DAF_TEST_WINDOW_CPP
     FOR_EACH_TOP_LEVEL_WIDGET_INV(rit)
     {
         TopLevelWidget* const widget(*rit);
@@ -828,7 +828,7 @@ void Window::PrivateData::onPuglMotion(const Widget::MotionEvent& ev)
     if (modal.child != nullptr)
         return modal.child->focus();
 
-#ifndef DPF_TEST_WINDOW_CPP
+#ifndef DAF_TEST_WINDOW_CPP
     FOR_EACH_TOP_LEVEL_WIDGET_INV(rit)
     {
         TopLevelWidget* const widget(*rit);
@@ -846,7 +846,7 @@ void Window::PrivateData::onPuglScroll(const Widget::ScrollEvent& ev)
     if (modal.child != nullptr)
         return modal.child->focus();
 
-#ifndef DPF_TEST_WINDOW_CPP
+#ifndef DAF_TEST_WINDOW_CPP
     FOR_EACH_TOP_LEVEL_WIDGET_INV(rit)
     {
         TopLevelWidget* const widget(*rit);
@@ -996,7 +996,7 @@ PuglStatus Window::PrivateData::puglEventCallback(PuglView* const view, const Pu
     case PUGL_REALIZE:
         if (! pData->isEmbed && ! puglGetTransientParent(view))
         {
-           #if defined(DISTRHO_OS_WINDOWS) && defined(DGL_WINDOWS_ICON_ID)
+           #if defined(DAF_OS_WINDOWS) && defined(DGL_WINDOWS_ICON_ID)
             WNDCLASSEX wClass = {};
             const HINSTANCE hInstance = GetModuleHandle(nullptr);
 

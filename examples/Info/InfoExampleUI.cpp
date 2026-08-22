@@ -14,11 +14,11 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoUI.hpp"
+#include "DafUI.hpp"
 
 #include "ResizeHandle.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 using DGL_NAMESPACE::ResizeHandle;
 
@@ -28,7 +28,7 @@ class InfoExampleUI : public UI
 {
 public:
     InfoExampleUI()
-        : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT),
+        : UI(DAF_UI_DEFAULT_WIDTH, DAF_UI_DEFAULT_HEIGHT),
           fSampleRate(getSampleRate()),
           fResizable(isResizable()),
           fScale(1.0f),
@@ -46,14 +46,14 @@ public:
 
         if (d_isNotEqual(fScaleFactor, 1.0))
         {
-            const uint width = DISTRHO_UI_DEFAULT_WIDTH * fScaleFactor;
-            const uint height = DISTRHO_UI_DEFAULT_HEIGHT * fScaleFactor;
+            const uint width = DAF_UI_DEFAULT_WIDTH * fScaleFactor;
+            const uint height = DAF_UI_DEFAULT_HEIGHT * fScaleFactor;
             setGeometryConstraints(width, height, true);
             setSize(width, height);
         }
         else
         {
-            setGeometryConstraints(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT, true);
+            setGeometryConstraints(DAF_UI_DEFAULT_WIDTH, DAF_UI_DEFAULT_HEIGHT, true);
         }
 
         // no need to show resize handle if window is user-resizable
@@ -199,7 +199,7 @@ protected:
 
     void onResize(const ResizeEvent& ev) override
     {
-        fScale = static_cast<float>(ev.size.getHeight())/static_cast<float>(DISTRHO_UI_DEFAULT_HEIGHT);
+        fScale = static_cast<float>(ev.size.getHeight())/static_cast<float>(DAF_UI_DEFAULT_HEIGHT);
 
         UI::onResize(ev);
     }
@@ -280,11 +280,11 @@ private:
    /**
       Set our UI class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(InfoExampleUI)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(InfoExampleUI)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * UI entry point, called by DPF to create a new UI instance. */
+ * UI entry point, called by DAF to create a new UI instance. */
 
 UI* createUI()
 {
@@ -293,4 +293,4 @@ UI* createUI()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

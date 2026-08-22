@@ -16,8 +16,8 @@
 
 // Include CHOC separately because it requires C++17
 
-#define DISTRHO_WEB_VIEW_INCLUDE_IMPLEMENTATION
+#define DAF_WEB_VIEW_INCLUDE_IMPLEMENTATION
 #define WEB_VIEW_NAMESPACE DGL_NAMESPACE
 #define WEB_VIEW_DGL_NAMESPACE
 #include "../WebView.hpp"
-#include "../../distrho/extra/WebViewWin32.hpp"
+#include "../../daf/extra/WebViewWin32.hpp"

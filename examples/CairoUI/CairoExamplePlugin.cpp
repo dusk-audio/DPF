@@ -15,11 +15,11 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoPlugin.hpp"
+#include "DafPlugin.hpp"
 
 #include <string.h>
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 class CairoExamplePlugin : public Plugin
 {
@@ -46,7 +46,7 @@ public:
     */
     const char* getDescription() const override
     {
-        return "Cairo DPF Example";
+        return "Cairo DAF Example";
     }
 
    /**
@@ -188,4 +188,4 @@ Plugin* createPlugin()
     return new CairoExamplePlugin;
 }
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

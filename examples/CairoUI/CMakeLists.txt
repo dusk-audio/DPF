@@ -1,7 +1,7 @@
 # CMake file for DISTRHO Plugins #
 # ------------------------------ #
 
-dpf_add_plugin(d_cairoui
+daf_add_plugin(d_cairoui
   TARGETS clap dssi jack lv2 vst2 vst3
   UI_TYPE cairo
   FILES_DSP

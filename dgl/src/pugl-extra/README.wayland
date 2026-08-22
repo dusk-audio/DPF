@@ -14,7 +14,7 @@ When is the Wayland arm selected?
 
 Only when X11 is absent from the build machine entirely. X11 and Wayland development files coexist
 on most desktop systems, and DGL prefers X11 whenever it is present, because hosts embed plugin UIs
-through the X11 embedding contract (of the formats DPF targets, only CLAP has a Wayland window API)
+through the X11 embedding contract (of the formats DAF targets, only CLAP has a Wayland window API)
 and standalone builds work fine on a Wayland session via XWayland.
 
 That policy is expressed in three places, which must be kept in agreement:
@@ -25,8 +25,8 @@ That policy is expressed in three places, which must be kept in agreement:
   * Makefile.base.mk      -- `DGL_BACKEND_WAYLAND`, set only when HAVE_WAYLAND
                              is true and HAVE_X11 is not. Only this variable
                              gates -DHAVE_WAYLAND and the Wayland libraries.
-  * cmake/DPF-plugin.cmake -- the `if(X11_FOUND) ... else()` split inside
-                             `dpf__add_dgl_system_libs`.
+  * cmake/DAF-plugin.cmake -- the `if(X11_FOUND) ... else()` split inside
+                             `daf__add_dgl_system_libs`.
 
 To exercise the Wayland arm on a machine that has X11 installed:
 
@@ -150,7 +150,7 @@ Known limitations
 
 * **No aspect ratio constraints.** xdg_toplevel has min and max size but nothing for aspect, so
   PUGL_MIN_ASPECT / PUGL_MAX_ASPECT / PUGL_FIXED_ASPECT are not enforced during interactive resize.
-  DPF re-imposes the aspect from its own configure handler, so the window snaps back rather than
+  DAF re-imposes the aspect from its own configure handler, so the window snaps back rather than
   resisting.
 
 * **Timers need timerfd**, so application timers and key repeat are Linux-only. On other systems
@@ -164,6 +164,6 @@ Known limitations
 
 * **Vulkan is not implemented** (DGL's Vulkan drawing layer is a stub anyway).
 
-* **getDesktopScaleFactor() returns 1.0** on Wayland, in distrho/src/DistrhoUI.cpp. There is no
+* **getDesktopScaleFactor() returns 1.0** on Wayland, in daf/src/DafUI.cpp. There is no
   window-independent scale to query before a surface exists; the real value arrives through
   puglGetScaleFactor() once the window maps, and DGL picks it up from the configure event.

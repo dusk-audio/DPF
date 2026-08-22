@@ -1,0 +1,443 @@
+/*
+ * DISTRHO Plugin Framework (DPF)
+ * Copyright (C) 2012-2022 Filipe Coelho <falktx@falktx.com>
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any purpose with
+ * or without fee is hereby granted, provided that the above copyright notice and this
+ * permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD
+ * TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN
+ * NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+ * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#ifndef DAF_MUTEX_HPP_INCLUDED
+#define DAF_MUTEX_HPP_INCLUDED
+
+#include "../DafUtils.hpp"
+
+#ifdef DAF_OS_WINDOWS
+# ifndef NOMINMAX
+#  define NOMINMAX
+# endif
+# include <winsock2.h>
+# include <windows.h>
+#endif
+
+// MSVC has no pthread, use the native Win32 synchronization primitives instead.
+// NOTE: SRWLOCK and CONDITION_VARIABLE require Windows Vista or later,
+//       which the MSVC toolchain targets by default (_WIN32_WINNT >= 0x0600).
+#ifndef _MSC_VER
+#include <pthread.h>
+#endif
+
+START_NAMESPACE_DAF
+
+class Signal;
+
+// -----------------------------------------------------------------------
+// Mutex class
+
+class Mutex
+{
+public:
+    /*
+     * Constructor.
+     */
+    Mutex(const bool inheritPriority = true) noexcept
+        : fMutex()
+    {
+       #ifdef _MSC_VER
+        // SRWLOCK is non-recursive, matching PTHREAD_MUTEX_NORMAL used below.
+        // It has no priority-inheritance option, so the argument is ignored.
+        (void)inheritPriority;
+        InitializeSRWLock(&fMutex);
+       #else
+        pthread_mutexattr_t attr;
+        pthread_mutexattr_init(&attr);
+        pthread_mutexattr_setprotocol(&attr, inheritPriority ? PTHREAD_PRIO_INHERIT : PTHREAD_PRIO_NONE);
+        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL);
+        pthread_mutex_init(&fMutex, &attr);
+        pthread_mutexattr_destroy(&attr);
+       #endif
+    }
+
+    /*
+     * Destructor.
+     */
+    ~Mutex() noexcept
+    {
+       #ifdef _MSC_VER
+        // SRWLOCK needs no cleanup
+       #else
+        pthread_mutex_destroy(&fMutex);
+       #endif
+    }
+
+    /*
+     * Lock the mutex.
+     */
+    bool lock() const noexcept
+    {
+       #ifdef _MSC_VER
+        AcquireSRWLockExclusive(&fMutex);
+        return true;
+       #else
+        return (pthread_mutex_lock(&fMutex) == 0);
+       #endif
+    }
+
+    /*
+     * Try to lock the mutex.
+     * Returns true if successful.
+     */
+    bool tryLock() const noexcept
+    {
+       #ifdef _MSC_VER
+        return (TryAcquireSRWLockExclusive(&fMutex) != FALSE);
+       #else
+        return (pthread_mutex_trylock(&fMutex) == 0);
+       #endif
+    }
+
+    /*
+     * Unlock the mutex.
+     */
+    void unlock() const noexcept
+    {
+       #ifdef _MSC_VER
+        ReleaseSRWLockExclusive(&fMutex);
+       #else
+        pthread_mutex_unlock(&fMutex);
+       #endif
+    }
+
+private:
+   #ifdef _MSC_VER
+    mutable SRWLOCK fMutex;
+   #else
+    mutable pthread_mutex_t fMutex;
+   #endif
+
+    DAF_DECLARE_NON_COPYABLE(Mutex)
+};
+
+// -----------------------------------------------------------------------
+// RecursiveMutex class
+
+class RecursiveMutex
+{
+public:
+    /*
+     * Constructor.
+     */
+    RecursiveMutex() noexcept
+       #ifdef DAF_OS_WINDOWS
+        : fSection()
+       #else
+        : fMutex()
+       #endif
+    {
+       #ifdef DAF_OS_WINDOWS
+        InitializeCriticalSection(&fSection);
+       #else
+        pthread_mutexattr_t attr;
+        pthread_mutexattr_init(&attr);
+        pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
+        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+        pthread_mutex_init(&fMutex, &attr);
+        pthread_mutexattr_destroy(&attr);
+       #endif
+    }
+
+    /*
+     * Destructor.
+     */
+    ~RecursiveMutex() noexcept
+    {
+       #ifdef DAF_OS_WINDOWS
+        DeleteCriticalSection(&fSection);
+       #else
+        pthread_mutex_destroy(&fMutex);
+       #endif
+    }
+
+    /*
+     * Lock the mutex.
+     */
+    bool lock() const noexcept
+    {
+       #ifdef DAF_OS_WINDOWS
+        EnterCriticalSection(&fSection);
+        return true;
+       #else
+        return (pthread_mutex_lock(&fMutex) == 0);
+       #endif
+    }
+
+    /*
+     * Try to lock the mutex.
+     * Returns true if successful.
+     */
+    bool tryLock() const noexcept
+    {
+       #ifdef DAF_OS_WINDOWS
+        return (TryEnterCriticalSection(&fSection) != FALSE);
+       #else
+        return (pthread_mutex_trylock(&fMutex) == 0);
+       #endif
+    }
+
+    /*
+     * Unlock the mutex.
+     */
+    void unlock() const noexcept
+    {
+       #ifdef DAF_OS_WINDOWS
+        LeaveCriticalSection(&fSection);
+       #else
+        pthread_mutex_unlock(&fMutex);
+       #endif
+    }
+
+private:
+   #ifdef DAF_OS_WINDOWS
+    mutable CRITICAL_SECTION fSection;
+   #else
+    mutable pthread_mutex_t fMutex;
+   #endif
+
+    DAF_DECLARE_NON_COPYABLE(RecursiveMutex)
+};
+
+// -----------------------------------------------------------------------
+// Signal class
+
+class Signal
+{
+public:
+    /*
+     * Constructor.
+     */
+    Signal() noexcept
+        : fCondition(),
+          fMutex(),
+          fTriggered(false)
+    {
+       #ifdef _MSC_VER
+        InitializeConditionVariable(&fCondition);
+        InitializeCriticalSection(&fMutex);
+       #else
+        pthread_condattr_t cattr;
+        pthread_condattr_init(&cattr);
+        pthread_condattr_setpshared(&cattr, PTHREAD_PROCESS_PRIVATE);
+        pthread_cond_init(&fCondition, &cattr);
+        pthread_condattr_destroy(&cattr);
+
+        pthread_mutexattr_t mattr;
+        pthread_mutexattr_init(&mattr);
+        pthread_mutexattr_setprotocol(&mattr, PTHREAD_PRIO_INHERIT);
+        pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_NORMAL);
+        pthread_mutex_init(&fMutex, &mattr);
+        pthread_mutexattr_destroy(&mattr);
+       #endif
+    }
+
+    /*
+     * Destructor.
+     */
+    ~Signal() noexcept
+    {
+       #ifdef _MSC_VER
+        // CONDITION_VARIABLE needs no cleanup
+        DeleteCriticalSection(&fMutex);
+       #else
+        pthread_cond_destroy(&fCondition);
+        pthread_mutex_destroy(&fMutex);
+       #endif
+    }
+
+    /*
+     * Wait for a signal.
+     */
+    void wait() noexcept
+    {
+       #ifdef _MSC_VER
+        EnterCriticalSection(&fMutex);
+
+        while (! fTriggered)
+        {
+            // spurious wakeups and failures are handled by the surrounding loop
+            SleepConditionVariableCS(&fCondition, &fMutex, INFINITE);
+        }
+
+        fTriggered = false;
+
+        LeaveCriticalSection(&fMutex);
+       #else
+        pthread_mutex_lock(&fMutex);
+
+        while (! fTriggered)
+        {
+            try {
+                pthread_cond_wait(&fCondition, &fMutex);
+            } DAF_SAFE_EXCEPTION("pthread_cond_wait");
+        }
+
+        fTriggered = false;
+
+        pthread_mutex_unlock(&fMutex);
+       #endif
+    }
+
+    /*
+     * Wake up all waiting threads.
+     */
+    void signal() noexcept
+    {
+       #ifdef _MSC_VER
+        EnterCriticalSection(&fMutex);
+
+        if (! fTriggered)
+        {
+            fTriggered = true;
+            WakeAllConditionVariable(&fCondition);
+        }
+
+        LeaveCriticalSection(&fMutex);
+       #else
+        pthread_mutex_lock(&fMutex);
+
+        if (! fTriggered)
+        {
+            fTriggered = true;
+            pthread_cond_broadcast(&fCondition);
+        }
+
+        pthread_mutex_unlock(&fMutex);
+       #endif
+    }
+
+private:
+   #ifdef _MSC_VER
+    CONDITION_VARIABLE fCondition;
+    CRITICAL_SECTION   fMutex;
+   #else
+    pthread_cond_t  fCondition;
+    pthread_mutex_t fMutex;
+   #endif
+    volatile bool   fTriggered;
+
+    DAF_PREVENT_HEAP_ALLOCATION
+    DAF_DECLARE_NON_COPYABLE(Signal)
+};
+
+// -----------------------------------------------------------------------
+// Helper class to lock&unlock a mutex during a function scope.
+
+template <class Mutex>
+class ScopeLocker
+{
+public:
+    ScopeLocker(const Mutex& mutex) noexcept
+        : fMutex(mutex)
+    {
+        fMutex.lock();
+    }
+
+    ~ScopeLocker() noexcept
+    {
+        fMutex.unlock();
+    }
+
+private:
+    const Mutex& fMutex;
+
+    DAF_PREVENT_HEAP_ALLOCATION
+    DAF_DECLARE_NON_COPYABLE(ScopeLocker)
+};
+
+// -----------------------------------------------------------------------
+// Helper class to try-lock&unlock a mutex during a function scope.
+
+template <class Mutex>
+class ScopeTryLocker
+{
+public:
+    ScopeTryLocker(const Mutex& mutex) noexcept
+        : fMutex(mutex),
+          fLocked(mutex.tryLock()) {}
+
+    ScopeTryLocker(const Mutex& mutex, const bool forceLock) noexcept
+        : fMutex(mutex),
+          fLocked(forceLock ? mutex.lock() : mutex.tryLock()) {}
+
+    ~ScopeTryLocker() noexcept
+    {
+        if (fLocked)
+            fMutex.unlock();
+    }
+
+    bool wasLocked() const noexcept
+    {
+        return fLocked;
+    }
+
+    bool wasNotLocked() const noexcept
+    {
+        return !fLocked;
+    }
+
+private:
+    const Mutex& fMutex;
+    const bool   fLocked;
+
+    DAF_PREVENT_HEAP_ALLOCATION
+    DAF_DECLARE_NON_COPYABLE(ScopeTryLocker)
+};
+
+// -----------------------------------------------------------------------
+// Helper class to unlock&lock a mutex during a function scope.
+
+template <class Mutex>
+class ScopeUnlocker
+{
+public:
+    ScopeUnlocker(const Mutex& mutex) noexcept
+        : fMutex(mutex)
+    {
+        fMutex.unlock();
+    }
+
+    ~ScopeUnlocker() noexcept
+    {
+        fMutex.lock();
+    }
+
+private:
+    const Mutex& fMutex;
+
+    DAF_PREVENT_HEAP_ALLOCATION
+    DAF_DECLARE_NON_COPYABLE(ScopeUnlocker)
+};
+
+// -----------------------------------------------------------------------
+// Define types
+
+typedef ScopeLocker<Mutex>          MutexLocker;
+typedef ScopeLocker<RecursiveMutex> RecursiveMutexLocker;
+
+typedef ScopeTryLocker<Mutex>          MutexTryLocker;
+typedef ScopeTryLocker<RecursiveMutex> RecursiveMutexTryLocker;
+
+typedef ScopeUnlocker<Mutex>          MutexUnlocker;
+typedef ScopeUnlocker<RecursiveMutex> RecursiveMutexUnlocker;
+
+// -----------------------------------------------------------------------
+
+END_NAMESPACE_DAF
+
+#endif // DAF_MUTEX_HPP_INCLUDED

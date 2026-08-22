@@ -45,14 +45,14 @@
 #include <cstring>
 #include <ctime>
 
-#if defined(DISTRHO_OS_HAIKU)
+#if defined(DAF_OS_HAIKU)
 # include <Application.h>
 # include <Window.h>
 # ifdef DGL_OPENGL
 #  include <GL/gl.h>
 #  include <opengl/GLView.h>
 # endif
-#elif defined(DISTRHO_OS_MAC)
+#elif defined(DAF_OS_MAC)
 # import <Cocoa/Cocoa.h>
 # include <dlfcn.h>
 # include <mach/mach_time.h>
@@ -63,13 +63,13 @@
 #  import <QuartzCore/CAMetalLayer.h>
 #  include <vulkan/vulkan_macos.h>
 # endif
-#elif defined(DISTRHO_OS_WASM)
+#elif defined(DAF_OS_WASM)
 # include <emscripten/emscripten.h>
 # include <emscripten/html5.h>
 # ifdef DGL_OPENGL
 #  include <EGL/egl.h>
 # endif
-#elif defined(DISTRHO_OS_WINDOWS)
+#elif defined(DAF_OS_WINDOWS)
 # include <wctype.h>
 # include <winsock2.h>
 # include <windows.h>
@@ -193,9 +193,9 @@ extern "C" {
 # define FILE_BROWSER_DIALOG_DGL_NAMESPACE
 # define FILE_BROWSER_DIALOG_NAMESPACE DGL_NAMESPACE
 START_NAMESPACE_DGL
-# include "../../distrho/extra/FileBrowserDialogImpl.hpp"
+# include "../../daf/extra/FileBrowserDialogImpl.hpp"
 END_NAMESPACE_DGL
-# include "../../distrho/extra/FileBrowserDialogImpl.cpp"
+# include "../../daf/extra/FileBrowserDialogImpl.cpp"
 #endif
 
 #ifdef DGL_USE_WEB_VIEW
@@ -203,41 +203,41 @@ END_NAMESPACE_DGL
 # define WEB_VIEW_NAMESPACE DGL_NAMESPACE
 # define WEB_VIEW_DGL_NAMESPACE
 START_NAMESPACE_DGL
-# include "../../distrho/extra/WebViewImpl.hpp"
+# include "../../daf/extra/WebViewImpl.hpp"
 END_NAMESPACE_DGL
-# include "../../distrho/extra/WebViewImpl.cpp"
+# include "../../daf/extra/WebViewImpl.cpp"
 #endif
 
 #if defined(DGL_USING_X11) && defined(DGL_X11_WINDOW_ICON_NAME)
 extern const ulong* DGL_X11_WINDOW_ICON_NAME;
 #endif
 
-#ifndef DISTRHO_OS_MAC
+#ifndef DAF_OS_MAC
 START_NAMESPACE_DGL
 #endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
-#if defined(DISTRHO_OS_HAIKU)
+#if defined(DAF_OS_HAIKU)
 # include "pugl-extra/haiku.cpp"
 # include "pugl-extra/haiku_stub.cpp"
 # ifdef DGL_OPENGL
 #  include "pugl-extra/haiku_gl.cpp"
 # endif
-#elif defined(DISTRHO_OS_MAC)
-# ifndef DISTRHO_MACOS_NAMESPACE_MACRO
-#  ifndef DISTRHO_MACOS_NAMESPACE_TIME
-#   define DISTRHO_MACOS_NAMESPACE_TIME __apple_build_version__
+#elif defined(DAF_OS_MAC)
+# ifndef DAF_MACOS_NAMESPACE_MACRO
+#  ifndef DAF_MACOS_NAMESPACE_TIME
+#   define DAF_MACOS_NAMESPACE_TIME __apple_build_version__
 #  endif
-#  define DISTRHO_MACOS_NAMESPACE_MACRO_HELPER(NS, SEP, TIME, INTERFACE) NS ## SEP ## TIME ## SEP ## INTERFACE
-#  define DISTRHO_MACOS_NAMESPACE_MACRO(NS, TIME, INTERFACE) DISTRHO_MACOS_NAMESPACE_MACRO_HELPER(NS, _, TIME, INTERFACE)
-#  define PuglCairoView      DISTRHO_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DISTRHO_MACOS_NAMESPACE_TIME, PuglCairoView)
-#  define PuglOpenGLView     DISTRHO_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DISTRHO_MACOS_NAMESPACE_TIME, PuglOpenGLView)
-#  define PuglStubView       DISTRHO_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DISTRHO_MACOS_NAMESPACE_TIME, PuglStubView)
-#  define PuglVulkanView     DISTRHO_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DISTRHO_MACOS_NAMESPACE_TIME, PuglVulkanView)
-#  define PuglWindow         DISTRHO_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DISTRHO_MACOS_NAMESPACE_TIME, PuglWindow)
-#  define PuglWindowDelegate DISTRHO_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DISTRHO_MACOS_NAMESPACE_TIME, PuglWindowDelegate)
-#  define PuglWrapperView    DISTRHO_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DISTRHO_MACOS_NAMESPACE_TIME, PuglWrapperView)
+#  define DAF_MACOS_NAMESPACE_MACRO_HELPER(NS, SEP, TIME, INTERFACE) NS ## SEP ## TIME ## SEP ## INTERFACE
+#  define DAF_MACOS_NAMESPACE_MACRO(NS, TIME, INTERFACE) DAF_MACOS_NAMESPACE_MACRO_HELPER(NS, _, TIME, INTERFACE)
+#  define PuglCairoView      DAF_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DAF_MACOS_NAMESPACE_TIME, PuglCairoView)
+#  define PuglOpenGLView     DAF_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DAF_MACOS_NAMESPACE_TIME, PuglOpenGLView)
+#  define PuglStubView       DAF_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DAF_MACOS_NAMESPACE_TIME, PuglStubView)
+#  define PuglVulkanView     DAF_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DAF_MACOS_NAMESPACE_TIME, PuglVulkanView)
+#  define PuglWindow         DAF_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DAF_MACOS_NAMESPACE_TIME, PuglWindow)
+#  define PuglWindowDelegate DAF_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DAF_MACOS_NAMESPACE_TIME, PuglWindowDelegate)
+#  define PuglWrapperView    DAF_MACOS_NAMESPACE_MACRO(DGL_NAMESPACE, DAF_MACOS_NAMESPACE_TIME, PuglWrapperView)
 # endif
 # pragma clang diagnostic push
 # pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -253,13 +253,13 @@ START_NAMESPACE_DGL
 #  import "pugl-upstream/src/mac_vulkan.m"
 # endif
 # pragma clang diagnostic pop
-#elif defined(DISTRHO_OS_WASM)
+#elif defined(DAF_OS_WASM)
 # include "pugl-extra/wasm.c"
 # include "pugl-extra/wasm_stub.c"
 # ifdef DGL_OPENGL
 #  include "pugl-extra/wasm_gl.c"
 # endif
-#elif defined(DISTRHO_OS_WINDOWS)
+#elif defined(DAF_OS_WINDOWS)
 # include "pugl-upstream/src/win.c"
 # include "pugl-upstream/src/win_stub.c"
 # ifdef DGL_CAIRO
@@ -375,14 +375,14 @@ void puglSetMatchingBackendForCurrentBuild(PuglView* const view)
 void puglRaiseWindow(PuglView* const view)
 {
     // this does the same as puglShow(view, PUGL_SHOW_FORCE_RAISE) + puglShow(view, PUGL_SHOW_RAISE)
-   #if defined(DISTRHO_OS_HAIKU)
-   #elif defined(DISTRHO_OS_MAC)
+   #if defined(DAF_OS_HAIKU)
+   #elif defined(DAF_OS_MAC)
     NSWindow* const window = [view->impl->wrapperView window];
     [window orderFrontRegardless];
     [window orderFront:view->impl->wrapperView];
-   #elif defined(DISTRHO_OS_WASM)
+   #elif defined(DAF_OS_WASM)
     // nothing
-   #elif defined(DISTRHO_OS_WINDOWS)
+   #elif defined(DAF_OS_WINDOWS)
     SetForegroundWindow(view->impl->hwnd);
     SetActiveWindow(view->impl->hwnd);
    #elif defined(HAVE_X11)
@@ -406,21 +406,21 @@ PuglStatus puglSetGeometryConstraints(PuglView* const view, const uint width, co
         view->sizeHints[PUGL_FIXED_ASPECT].height = static_cast<PuglSpan>(height);
     }
 
-   #if defined(DISTRHO_OS_HAIKU)
-   #elif defined(DISTRHO_OS_MAC)
+   #if defined(DAF_OS_HAIKU)
+   #elif defined(DAF_OS_MAC)
     if (view->impl->window)
     {
         if (const PuglStatus status = puglUpdateSizeHints(view))
             return status;
     }
-   #elif defined(DISTRHO_OS_WASM)
+   #elif defined(DAF_OS_WASM)
     const char* const className = view->world->strings[PUGL_CLASS_NAME];
     EM_ASM({
       var canvasWrapper = document.getElementById(UTF8ToString($0)).parentElement;
       canvasWrapper.style.setProperty("min-width", parseInt($1 / window.devicePixelRatio) + 'px');
       canvasWrapper.style.setProperty("min-height", parseInt($2 / window.devicePixelRatio) + 'px');
     }, className, width, height);
-   #elif defined(DISTRHO_OS_WINDOWS)
+   #elif defined(DAF_OS_WINDOWS)
     // nothing
    #elif defined(HAVE_X11)
     if (view->impl->win)
@@ -451,8 +451,8 @@ void puglSetResizable(PuglView* const view, const bool resizable)
 {
     puglSetViewHint(view, PUGL_RESIZABLE, resizable ? PUGL_TRUE : PUGL_FALSE);
 
-   #if defined(DISTRHO_OS_HAIKU)
-   #elif defined(DISTRHO_OS_MAC)
+   #if defined(DAF_OS_HAIKU)
+   #elif defined(DAF_OS_MAC)
     if (PuglWindow* const window = view->impl->window)
     {
         const uint style = (NSClosableWindowMask | NSTitledWindowMask | NSMiniaturizableWindowMask)
@@ -460,9 +460,9 @@ void puglSetResizable(PuglView* const view, const bool resizable)
         [window setStyleMask:style];
     }
     // FIXME use [view setAutoresizingMask:NSViewNotSizable] ?
-   #elif defined(DISTRHO_OS_WASM)
+   #elif defined(DAF_OS_WASM)
     puglUpdateSizeHints(view);
-   #elif defined(DISTRHO_OS_WINDOWS)
+   #elif defined(DAF_OS_WINDOWS)
     if (const HWND hwnd = view->impl->hwnd)
     {
         const uint winFlags = resizable ? GetWindowLong(hwnd, GWL_STYLE) |  (WS_SIZEBOX | WS_MAXIMIZEBOX)
@@ -485,8 +485,8 @@ PuglStatus puglSetSizeAndDefault(PuglView* const view, const uint width, const u
     view->sizeHints[PUGL_DEFAULT_SIZE].width = view->sizeHints[PUGL_CURRENT_SIZE].width = width;
     view->sizeHints[PUGL_DEFAULT_SIZE].height = view->sizeHints[PUGL_CURRENT_SIZE].height = height;
 
-   #if defined(DISTRHO_OS_HAIKU)
-   #elif defined(DISTRHO_OS_MAC)
+   #if defined(DAF_OS_HAIKU)
+   #elif defined(DAF_OS_MAC)
     // matches upstream pugl
     if (view->impl->wrapperView)
     {
@@ -495,12 +495,12 @@ PuglStatus puglSetSizeAndDefault(PuglView* const view, const uint width, const u
         if (const PuglStatus status = puglSetWindowSize(view, width, height))
             return status;
     }
-   #elif defined(DISTRHO_OS_WASM)
+   #elif defined(DAF_OS_WASM)
     if (const PuglStatus status = puglUpdateSizeHints(view))
         return status;
 
     emscripten_set_canvas_element_size(view->world->strings[PUGL_CLASS_NAME], width, height);
-   #elif defined(DISTRHO_OS_WINDOWS)
+   #elif defined(DAF_OS_WINDOWS)
     // matches upstream pugl, except we re-enter context after resize
     if (view->impl->hwnd)
     {
@@ -583,11 +583,11 @@ void puglFallbackOnResize(PuglView* const view, const uint width, const uint hei
 
 // --------------------------------------------------------------------------------------------------------------------
 
-#if defined(DISTRHO_OS_HAIKU)
+#if defined(DAF_OS_HAIKU)
 
 // --------------------------------------------------------------------------------------------------------------------
 
-#elif defined(DISTRHO_OS_MAC)
+#elif defined(DAF_OS_MAC)
 
 // --------------------------------------------------------------------------------------------------------------------
 // macOS specific, add another view's window as child
@@ -640,7 +640,7 @@ void puglMacOSShowCentered(PuglView* const view)
     if (view->transientParent != 0)
     {
         NSWindow* const transientWindow = [(NSView*)view->transientParent window];
-        DISTRHO_SAFE_ASSERT_RETURN(transientWindow != nullptr,);
+        DAF_SAFE_ASSERT_RETURN(transientWindow != nullptr,);
 
         const NSRect ourFrame       = [view->impl->window frame];
         const NSRect transientFrame = [transientWindow frame];
@@ -658,7 +658,7 @@ void puglMacOSShowCentered(PuglView* const view)
 
 // --------------------------------------------------------------------------------------------------------------------
 
-#elif defined(DISTRHO_OS_WINDOWS)
+#elif defined(DAF_OS_WINDOWS)
 
 // --------------------------------------------------------------------------------------------------------------------
 // win32 specific, call ShowWindow with SW_RESTORE
@@ -666,7 +666,7 @@ void puglMacOSShowCentered(PuglView* const view)
 void puglWin32RestoreWindow(PuglView* const view)
 {
     PuglInternals* impl = view->impl;
-    DISTRHO_SAFE_ASSERT_RETURN(impl->hwnd != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(impl->hwnd != nullptr,);
 
     ShowWindow(impl->hwnd, SW_RESTORE);
     SetFocus(impl->hwnd);
@@ -678,7 +678,7 @@ void puglWin32RestoreWindow(PuglView* const view)
 void puglWin32ShowCentered(PuglView* const view)
 {
     PuglInternals* impl = view->impl;
-    DISTRHO_SAFE_ASSERT_RETURN(impl->hwnd != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(impl->hwnd != nullptr,);
 
     RECT rectChild, rectParent;
 
@@ -711,7 +711,7 @@ void puglWin32ShowCentered(PuglView* const view)
 
 // --------------------------------------------------------------------------------------------------------------------
 
-#elif defined(DISTRHO_OS_WASM)
+#elif defined(DAF_OS_WASM)
 
 // nothing here yet
 
@@ -799,6 +799,6 @@ void puglX11SetWindowType(const PuglView* const view, const bool isStandalone)
 
 #endif // HAVE_X11 / HAVE_WAYLAND
 
-#ifndef DISTRHO_OS_MAC
+#ifndef DAF_OS_MAC
 END_NAMESPACE_DGL
 #endif

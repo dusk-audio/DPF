@@ -30,7 +30,7 @@ START_NAMESPACE_DGL
 /**
    OpenGL3 Graphics context.
 
-   This provides access to the program, shaders and uniforms used by the underlying DPF implementation.
+   This provides access to the program, shaders and uniforms used by the underlying DAF implementation.
  */
 struct OpenGL3GraphicsContext : GraphicsContext
 {
@@ -113,7 +113,7 @@ struct OpenGL3GraphicsContext : GraphicsContext
 
    /**
       Set of buffers created with glGenBuffers.
-      Used internally in DPF to draw generic shapes, can be reused in custom code.
+      Used internally in DAF to draw generic shapes, can be reused in custom code.
       Unbound by default, make sure to leave them unbound at the end of your pipeline.
     */
     GLuint buffers[2];
@@ -121,7 +121,7 @@ struct OpenGL3GraphicsContext : GraphicsContext
    /**
       Vertex array object created with glGenVertexArrays, bound for the duration of onDisplay().
       A core profile has no default vertex array object, so every glVertexAttribPointer and draw call needs a
-      real one bound or it fails with GL_INVALID_OPERATION and the draw is silently dropped. DPF binds this one
+      real one bound or it fails with GL_INVALID_OPERATION and the draw is silently dropped. DAF binds this one
       before calling onDisplay() and rebinds it around its own drawing, because NanoVG binds its own vertex
       array object and leaves zero bound when it is done.
       If changing the current vertex array object make sure to revert back to this one at the end of your
@@ -300,45 +300,45 @@ public:
    /**
       Constructor using raw image data, specifying an OpenGL image format.
       @note @a rawData must remain valid for the lifetime of this Image.
-      DEPRECATED This constructor uses OpenGL image format instead of DISTRHO one.
+      DEPRECATED This constructor uses OpenGL image format instead of DAF one.
     */
-    DISTRHO_DEPRECATED_BY("OpenGLImage(const char*, uint, uint, ImageFormat)")
+    DAF_DEPRECATED_BY("OpenGLImage(const char*, uint, uint, ImageFormat)")
     explicit OpenGLImage(const char* rawData, uint width, uint height, GLenum glFormat);
 
    /**
       Constructor using raw image data, specifying an OpenGL image format.
       @note @a rawData must remain valid for the lifetime of this Image.
-      DEPRECATED This constructor uses OpenGL image format instead of DISTRHO one.
+      DEPRECATED This constructor uses OpenGL image format instead of DAF one.
     */
-    DISTRHO_DEPRECATED_BY("OpenGLImage(const char*, const Size<uint>&, ImageFormat)")
+    DAF_DEPRECATED_BY("OpenGLImage(const char*, const Size<uint>&, ImageFormat)")
     explicit OpenGLImage(const char* rawData, const Size<uint>& size, GLenum glFormat);
 
    /**
       Draw this image at (0, 0) point using the current OpenGL context.
       DEPRECATED This function does not take into consideration the current graphics context and only works in OpenGL.
     */
-    DISTRHO_DEPRECATED_BY("draw(const GraphicsContext&)")
+    DAF_DEPRECATED_BY("draw(const GraphicsContext&)")
     void draw();
 
    /**
       Draw this image at (x, y) point using the current OpenGL context.
       DEPRECATED This function does not take into consideration the current graphics context and only works in OpenGL.
     */
-    DISTRHO_DEPRECATED_BY("drawAt(const GraphicsContext&, int, int)")
+    DAF_DEPRECATED_BY("drawAt(const GraphicsContext&, int, int)")
     void drawAt(int x, int y);
 
    /**
       Draw this image at position @a pos using the current OpenGL context.
       DEPRECATED This function does not take into consideration the current graphics context and only works in OpenGL.
     */
-    DISTRHO_DEPRECATED_BY("drawAt(const GraphicsContext&, const Point<int>&)")
+    DAF_DEPRECATED_BY("drawAt(const GraphicsContext&, const Point<int>&)")
     void drawAt(const Point<int>& pos);
 
    /**
       Get the image type.
       DEPRECATED Type is always assumed to be GL_UNSIGNED_BYTE.
     */
-    DISTRHO_DEPRECATED
+    DAF_DEPRECATED
     GLenum getType() const noexcept { return GL_UNSIGNED_BYTE; }
    #endif // DGL_ALLOW_DEPRECATED_METHODS
 

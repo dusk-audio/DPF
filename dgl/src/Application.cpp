@@ -18,27 +18,27 @@
 
 #if defined(__EMSCRIPTEN__)
 # include <emscripten/emscripten.h>
-#elif defined(DISTRHO_OS_MAC)
+#elif defined(DAF_OS_MAC)
 # include <CoreFoundation/CoreFoundation.h>
 #endif
 
 START_NAMESPACE_DGL
 
 /* define webview start */
-#if defined(HAVE_X11) && defined(DISTRHO_OS_LINUX) && defined(DGL_USE_WEB_VIEW)
-int dpf_webview_start(int argc, char* argv[]);
+#if defined(HAVE_X11) && defined(DAF_OS_LINUX) && defined(DGL_USE_WEB_VIEW)
+int daf_webview_start(int argc, char* argv[]);
 #endif
 
 // --------------------------------------------------------------------------------------------------------------------
 // build config sentinels
 
 #define BUILD_CONFIG_SENTINEL(NAME) \
-   DISTRHO_JOIN_MACRO(_, NAME)::DISTRHO_JOIN_MACRO(_, NAME)() noexcept : ok(false) {}
+   DAF_JOIN_MACRO(_, NAME)::DAF_JOIN_MACRO(_, NAME)() noexcept : ok(false) {}
 
-#ifdef DPF_DEBUG
-BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_dpf_debug_on)
+#ifdef DAF_DEBUG
+BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_daf_debug_on)
 #else
-BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_dpf_debug_off)
+BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_daf_debug_off)
 #endif
 
 #ifdef DGL_USE_FILE_BROWSER
@@ -62,13 +62,13 @@ BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_dgl_no_shared_resources_off)
 #undef BUILD_CONFIG_SENTINEL
 
 static inline
-bool dpf_check_build_status() noexcept
+bool daf_check_build_status() noexcept
 {
    return (
-     #ifdef DPF_DEBUG
-      fail_to_link_is_mismatch_dpf_debug_on.ok &&
+     #ifdef DAF_DEBUG
+      fail_to_link_is_mismatch_daf_debug_on.ok &&
      #else
-      fail_to_link_is_mismatch_dpf_debug_off.ok &&
+      fail_to_link_is_mismatch_daf_debug_off.ok &&
      #endif
      #ifdef DGL_USE_FILE_BROWSER
       fail_to_link_is_mismatch_dgl_use_file_browser_on.ok &&
@@ -102,10 +102,10 @@ Application::Application(const bool isStandalone, const Type type)
     : pData(new PrivateData(isStandalone, type))
 {
     // build config sentinels
-   #ifdef DPF_DEBUG
-    fail_to_link_is_mismatch_dpf_debug_on.ok = true;
+   #ifdef DAF_DEBUG
+    fail_to_link_is_mismatch_daf_debug_on.ok = true;
    #else
-    fail_to_link_is_mismatch_dpf_debug_off.ok = true;
+    fail_to_link_is_mismatch_daf_debug_off.ok = true;
    #endif
    #ifdef DGL_USE_FILE_BROWSER
     fail_to_link_is_mismatch_dgl_use_file_browser_on.ok = true;
@@ -122,15 +122,15 @@ Application::Application(const bool isStandalone, const Type type)
    #else
     fail_to_link_is_mismatch_dgl_no_shared_resources_off.ok = true;
    #endif
-    DISTRHO_SAFE_ASSERT(dpf_check_build_status());
+    DAF_SAFE_ASSERT(daf_check_build_status());
 }
 
 Application::Application(int argc, char* argv[])
     : pData(new PrivateData(true, kTypeAuto))
 {
-   #if defined(HAVE_X11) && defined(DISTRHO_OS_LINUX) && defined(DGL_USE_WEB_VIEW)
+   #if defined(HAVE_X11) && defined(DAF_OS_LINUX) && defined(DGL_USE_WEB_VIEW)
     if (argc >= 2 && std::strcmp(argv[1], "dpf-ld-linux-webview") == 0)
-        std::exit(dpf_webview_start(argc, argv));
+        std::exit(daf_webview_start(argc, argv));
    #else
     // unused
     (void)argc;
@@ -138,10 +138,10 @@ Application::Application(int argc, char* argv[])
    #endif
 
     // build config sentinels
-   #ifdef DPF_DEBUG
-    fail_to_link_is_mismatch_dpf_debug_on.ok = true;
+   #ifdef DAF_DEBUG
+    fail_to_link_is_mismatch_daf_debug_on.ok = true;
    #else
-    fail_to_link_is_mismatch_dpf_debug_off.ok = true;
+    fail_to_link_is_mismatch_daf_debug_off.ok = true;
    #endif
    #ifdef DGL_USE_FILE_BROWSER
     fail_to_link_is_mismatch_dgl_use_file_browser_on.ok = true;
@@ -158,7 +158,7 @@ Application::Application(int argc, char* argv[])
    #else
     fail_to_link_is_mismatch_dgl_no_shared_resources_off.ok = true;
    #endif
-    DISTRHO_SAFE_ASSERT(dpf_check_build_status());
+    DAF_SAFE_ASSERT(daf_check_build_status());
 }
 
 Application::~Application()
@@ -173,11 +173,11 @@ void Application::idle()
 
 void Application::exec(const uint idleTimeInMs)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pData->isStandalone,);
+    DAF_SAFE_ASSERT_RETURN(pData->isStandalone,);
 
 #if defined(__EMSCRIPTEN__)
     emscripten_set_main_loop_arg(app_idle, this, 0, true);
-#elif defined(DISTRHO_OS_MAC)
+#elif defined(DAF_OS_MAC)
     const CFTimeInterval idleTimeInSecs = static_cast<CFTimeInterval>(idleTimeInMs) / 1000;
 
     while (! pData->isQuitting)
@@ -220,14 +220,14 @@ Application::Type Application::getType() const noexcept
 
 void Application::addIdleCallback(IdleCallback* const callback)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(callback != nullptr,)
+    DAF_SAFE_ASSERT_RETURN(callback != nullptr,)
 
     pData->idleCallbacks.push_back(callback);
 }
 
 void Application::removeIdleCallback(IdleCallback* const callback)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(callback != nullptr,)
+    DAF_SAFE_ASSERT_RETURN(callback != nullptr,)
 
     pData->idleCallbacks.remove(callback);
 }

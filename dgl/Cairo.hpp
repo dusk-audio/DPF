@@ -170,7 +170,7 @@ private:
         onCairoDisplay(static_cast<const CairoGraphicsContext&>(BaseWidget::getGraphicsContext()));
     }
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CairoBaseWidget);
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CairoBaseWidget);
 };
 
 typedef CairoBaseWidget<SubWidget> CairoSubWidget;

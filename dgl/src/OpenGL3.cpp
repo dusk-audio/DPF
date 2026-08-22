@@ -61,7 +61,7 @@ START_NAMESPACE_DGL
 // --------------------------------------------------------------------------------------------------------------------
 // Load OpenGL3 symbols on Windows
 
-#if defined(DISTRHO_OS_WINDOWS)
+#if defined(DAF_OS_WINDOWS)
 # include <windows.h>
 # define DGL_EXT(PROC, func) static PROC func;
 DGL_EXT(PFNGLACTIVETEXTUREPROC,            glActiveTexture)
@@ -175,7 +175,7 @@ void Color::setFor(const GraphicsContext& context, const bool includeAlpha)
 template<typename T>
 void Line<T>::draw(const GraphicsContext& context, const T width)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(width != 0,);
+    DAF_SAFE_ASSERT_RETURN(width != 0,);
 
     const OpenGL3GraphicsContext& gl3context = static_cast<const OpenGL3GraphicsContext&>(context);
 
@@ -236,8 +236,8 @@ static void drawCircle(const GraphicsContext& context,
                        const bool outline)
 {
     #define MAX_CIRCLE_SEGMENTS 512
-    DISTRHO_SAFE_ASSERT_RETURN(numSegments >= 3 && size > 0.0f,);
-    DISTRHO_SAFE_ASSERT_RETURN(numSegments <= MAX_CIRCLE_SEGMENTS,);
+    DAF_SAFE_ASSERT_RETURN(numSegments >= 3 && size > 0.0f,);
+    DAF_SAFE_ASSERT_RETURN(numSegments <= MAX_CIRCLE_SEGMENTS,);
 
     const OpenGL3GraphicsContext& gl3context = static_cast<const OpenGL3GraphicsContext&>(context);
 
@@ -317,7 +317,7 @@ void Circle<T>::draw(const GraphicsContext& context)
 template<typename T>
 void Circle<T>::drawOutline(const GraphicsContext& context, const T lineWidth)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(lineWidth != 0,);
+    DAF_SAFE_ASSERT_RETURN(lineWidth != 0,);
 
     glLineWidth(static_cast<GLfloat>(lineWidth));
     drawCircle<T>(context, fPos, fNumSegments, fSize, fSin, fCos, true);
@@ -354,7 +354,7 @@ static void drawTriangle(const GraphicsContext& context,
                          const Point<T>& pos3,
                          const bool outline)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pos1 != pos2 && pos1 != pos3,);
+    DAF_SAFE_ASSERT_RETURN(pos1 != pos2 && pos1 != pos3,);
 
     const OpenGL3GraphicsContext& gl3context = static_cast<const OpenGL3GraphicsContext&>(context);
 
@@ -403,7 +403,7 @@ void Triangle<T>::draw(const GraphicsContext& context)
 template<typename T>
 void Triangle<T>::drawOutline(const GraphicsContext& context, const T lineWidth)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(lineWidth != 0,);
+    DAF_SAFE_ASSERT_RETURN(lineWidth != 0,);
 
     glLineWidth(static_cast<GLfloat>(lineWidth));
     drawTriangle<T>(context, pos1, pos2, pos3, true);
@@ -436,7 +436,7 @@ template class Triangle<ushort>;
 template<typename T>
 static void drawRectangle(const GraphicsContext& context, const Rectangle<T>& rect, const bool outline)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(rect.isValid(),);
+    DAF_SAFE_ASSERT_RETURN(rect.isValid(),);
 
     const OpenGL3GraphicsContext& gl3context = static_cast<const OpenGL3GraphicsContext&>(context);
 
@@ -485,7 +485,7 @@ void Rectangle<T>::draw(const GraphicsContext& context)
 template<typename T>
 void Rectangle<T>::drawOutline(const GraphicsContext& context, const T lineWidth)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(lineWidth != 0,);
+    DAF_SAFE_ASSERT_RETURN(lineWidth != 0,);
 
     glLineWidth(static_cast<GLfloat>(lineWidth));
     drawRectangle<T>(context, *this, true);
@@ -517,14 +517,14 @@ template class Rectangle<ushort>;
 
 static void setupOpenGLImage(const OpenGLImage& image, GLuint textureId)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(image.isValid(),);
+    DAF_SAFE_ASSERT_RETURN(image.isValid(),);
 
     const ImageFormat imageFormat = image.getFormat();
     GLint intformat;
 
    #ifdef DGL_USE_GLES
     // GLES does not support BGR
-    DISTRHO_SAFE_ASSERT_RETURN(imageFormat != kImageFormatBGR && imageFormat != kImageFormatBGRA,);
+    DAF_SAFE_ASSERT_RETURN(imageFormat != kImageFormatBGR && imageFormat != kImageFormatBGRA,);
    #endif
 
     glBindTexture(GL_TEXTURE_2D, textureId);
@@ -766,7 +766,7 @@ void ImageBaseKnob<OpenGLImage>::onDisplay()
 
    #ifdef DGL_USE_GLES
     // GLES does not support BGR
-    DISTRHO_SAFE_ASSERT_RETURN(imageFormat != kImageFormatBGR && imageFormat != kImageFormatBGRA,);
+    DAF_SAFE_ASSERT_RETURN(imageFormat != kImageFormatBGR && imageFormat != kImageFormatBGRA,);
    #endif
 
     glEnable(GL_BLEND);
@@ -820,8 +820,8 @@ void ImageBaseKnob<OpenGLImage>::onDisplay()
 
         if (pData->rotationAngle == 0)
         {
-            DISTRHO_SAFE_ASSERT_RETURN(pData->imgLayerCount > 0,);
-            DISTRHO_SAFE_ASSERT_RETURN(normValue >= 0.0f,);
+            DAF_SAFE_ASSERT_RETURN(pData->imgLayerCount > 0,);
+            DAF_SAFE_ASSERT_RETURN(normValue >= 0.0f,);
 
             const uint& v1(pData->isImgVertical ? pData->imgLayerWidth : pData->imgLayerHeight);
             const uint& v2(pData->isImgVertical ? pData->imgLayerHeight : pData->imgLayerWidth);
@@ -943,7 +943,7 @@ void Window::PrivateData::createContextIfNeeded()
     if (gl3context.program != 0)
         return;
 
-#if defined(DISTRHO_OS_WINDOWS)
+#if defined(DAF_OS_WINDOWS)
 # if defined(__GNUC__) && (__GNUC__ >= 9)
 #  pragma GCC diagnostic push
 #  pragma GCC diagnostic ignored "-Wcast-function-type"
@@ -951,12 +951,12 @@ void Window::PrivateData::createContextIfNeeded()
     static bool needsInit = true;
 # define DGL_EXT(PROC, func) \
       if (needsInit) func = (PROC) wglGetProcAddress ( #func ); \
-      DISTRHO_SAFE_ASSERT_RETURN(func != nullptr,);
+      DAF_SAFE_ASSERT_RETURN(func != nullptr,);
 # define DGL_EXT2(PROC, func, fallback) \
       if (needsInit) { \
         func = (PROC) wglGetProcAddress ( #func ); \
         if (func == nullptr) func = (PROC) wglGetProcAddress ( #fallback ); \
-      } DISTRHO_SAFE_ASSERT_RETURN(func != nullptr,);
+      } DAF_SAFE_ASSERT_RETURN(func != nullptr,);
 DGL_EXT(PFNGLACTIVETEXTUREPROC,            glActiveTexture)
 DGL_EXT(PFNGLATTACHSHADERPROC,             glAttachShader)
 DGL_EXT(PFNGLBINDBUFFERPROC,               glBindBuffer)
@@ -997,13 +997,13 @@ DGL_EXT(PFNGLGENVERTEXARRAYSPROC,          glGenVertexArrays)
     int status;
 
     const GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
-    DISTRHO_SAFE_ASSERT_RETURN(fragment != 0, shaderCreationFail(fragment));
+    DAF_SAFE_ASSERT_RETURN(fragment != 0, shaderCreationFail(fragment));
 
     const GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
-    DISTRHO_SAFE_ASSERT_RETURN(vertex != 0, shaderCreationFail(vertex, fragment));
+    DAF_SAFE_ASSERT_RETURN(vertex != 0, shaderCreationFail(vertex, fragment));
 
     const GLuint program = glCreateProgram();
-    DISTRHO_SAFE_ASSERT_RETURN(program != 0,);
+    DAF_SAFE_ASSERT_RETURN(program != 0,);
 
     // Shader dialect per header. The two shaders below are identical apart from the spelling of stage inputs,
     // stage outputs, the fragment colour and the texture lookup, so those four are tokens rather than two full
@@ -1056,7 +1056,7 @@ DGL_EXT(PFNGLGENVERTEXARRAYSPROC,          glGenVertexArrays)
         glCompileShader(fragment);
 
         glGetShaderiv(fragment, GL_COMPILE_STATUS, &status);
-        DISTRHO_SAFE_ASSERT_RETURN(status != 0, contextCreationFail(program, fragment, vertex));
+        DAF_SAFE_ASSERT_RETURN(status != 0, contextCreationFail(program, fragment, vertex));
     }
 
     {
@@ -1070,7 +1070,7 @@ DGL_EXT(PFNGLGENVERTEXARRAYSPROC,          glGenVertexArrays)
         glCompileShader(vertex);
 
         glGetShaderiv(vertex, GL_COMPILE_STATUS, &status);
-        DISTRHO_SAFE_ASSERT_RETURN(status != 0, contextCreationFail(program, fragment, vertex));
+        DAF_SAFE_ASSERT_RETURN(status != 0, contextCreationFail(program, fragment, vertex));
     }
 
     glAttachShader(program, fragment);
@@ -1078,11 +1078,11 @@ DGL_EXT(PFNGLGENVERTEXARRAYSPROC,          glGenVertexArrays)
     glLinkProgram(program);
 
     glGetProgramiv(program, GL_LINK_STATUS, &status);
-    DISTRHO_SAFE_ASSERT_RETURN(status != 0, contextCreationFail(program, fragment, vertex));
+    DAF_SAFE_ASSERT_RETURN(status != 0, contextCreationFail(program, fragment, vertex));
 
     glGenBuffers(2, gl3context.buffers);
-    DISTRHO_SAFE_ASSERT_RETURN(gl3context.buffers[0] != 0, contextCreationFail(program, fragment, vertex));
-    DISTRHO_SAFE_ASSERT_RETURN(gl3context.buffers[1] != 0, contextCreationFail(program, fragment, vertex));
+    DAF_SAFE_ASSERT_RETURN(gl3context.buffers[0] != 0, contextCreationFail(program, fragment, vertex));
+    DAF_SAFE_ASSERT_RETURN(gl3context.buffers[1] != 0, contextCreationFail(program, fragment, vertex));
 
     // no default vertex array object exists in a core profile, see the note near the top of this file
     createVertexArray(gl3context);

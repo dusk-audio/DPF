@@ -29,7 +29,7 @@
 #endif
 
 #ifndef DGL_NO_SHARED_RESOURCES
-# define NANOVG_DEJAVU_SANS_TTF "__dpf_dejavusans_ttf__"
+# define NANOVG_DEJAVU_SANS_TTF "__daf_dejavusans_ttf__"
 #endif
 
 struct NVGcontext;
@@ -46,7 +46,7 @@ class NanoVG;
 // Helper methods
 
 /**
-   Create a NanoVG context using the DPF-provided NanoVG library.
+   Create a NanoVG context using the DAF-provided NanoVG library.
    On Windows this will load a few extra OpenGL functions required for NanoVG to work.
  */
 NVGcontext* nvgCreateGL(int flags);
@@ -125,7 +125,7 @@ private:
    /** @internal */
     void _updateSize();
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NanoImage)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NanoImage)
 };
 
 // -----------------------------------------------------------------------
@@ -889,7 +889,7 @@ public:
 
 #ifndef DGL_NO_SHARED_RESOURCES
    /**
-      Load DPF's internal shared resources for this NanoVG class.
+      Load DAF's internal shared resources for this NanoVG class.
     */
     virtual bool loadSharedResources();
 #endif
@@ -899,7 +899,7 @@ private:
     bool fInFrame;
     bool fIsSubWidget;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NanoVG)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NanoVG)
 };
 
 // -----------------------------------------------------------------------
@@ -983,14 +983,14 @@ private:
     friend class NanoBaseWidget<TopLevelWidget>;
     friend class NanoBaseWidget<StandaloneWindow>;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NanoBaseWidget)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NanoBaseWidget)
 };
 
 typedef NanoBaseWidget<SubWidget> NanoSubWidget;
 typedef NanoBaseWidget<TopLevelWidget> NanoTopLevelWidget;
 typedef NanoBaseWidget<StandaloneWindow> NanoStandaloneWindow;
 
-DISTRHO_DEPRECATED_BY("NanoSubWidget")
+DAF_DEPRECATED_BY("NanoSubWidget")
 typedef NanoSubWidget NanoWidget;
 
 // -----------------------------------------------------------------------

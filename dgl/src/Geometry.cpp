@@ -538,7 +538,7 @@ Circle<T>::Circle(const T& x, const T& y, const float size, const uint numSegmen
       fCos(std::cos(fTheta)),
       fSin(std::sin(fTheta))
 {
-    DISTRHO_SAFE_ASSERT(fSize > 0.0f);
+    DAF_SAFE_ASSERT(fSize > 0.0f);
 }
 
 template<typename T>
@@ -550,7 +550,7 @@ Circle<T>::Circle(const Point<T>& pos, const float size, const uint numSegments)
       fCos(std::cos(fTheta)),
       fSin(std::sin(fTheta))
 {
-    DISTRHO_SAFE_ASSERT(fSize > 0.0f);
+    DAF_SAFE_ASSERT(fSize > 0.0f);
 }
 
 template<typename T>
@@ -562,7 +562,7 @@ Circle<T>::Circle(const Circle<T>& cir) noexcept
       fCos(cir.fCos),
       fSin(cir.fSin)
 {
-    DISTRHO_SAFE_ASSERT(fSize > 0.0f);
+    DAF_SAFE_ASSERT(fSize > 0.0f);
 }
 
 template<typename T>
@@ -617,7 +617,7 @@ float Circle<T>::getSize() const noexcept
 template<typename T>
 void Circle<T>::setSize(const float size) noexcept
 {
-    DISTRHO_SAFE_ASSERT_RETURN(size > 0.0f,);
+    DAF_SAFE_ASSERT_RETURN(size > 0.0f,);
 
     fSize = size;
 }
@@ -631,7 +631,7 @@ uint Circle<T>::getNumSegments() const noexcept
 template<typename T>
 void Circle<T>::setNumSegments(const uint num)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(num >= 3,);
+    DAF_SAFE_ASSERT_RETURN(num >= 3,);
 
     if (fNumSegments == num)
         return;

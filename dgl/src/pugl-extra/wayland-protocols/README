@@ -56,7 +56,7 @@ Note that these are the versions the *bindings* can speak. wayland.c binds each 
 makes the backend demand more of a compositor than before.
 
 Each protocol XML carries its own MIT/X11-style licence notice, which the generator copies into both
-the header and the source. Nothing here is under DPF's ISC licence.
+the header and the source. Nothing here is under DAF's ISC licence.
 
 
 Regenerating
@@ -73,7 +73,7 @@ To also refresh the XML, download it from the upstream paths in the table above 
 commit and date recorded here.
 
 `private-code` (rather than `public-code`) is deliberate: it marks the generated interface objects
-`WL_PRIVATE`, i.e. hidden visibility, so a DPF plugin cannot collide with a host that has linked its
+`WL_PRIVATE`, i.e. hidden visibility, so a DAF plugin cannot collide with a host that has linked its
 own copy of the same protocol.
 
 

@@ -33,7 +33,7 @@ class PuglHaikuWindow : public BWindow
 
 public:
     PuglHaikuWindow(PuglView* const v)
-        : BWindow(BRect(1.0f), "DPF-Window", B_TITLED_WINDOW, 0x0),
+        : BWindow(BRect(1.0f), "DAF-Window", B_TITLED_WINDOW, 0x0),
           view(v) {}
 
 // protected:

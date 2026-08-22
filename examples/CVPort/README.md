@@ -1,6 +1,6 @@
 # CVPort example
 
-This example will show how to modify audio input/output port type in DPF so they can work as CV.<br/>
+This example will show how to modify audio input/output port type in DAF so they can work as CV.<br/>
 Take a look at `initAudioPort()` method.<br/>
 
 Worth noting that CV is not supported outside of JACK and LV2 formats.<br/>

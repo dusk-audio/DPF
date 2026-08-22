@@ -141,7 +141,7 @@ jobs:
         make -C examples/Meters -j$(nproc)
         make -C examples/Info clap -j$(nproc)
     # Compiling and linking cannot catch this one: the LV2 UI class is a string baked into the turtle by
-    # DistrhoPluginLV2export.cpp, picked at compile time from HAVE_X11, so a wrong choice produces a
+    # DafPluginLV2export.cpp, picked at compile time from HAVE_X11, so a wrong choice produces a
     # perfectly good binary that no host can open. The turtle has to be generated and read back.
     #
     # Why it must not be ui:X11UI here: every native LV2 UI class means "the host may reparent the widget
@@ -149,7 +149,7 @@ jobs:
     # has no window it could give away, and declaring ui:X11UI would only make hosts embed a handle that
     # can never be honoured. The generic ui:UI says "no class you know how to embed", which is exactly the
     # case in which conforming hosts (Ardour, jalv, ...) fall back to ui:showInterface and let the plugin
-    # own a floating toplevel -- the path DistrhoUILV2.cpp implements when ui:parent is absent.
+    # own a floating toplevel -- the path DafUILV2.cpp implements when ui:parent is absent.
     #
     # examples/Meters builds the lv2_sep target above, so the bundle is already linked; only the one-file
     # ttl generator still has to be built. generate-ttl.sh then loads the DSP binary and asks the plugin to
@@ -223,7 +223,7 @@ jobs:
     # The regression half of the turtle check in the wayland-only job. Both assertions read the same line
     # of manifest.ttl, and the line is chosen from HAVE_X11, so this is the guard that the Wayland arm was
     # given the generic ui:UI without also taking it away from everyone else: ui:X11UI is the class every
-    # existing host uses to embed a DPF UI into its plugin rack, and quietly degrading it to ui:UI would
+    # existing host uses to embed a DAF UI into its plugin rack, and quietly degrading it to ui:UI would
     # move all of them onto the floating showInterface path instead.
     #
     # Costs one extra compilation unit: the step above already links the LV2 bundle, so only the one-file
@@ -245,8 +245,8 @@ jobs:
   # -------------------------------------------------------------------------------------------------------------------
   # Run the CLAP examples through clap-validator. Upstream CI builds CLAP plugins but never loads them.
   #
-  # Every entry left in KNOWN_FAILURES below is a clap-validator 0.3.2 false positive rather than a DPF
-  # defect. They all reduce to the validator having no concept of an output parameter: DPF reports its
+  # Every entry left in KNOWN_FAILURES below is a clap-validator 0.3.2 false positive rather than a DAF
+  # defect. They all reduce to the validator having no concept of an output parameter: DAF reports its
   # output parameters as CLAP_PARAM_IS_READONLY, the validator then either refuses to send them anything
   # and complains that nothing changed, or expects values that only the host can move to survive a state
   # round-trip. Upstream knows (clap-validator issues #15, #16, #26) and 0.4.1 has already reworked the
@@ -302,21 +302,21 @@ jobs:
         import sys
 
         KNOWN_FAILURES = {
-            # All 13 of Info's parameters are DPF output parameters, so DistrhoPluginCLAP.cpp reports
+            # All 13 of Info's parameters are DAF output parameters, so DafPluginCLAP.cpp reports
             # them as CLAP_PARAM_IS_READONLY, and every one of them mirrors host state: BufferSize
             # follows activate(), the rest follow the transport during process().
-            'studio.kx.distrho.examples.info': {
+            'studio.kx.daf.examples.info': {
                 # tests/plugin/params.rs reads all parameters, processes one block, and requires the
                 # values to be unchanged. The fuzzer (tests/rng.rs randomize_params_at) only randomizes
                 # CLAP_PARAM_IS_AUTOMATABLE parameters, so Info is sent no parameter events whatsoever
                 # and still fails: BufferSize moved 1024 -> 512 at activate() and the transport readouts
                 # moved during process(). Nothing here can be about namespace checking, and the wrapper
-                # does check (DistrhoPluginCLAP.cpp, both the process and flush event loops) -- d_latency
+                # does check (DafPluginCLAP.cpp, both the process and flush event loops) -- d_latency
                 # passes this same test with real wrong-namespace events sent at it.
                 'param-set-wrong-namespace',
                 # tests/plugin/state.rs processes audio on instance A, then requires instance B to
                 # reproduce A's parameter values from the saved state alone. Info's readouts are all 0
-                # until B processes. They cannot be carried in the state either: DPF only calls
+                # until B processes. They cannot be carried in the state either: DAF only calls
                 # Plugin::setParameterValue for input parameters, so the wrapper deliberately skips
                 # output parameters when saving and loading, and the examples ignore writes to them.
                 'state-buffered-streams',
@@ -329,8 +329,8 @@ jobs:
             },
             # no baselined failures; the key is kept so the completeness check below still requires
             # clap-validator to have reported on this plugin
-            'studio.kx.distrho.examples.latency': set(),
-            'studio.kx.distrho.examples.meters': {
+            'studio.kx.daf.examples.latency': set(),
+            'studio.kx.daf.examples.meters': {
                 # Same check as Info's, failing for the opposite reason. Meters' only automatable
                 # parameter is 'color', stepped over 0..1 and defaulting to 0, and the validator's PRNG
                 # is fixed (Pcg32::new(1337, 420) in tests/rng.rs), so the random value it flushes is 0 --
@@ -520,8 +520,8 @@ jobs:
         import re
         import sys
 
-        # Every diagnostic lv2_validate raises against a stock DPF bundle comes from a vocabulary that is
-        # not in the Ubuntu archives. DPF unconditionally emits mod:brand / mod:label / modgui:* and
+        # Every diagnostic lv2_validate raises against a stock DAF bundle comes from a vocabulary that is
+        # not in the Ubuntu archives. DAF unconditionally emits mod:brand / mod:label / modgui:* and
         # declares the KXStudio programs and control-input-port-change-request extensions, and
         # sord_validate cannot check a property whose .ttl it has never been shown. Installing those
         # vocabularies is precisely the KXStudio dependency this job exists to drop, so a diagnostic that

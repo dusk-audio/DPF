@@ -9,7 +9,7 @@ fi
 
 set -e
 
-DPF_UTILS_DIR="$(dirname $(realpath ${0}))"
+DAF_UTILS_DIR="$(dirname $(realpath ${0}))"
 
 if [ -d bin ]; then
   cd bin
@@ -24,8 +24,8 @@ fi
 MACOS_PKG_LICENSE_FILE=${MACOS_PKG_LICENSE_FILE:=""}
 MACOS_PKG_NAME=${MACOS_PKG_NAME:="$(basename $(git rev-parse --show-toplevel))"}
 MACOS_PKG_SNAME=${MACOS_PKG_SNAME:="$(echo ${MACOS_PKG_NAME} | tr -d ' ' | tr '/' '-')"}
-MACOS_PKG_SYMBOL=${MACOS_PKG_SYMBOL:="studio.kx.distrho.plugins.${MACOS_PKG_SNAME}"}
-MACOS_PKG_WELCOME_TXT=${MACOS_PKG_WELCOME_TXT:=${DPF_UTILS_DIR}/plugin.pkg/welcome.txt.in}
+MACOS_PKG_SYMBOL=${MACOS_PKG_SYMBOL:="studio.kx.daf.plugins.${MACOS_PKG_SNAME}"}
+MACOS_PKG_WELCOME_TXT=${MACOS_PKG_WELCOME_TXT:=${DAF_UTILS_DIR}/plugin.pkg/welcome.txt.in}
 
 # backwards compat
 if [ -n "${WELCOME_TXT}" ]; then
@@ -148,7 +148,7 @@ sed -e "s|@builddir@|${PWD}/build|" \
     -e "s|@name@|${MACOS_PKG_NAME}|g" \
     -e "s|@sname@|${MACOS_PKG_SNAME}|g" \
     -e "s|@symbol@|${MACOS_PKG_SYMBOL}|g" \
-    ${DPF_UTILS_DIR}/plugin.pkg/package.xml.in > build/package.xml
+    ${DAF_UTILS_DIR}/plugin.pkg/package.xml.in > build/package.xml
 
 productbuild \
   --distribution build/package.xml \

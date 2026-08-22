@@ -51,7 +51,7 @@ private:
     std::string label;
     float fontScale;
 
-    DISTRHO_LEAK_DETECTOR(Button)
+    DAF_LEAK_DETECTOR(Button)
 };
 
 END_NAMESPACE_DGL

@@ -1,5 +1,5 @@
 #!/usr/bin/make -f
-# Makefile for DPF #
+# Makefile for DAF #
 # ---------------- #
 # Created by falkTX
 #
@@ -7,11 +7,11 @@
 # NOTE: NAME, FILES_DSP and FILES_UI must have been defined before including this file!
 
 # extra useful variables to define before including this file:
-# - DPF_BUILD_DIR: where to place temporary build files
-# - DPF_TARGET_DIR: where to place final binary files
+# - DAF_BUILD_DIR: where to place temporary build files
+# - DAF_TARGET_DIR: where to place final binary files
 # - UI_TYPE: one of cairo, external, gles2, gles3, opengl, opengl3 or webview.
 #            default is opengl everywhere except macOS, which defaults to opengl3 (see below for why).
-#            ("generic" is also allowed if only using basic DPF classes like image widgets)
+#            ("generic" is also allowed if only using basic DAF classes like image widgets)
 #            gles2/gles3 are not available on macOS at all.
 
 # override the "all" target after including this file to define which plugin formats to build, like so:
@@ -19,33 +19,33 @@
 
 # NOTE the "lv2" target refers to a monolithic build (dsp and ui combined),
 #      while "lv2_sep" target has dsp and ui in separate binaries.
-#      use of this target must match the definition of `DISTRHO_PLUGIN_WANT_DIRECT_ACCESS`
+#      use of this target must match the definition of `DAF_PLUGIN_WANT_DIRECT_ACCESS`
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Try to figure out where DPF is located
+# Try to figure out where DAF is located
 
-ifeq ($(DPF_PATH),)
+ifeq ($(DAF_PATH),)
 
 # find path to this makefile
-DPF_PLUGINS_MAKEFILE = $(lastword $(filter %Makefile.plugins.mk,$(MAKEFILE_LIST)))
+DAF_PLUGINS_MAKEFILE = $(lastword $(filter %Makefile.plugins.mk,$(MAKEFILE_LIST)))
 
 # error out if wrongly named or referencing it without any path
-ifeq (,$(findstring /Makefile.plugins.mk,$(DPF_PLUGINS_MAKEFILE)))
+ifeq (,$(findstring /Makefile.plugins.mk,$(DAF_PLUGINS_MAKEFILE)))
 $(error wrong inclusion of Makefile.plugins.mk, must be either absolute or relative path)
 endif
 
-# find path to DPF
-DPF_PATH = $(patsubst %/Makefile.plugins.mk,%,$(DPF_PLUGINS_MAKEFILE))
+# find path to DAF
+DAF_PATH = $(patsubst %/Makefile.plugins.mk,%,$(DAF_PLUGINS_MAKEFILE))
 
 # best guess for where to place binary files
-ifeq ($(DPF_PATH),..)
-BASE_PATH = $(DPF_PATH)
-else ifeq ($(DPF_PATH),../..)
-BASE_PATH = $(DPF_PATH)
-else ifeq ($(DPF_PATH),../../..)
-BASE_PATH = $(DPF_PATH)
+ifeq ($(DAF_PATH),..)
+BASE_PATH = $(DAF_PATH)
+else ifeq ($(DAF_PATH),../..)
+BASE_PATH = $(DAF_PATH)
+else ifeq ($(DAF_PATH),../../..)
+BASE_PATH = $(DAF_PATH)
 else
-BASE_PATH = $(patsubst %/,%,$(dir $(DPF_PATH)))
+BASE_PATH = $(patsubst %/,%,$(dir $(DAF_PATH)))
 endif
 
 endif
@@ -106,9 +106,9 @@ $(error unknown UI_TYPE $(UI_TYPE))
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Include DPF base setup
+# Include DAF base setup
 
-include $(DPF_PATH)/Makefile.base.mk
+include $(DAF_PATH)/Makefile.base.mk
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Basic setup
@@ -117,22 +117,22 @@ ifeq ($(MODGUI_BUILD),true)
 BUILD_DIR_SUFFIX = -modgui
 endif
 
-ifneq ($(DPF_BUILD_DIR),)
-BUILD_DIR = $(DPF_BUILD_DIR)$(BUILD_DIR_SUFFIX)
+ifneq ($(DAF_BUILD_DIR),)
+BUILD_DIR = $(DAF_BUILD_DIR)$(BUILD_DIR_SUFFIX)
 else
 BUILD_DIR = $(BASE_PATH)/build$(BUILD_DIR_SUFFIX)/$(NAME)
 endif
 
-ifneq ($(DPF_TARGET_DIR),)
-TARGET_DIR = $(DPF_TARGET_DIR)
+ifneq ($(DAF_TARGET_DIR),)
+TARGET_DIR = $(DAF_TARGET_DIR)
 else
 TARGET_DIR = $(BASE_PATH)/bin
 endif
 
-DGL_BUILD_DIR = $(DPF_PATH)/build$(BUILD_DIR_SUFFIX)
+DGL_BUILD_DIR = $(DAF_PATH)/build$(BUILD_DIR_SUFFIX)
 
 BUILD_C_FLAGS   += -I.
-BUILD_CXX_FLAGS += -I. -I$(DPF_PATH)/distrho -I$(DPF_PATH)/dgl -I$(DPF_PATH)/dgl/src/pugl-upstream/include
+BUILD_CXX_FLAGS += -I. -I$(DAF_PATH)/daf -I$(DAF_PATH)/dgl -I$(DAF_PATH)/dgl/src/pugl-upstream/include
 
 ifeq ($(HAVE_ALSA),true)
 BASE_FLAGS += -DHAVE_ALSA
@@ -159,7 +159,7 @@ BASE_FLAGS += -DHAVE_SDL2
 endif
 
 ifneq ($(MODGUI_CLASS_NAME),)
-BASE_FLAGS += -DDISTRHO_PLUGIN_MODGUI_CLASS_NAME='"$(MODGUI_CLASS_NAME)"'
+BASE_FLAGS += -DDAF_PLUGIN_MODGUI_CLASS_NAME='"$(MODGUI_CLASS_NAME)"'
 endif
 
 # always needed
@@ -225,9 +225,9 @@ OBJS_DSP = $(FILES_DSP:%=$(BUILD_DIR)/%.o)
 OBJS_UI  = $(FILES_UI:%=$(BUILD_DIR)/%.o)
 
 ifeq ($(MACOS),true)
-OBJS_UI += $(BUILD_DIR)/DistrhoUI_macOS_$(NAME).mm.o
+OBJS_UI += $(BUILD_DIR)/DafUI_macOS_$(NAME).mm.o
 else ifeq ($(WINDOWS)$(USE_WEB_VIEW),truetrue)
-OBJS_UI += $(BUILD_DIR)/DistrhoUI_win32.cpp.o
+OBJS_UI += $(BUILD_DIR)/DafUI_win32.cpp.o
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -250,7 +250,7 @@ endif
 endif
 
 # There is no OpenGL ES on macOS. Apple never shipped a desktop GLES implementation, and dgl/OpenGL-include.hpp
-# has no GLES include path for DISTRHO_OS_MAC -- it used to silently #undef DGL_USE_GLES* and build desktop GL3
+# has no GLES include path for DAF_OS_MAC -- it used to silently #undef DGL_USE_GLES* and build desktop GL3
 # instead, so a "gles2" build on macOS quietly produced a non-GLES binary. That header now errors out, and this
 # check exists only to fail with a sentence a human can act on instead of a preprocessor error deep in DGL.
 ifeq ($(MACOS),true)
@@ -480,16 +480,16 @@ endif
 # Set plugin symbols to export
 
 ifeq ($(MACOS),true)
-SYMBOLS_AU     = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/au.exp
-SYMBOLS_CLAP   = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/clap.exp
-SYMBOLS_DSSI   = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/dssi.exp
-SYMBOLS_LADSPA = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/ladspa.exp
-SYMBOLS_LV2    = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/lv2.exp
-SYMBOLS_LV2DSP = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/lv2-dsp.exp
-SYMBOLS_LV2UI  = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/lv2-ui.exp
-SYMBOLS_MAPI   = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/mapi.exp
-SYMBOLS_VST2   = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/vst2.exp
-SYMBOLS_VST3   = -Wl,-exported_symbols_list,$(DPF_PATH)/utils/symbols/vst3.exp
+SYMBOLS_AU     = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/au.exp
+SYMBOLS_CLAP   = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/clap.exp
+SYMBOLS_DSSI   = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/dssi.exp
+SYMBOLS_LADSPA = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/ladspa.exp
+SYMBOLS_LV2    = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/lv2.exp
+SYMBOLS_LV2DSP = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/lv2-dsp.exp
+SYMBOLS_LV2UI  = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/lv2-ui.exp
+SYMBOLS_MAPI   = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/mapi.exp
+SYMBOLS_VST2   = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/vst2.exp
+SYMBOLS_VST3   = -Wl,-exported_symbols_list,$(DAF_PATH)/utils/symbols/vst3.exp
 else ifeq ($(WASM),true)
 SYMBOLS_CLAP   = -sEXPORTED_FUNCTIONS="['clap_entry']"
 SYMBOLS_DSSI   = -sEXPORTED_FUNCTIONS="['ladspa_descriptor','dssi_descriptor']"
@@ -501,32 +501,32 @@ SYMBOLS_MAPI   = -sEXPORTED_FUNCTIONS="['_mapi_create','_mapi_process','_mapi_se
 SYMBOLS_VST2   = -sEXPORTED_FUNCTIONS="['VSTPluginMain']"
 SYMBOLS_VST3   = -sEXPORTED_FUNCTIONS="['GetPluginFactory','ModuleEntry','ModuleExit']"
 else ifeq ($(WINDOWS),true)
-SYMBOLS_CLAP   = $(DPF_PATH)/utils/symbols/clap.def
-SYMBOLS_DSSI   = $(DPF_PATH)/utils/symbols/dssi.def
-SYMBOLS_LADSPA = $(DPF_PATH)/utils/symbols/ladspa.def
-SYMBOLS_LV2    = $(DPF_PATH)/utils/symbols/lv2.def
-SYMBOLS_LV2DSP = $(DPF_PATH)/utils/symbols/lv2-dsp.def
-SYMBOLS_LV2UI  = $(DPF_PATH)/utils/symbols/lv2-ui.def
-SYMBOLS_MAPI   = $(DPF_PATH)/utils/symbols/mapi.def
-SYMBOLS_VST2   = $(DPF_PATH)/utils/symbols/vst2.def
-SYMBOLS_VST3   = $(DPF_PATH)/utils/symbols/vst3.def
+SYMBOLS_CLAP   = $(DAF_PATH)/utils/symbols/clap.def
+SYMBOLS_DSSI   = $(DAF_PATH)/utils/symbols/dssi.def
+SYMBOLS_LADSPA = $(DAF_PATH)/utils/symbols/ladspa.def
+SYMBOLS_LV2    = $(DAF_PATH)/utils/symbols/lv2.def
+SYMBOLS_LV2DSP = $(DAF_PATH)/utils/symbols/lv2-dsp.def
+SYMBOLS_LV2UI  = $(DAF_PATH)/utils/symbols/lv2-ui.def
+SYMBOLS_MAPI   = $(DAF_PATH)/utils/symbols/mapi.def
+SYMBOLS_VST2   = $(DAF_PATH)/utils/symbols/vst2.def
+SYMBOLS_VST3   = $(DAF_PATH)/utils/symbols/vst3.def
 else ifneq ($(DEBUG),true)
-SYMBOLS_CLAP   = -Wl,--version-script=$(DPF_PATH)/utils/symbols/clap.version
-SYMBOLS_DSSI   = -Wl,--version-script=$(DPF_PATH)/utils/symbols/dssi.version
-SYMBOLS_LADSPA = -Wl,--version-script=$(DPF_PATH)/utils/symbols/ladspa.version
-SYMBOLS_LV2    = -Wl,--version-script=$(DPF_PATH)/utils/symbols/lv2.version
-SYMBOLS_LV2DSP = -Wl,--version-script=$(DPF_PATH)/utils/symbols/lv2-dsp.version
-SYMBOLS_LV2UI  = -Wl,--version-script=$(DPF_PATH)/utils/symbols/lv2-ui.version
-SYMBOLS_MAPI   = -Wl,--version-script=$(DPF_PATH)/utils/symbols/mapi.version
-SYMBOLS_VST2   = -Wl,--version-script=$(DPF_PATH)/utils/symbols/vst2.version
-SYMBOLS_VST3   = -Wl,--version-script=$(DPF_PATH)/utils/symbols/vst3.version
+SYMBOLS_CLAP   = -Wl,--version-script=$(DAF_PATH)/utils/symbols/clap.version
+SYMBOLS_DSSI   = -Wl,--version-script=$(DAF_PATH)/utils/symbols/dssi.version
+SYMBOLS_LADSPA = -Wl,--version-script=$(DAF_PATH)/utils/symbols/ladspa.version
+SYMBOLS_LV2    = -Wl,--version-script=$(DAF_PATH)/utils/symbols/lv2.version
+SYMBOLS_LV2DSP = -Wl,--version-script=$(DAF_PATH)/utils/symbols/lv2-dsp.version
+SYMBOLS_LV2UI  = -Wl,--version-script=$(DAF_PATH)/utils/symbols/lv2-ui.version
+SYMBOLS_MAPI   = -Wl,--version-script=$(DAF_PATH)/utils/symbols/mapi.version
+SYMBOLS_VST2   = -Wl,--version-script=$(DAF_PATH)/utils/symbols/vst2.version
+SYMBOLS_VST3   = -Wl,--version-script=$(DAF_PATH)/utils/symbols/vst3.version
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Runtime test build
 
-ifeq ($(DPF_RUNTIME_TESTING),true)
-BUILD_CXX_FLAGS += -DDPF_RUNTIME_TESTING -Wno-pmf-conversions
+ifeq ($(DAF_RUNTIME_TESTING),true)
+BUILD_CXX_FLAGS += -DDAF_RUNTIME_TESTING -Wno-pmf-conversions
 endif
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -569,9 +569,9 @@ $(BUILD_DIR)/%.mm.o: %.mm
 
 clean:
 	rm -rf $(BUILD_DIR)
-ifeq ($(DPF_BUILD_DIR),)
+ifeq ($(DAF_BUILD_DIR),)
 	rm -rf $(BASE_PATH)/build-modgui/$(NAME)
-	rm -rf $(DPF_PATH)/build-modgui
+	rm -rf $(DAF_PATH)/build-modgui
 endif
 	rm -rf $(TARGET_DIR)/$(NAME)
 	rm -rf $(TARGET_DIR)/$(NAME)-*
@@ -585,73 +585,73 @@ endif
 # DGL
 
 DGL_POSSIBLE_DEPS = \
-	$(DPF_PATH)/dgl/*.* \
-	$(DPF_PATH)/dgl/src/*.* \
-	$(DPF_PATH)/dgl/src/nanovg/*.* \
-	$(DPF_PATH)/dgl/src/pugl-extra/*.* \
-	$(DPF_PATH)/dgl/src/pugl-upstream/include/pugl/*.* \
-	$(DPF_PATH)/dgl/src/pugl-upstream/src/*.*
+	$(DAF_PATH)/dgl/*.* \
+	$(DAF_PATH)/dgl/src/*.* \
+	$(DAF_PATH)/dgl/src/nanovg/*.* \
+	$(DAF_PATH)/dgl/src/pugl-extra/*.* \
+	$(DAF_PATH)/dgl/src/pugl-upstream/include/pugl/*.* \
+	$(DAF_PATH)/dgl/src/pugl-upstream/src/*.*
 
 $(DGL_BUILD_DIR)/libdgl-cairo.a: $(DGL_POSSIBLE_DEPS)
-	$(MAKE) -C $(DPF_PATH)/dgl cairo
+	$(MAKE) -C $(DAF_PATH)/dgl cairo
 
 $(DGL_BUILD_DIR)/libdgl-gles2.a: $(DGL_POSSIBLE_DEPS)
-	$(MAKE) -C $(DPF_PATH)/dgl gles2 USE_GLES2=true
+	$(MAKE) -C $(DAF_PATH)/dgl gles2 USE_GLES2=true
 
 $(DGL_BUILD_DIR)/libdgl-gles3.a: $(DGL_POSSIBLE_DEPS)
-	$(MAKE) -C $(DPF_PATH)/dgl gles3 USE_GLES3=true
+	$(MAKE) -C $(DAF_PATH)/dgl gles3 USE_GLES3=true
 
 $(DGL_BUILD_DIR)/libdgl-opengl.a: $(DGL_POSSIBLE_DEPS)
-	$(MAKE) -C $(DPF_PATH)/dgl opengl
+	$(MAKE) -C $(DAF_PATH)/dgl opengl
 
 $(DGL_BUILD_DIR)/libdgl-opengl3.a: $(DGL_POSSIBLE_DEPS)
-	$(MAKE) -C $(DPF_PATH)/dgl opengl3
+	$(MAKE) -C $(DAF_PATH)/dgl opengl3
 
 $(DGL_BUILD_DIR)/libdgl-stub.a: $(DGL_POSSIBLE_DEPS)
-	$(MAKE) -C $(DPF_PATH)/dgl stub
+	$(MAKE) -C $(DAF_PATH)/dgl stub
 
 $(DGL_BUILD_DIR)/libdgl-vulkan.a: $(DGL_POSSIBLE_DEPS)
-	$(MAKE) -C $(DPF_PATH)/dgl vulkan
+	$(MAKE) -C $(DAF_PATH)/dgl vulkan
 
 # ---------------------------------------------------------------------------------------------------------------------
 
-$(BUILD_DIR)/DistrhoPluginMain_%_single_obj.cpp.o: $(DPF_PATH)/distrho/DistrhoPluginMain.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_DSP_DEPENDENCIES)
+$(BUILD_DIR)/DafPluginMain_%_single_obj.cpp.o: $(DAF_PATH)/daf/DafPluginMain.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_DSP_DEPENDENCIES)
 	-@mkdir -p $(BUILD_DIR)
-	@echo "Compiling DistrhoPluginMain.cpp ($*)"
-	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -DDISTRHO_PLUGIN_TARGET_$* -DDISTRHO_PLUGIN_AND_UI_IN_SINGLE_OBJECT=1 -c -o $@
+	@echo "Compiling DafPluginMain.cpp ($*)"
+	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -DDAF_PLUGIN_TARGET_$* -DDAF_PLUGIN_AND_UI_IN_SINGLE_OBJECT=1 -c -o $@
 
-$(BUILD_DIR)/DistrhoPluginMain_%.cpp.o: $(DPF_PATH)/distrho/DistrhoPluginMain.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_DSP_DEPENDENCIES)
+$(BUILD_DIR)/DafPluginMain_%.cpp.o: $(DAF_PATH)/daf/DafPluginMain.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_DSP_DEPENDENCIES)
 	-@mkdir -p $(BUILD_DIR)
-	@echo "Compiling DistrhoPluginMain.cpp ($*)"
-	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -DDISTRHO_PLUGIN_TARGET_$* -c -o $@
+	@echo "Compiling DafPluginMain.cpp ($*)"
+	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -DDAF_PLUGIN_TARGET_$* -c -o $@
 
-$(BUILD_DIR)/DistrhoUIMain_%_single_obj.cpp.o: $(DPF_PATH)/distrho/DistrhoUIMain.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_UI_DEPENDENCIES)
+$(BUILD_DIR)/DafUIMain_%_single_obj.cpp.o: $(DAF_PATH)/daf/DafUIMain.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_UI_DEPENDENCIES)
 	-@mkdir -p $(BUILD_DIR)
-	@echo "Compiling DistrhoUIMain.cpp ($*)"
-	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -DDISTRHO_PLUGIN_TARGET_$* -DDISTRHO_PLUGIN_AND_UI_IN_SINGLE_OBJECT=1 -c -o $@
+	@echo "Compiling DafUIMain.cpp ($*)"
+	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -DDAF_PLUGIN_TARGET_$* -DDAF_PLUGIN_AND_UI_IN_SINGLE_OBJECT=1 -c -o $@
 
-$(BUILD_DIR)/DistrhoUIMain_%.cpp.o: $(DPF_PATH)/distrho/DistrhoUIMain.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_UI_DEPENDENCIES)
+$(BUILD_DIR)/DafUIMain_%.cpp.o: $(DAF_PATH)/daf/DafUIMain.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_UI_DEPENDENCIES)
 	-@mkdir -p $(BUILD_DIR)
-	@echo "Compiling DistrhoUIMain.cpp ($*)"
-	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -DDISTRHO_PLUGIN_TARGET_$* -c -o $@
+	@echo "Compiling DafUIMain.cpp ($*)"
+	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -DDAF_PLUGIN_TARGET_$* -c -o $@
 
-$(BUILD_DIR)/DistrhoUI_macOS_%.mm.o: $(DPF_PATH)/distrho/DistrhoUI_macOS.mm $(EXTRA_DEPENDENCIES) $(EXTRA_UI_DEPENDENCIES)
+$(BUILD_DIR)/DafUI_macOS_%.mm.o: $(DAF_PATH)/daf/DafUI_macOS.mm $(EXTRA_DEPENDENCIES) $(EXTRA_UI_DEPENDENCIES)
 	-@mkdir -p $(BUILD_DIR)
-	@echo "Compiling DistrhoUI_macOS.mm ($*)"
+	@echo "Compiling DafUI_macOS.mm ($*)"
 	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -ObjC++ -c -o $@
 
-$(BUILD_DIR)/DistrhoUI_win32.cpp.o: $(DPF_PATH)/distrho/DistrhoUI_win32.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_UI_DEPENDENCIES)
+$(BUILD_DIR)/DafUI_win32.cpp.o: $(DAF_PATH)/daf/DafUI_win32.cpp $(EXTRA_DEPENDENCIES) $(EXTRA_UI_DEPENDENCIES)
 	-@mkdir -p $(BUILD_DIR)
-	@echo "Compiling DistrhoUI_win32.cpp ($*)"
+	@echo "Compiling DafUI_win32.cpp ($*)"
 	$(SILENT)$(CXX) $< $(BUILD_CXX_FLAGS) -std=gnu++17 -c -o $@
 
-$(BUILD_DIR)/DistrhoPluginMain_AU.cpp.o: BUILD_CXX_FLAGS += -ObjC++
+$(BUILD_DIR)/DafPluginMain_AU.cpp.o: BUILD_CXX_FLAGS += -ObjC++
 
-$(BUILD_DIR)/DistrhoPluginMain_JACK.cpp.o: BUILD_CXX_FLAGS += $(JACK_FLAGS)
+$(BUILD_DIR)/DafPluginMain_JACK.cpp.o: BUILD_CXX_FLAGS += $(JACK_FLAGS)
 
-$(BUILD_DIR)/DistrhoUIMain_AU.cpp.o: BUILD_CXX_FLAGS += -ObjC++
+$(BUILD_DIR)/DafUIMain_AU.cpp.o: BUILD_CXX_FLAGS += -ObjC++
 
-$(BUILD_DIR)/DistrhoUIMain_DSSI.cpp.o: BUILD_CXX_FLAGS += $(LIBLO_FLAGS)
+$(BUILD_DIR)/DafUIMain_DSSI.cpp.o: BUILD_CXX_FLAGS += $(LIBLO_FLAGS)
 
 # ---------------------------------------------------------------------------------------------------------------------
 # JACK
@@ -659,9 +659,9 @@ $(BUILD_DIR)/DistrhoUIMain_DSSI.cpp.o: BUILD_CXX_FLAGS += $(LIBLO_FLAGS)
 jack: $(jack) $(jackfiles)
 
 ifeq ($(HAVE_DGL),true)
-$(jack): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DistrhoPluginMain_JACK.cpp.o $(BUILD_DIR)/DistrhoUIMain_JACK.cpp.o $(DGL_LIB)
+$(jack): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DafPluginMain_JACK.cpp.o $(BUILD_DIR)/DafUIMain_JACK.cpp.o $(DGL_LIB)
 else
-$(jack): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_JACK.cpp.o
+$(jack): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_JACK.cpp.o
 endif
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating JACK standalone for $(NAME)"
@@ -672,7 +672,7 @@ endif
 
 ladspa: $(ladspa_dsp)
 
-$(ladspa_dsp): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_LADSPA.cpp.o
+$(ladspa_dsp): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_LADSPA.cpp.o
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating LADSPA plugin for $(NAME)"
 	$(SILENT)$(CXX) $^ $(BUILD_CXX_FLAGS) $(LINK_FLAGS) $(EXTRA_LIBS) $(EXTRA_DSP_LIBS) $(SHARED) $(SYMBOLS_LADSPA) -o $@
@@ -684,12 +684,12 @@ dssi:     $(dssi_dsp) $(dssi_ui)
 dssi_dsp: $(dssi_dsp)
 dssi_ui:  $(dssi_ui)
 
-$(dssi_dsp): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_DSSI.cpp.o
+$(dssi_dsp): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_DSSI.cpp.o
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating DSSI plugin library for $(NAME)"
 	$(SILENT)$(CXX) $^ $(BUILD_CXX_FLAGS) $(LINK_FLAGS) $(EXTRA_LIBS) $(EXTRA_DSP_LIBS) $(SHARED) $(SYMBOLS_DSSI) -o $@
 
-$(dssi_ui): $(OBJS_UI) $(BUILD_DIR)/DistrhoUIMain_DSSI.cpp.o $(DGL_LIB)
+$(dssi_ui): $(OBJS_UI) $(BUILD_DIR)/DafUIMain_DSSI.cpp.o $(DGL_LIB)
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating DSSI UI for $(NAME)"
 	$(SILENT)$(CXX) $^ $(BUILD_CXX_FLAGS) $(LINK_FLAGS) $(EXTRA_LIBS) $(EXTRA_UI_LIBS) $(DGL_LIBS) $(LIBLO_LIBS) -o $@
@@ -702,20 +702,20 @@ lv2_dsp: $(lv2_dsp)
 lv2_sep: $(lv2_dsp) $(lv2_ui)
 
 ifeq ($(HAVE_DGL),true)
-$(lv2): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DistrhoPluginMain_LV2_single_obj.cpp.o $(BUILD_DIR)/DistrhoUIMain_LV2_single_obj.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
+$(lv2): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DafPluginMain_LV2_single_obj.cpp.o $(BUILD_DIR)/DafUIMain_LV2_single_obj.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
 else
-$(lv2): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_LV2.cpp.o
+$(lv2): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_LV2.cpp.o
 endif
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating LV2 plugin for $(NAME)"
 	$(SILENT)$(CXX) $^ $(BUILD_CXX_FLAGS) $(LINK_FLAGS) $(EXTRA_LIBS) $(EXTRA_DSP_LIBS) $(EXTRA_UI_LIBS) $(DGL_LIBS) $(SHARED) $(SYMBOLS_LV2) -o $@
 
-$(lv2_dsp): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_LV2.cpp.o
+$(lv2_dsp): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_LV2.cpp.o
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating LV2 plugin library for $(NAME)"
 	$(SILENT)$(CXX) $^ $(BUILD_CXX_FLAGS) $(LINK_FLAGS) $(EXTRA_LIBS) $(EXTRA_DSP_LIBS) $(SHARED) $(SYMBOLS_LV2DSP) -o $@
 
-$(lv2_ui): $(OBJS_UI) $(BUILD_DIR)/DistrhoUIMain_LV2.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
+$(lv2_ui): $(OBJS_UI) $(BUILD_DIR)/DafUIMain_LV2.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating LV2 plugin UI for $(NAME)"
 	$(SILENT)$(CXX) $^ $(BUILD_CXX_FLAGS) $(LINK_FLAGS) $(EXTRA_LIBS) $(EXTRA_UI_LIBS) $(DGL_LIBS) $(SHARED) $(SYMBOLS_LV2UI) -o $@
@@ -729,7 +729,7 @@ $(error MODGUI_CLASS_NAME undefined)
 endif
 endif
 
-# clear all possible flags coming from DPF, while keeping any extra flags specified for this build
+# clear all possible flags coming from DAF, while keeping any extra flags specified for this build
 MODGUI_IGNORED_FLAGS  = -fdata-sections
 MODGUI_IGNORED_FLAGS += -ffast-math
 MODGUI_IGNORED_FLAGS += -ffunction-sections
@@ -746,7 +746,7 @@ MODGUI_IGNORED_FLAGS += -mtune=generic
 MODGUI_IGNORED_FLAGS += -pipe
 MODGUI_IGNORED_FLAGS += -std=gnu99
 MODGUI_IGNORED_FLAGS += -std=gnu++11
-MODGUI_IGNORED_FLAGS += -DDISTRHO_PLUGIN_MODGUI_CLASS_NAME='"$(MODGUI_CLASS_NAME)"'
+MODGUI_IGNORED_FLAGS += -DDAF_PLUGIN_MODGUI_CLASS_NAME='"$(MODGUI_CLASS_NAME)"'
 MODGUI_IGNORED_FLAGS += -DDGL_OPENGL
 MODGUI_IGNORED_FLAGS += -DGL_SILENCE_DEPRECATION=1
 MODGUI_IGNORED_FLAGS += -DHAVE_ALSA
@@ -760,8 +760,8 @@ MODGUI_IGNORED_FLAGS += -DHAVE_SDL2
 MODGUI_IGNORED_FLAGS += -DNDEBUG
 MODGUI_IGNORED_FLAGS += -DPIC
 MODGUI_IGNORED_FLAGS += -I.
-MODGUI_IGNORED_FLAGS += -I$(DPF_PATH)/distrho
-MODGUI_IGNORED_FLAGS += -I$(DPF_PATH)/dgl
+MODGUI_IGNORED_FLAGS += -I$(DAF_PATH)/daf
+MODGUI_IGNORED_FLAGS += -I$(DAF_PATH)/dgl
 MODGUI_IGNORED_FLAGS += -I$(MOD_WORKDIR)/modduo-static/staging/usr/include
 MODGUI_IGNORED_FLAGS += -I$(MOD_WORKDIR)/modduox-static/staging/usr/include
 MODGUI_IGNORED_FLAGS += -I$(MOD_WORKDIR)/moddwarf/staging/usr/include
@@ -786,7 +786,7 @@ MODGUI_CFLAGS = $(filter-out $(MODGUI_IGNORED_FLAGS),$(BUILD_C_FLAGS)) -D__MOD_D
 MODGUI_CXXFLAGS = $(filter-out $(MODGUI_IGNORED_FLAGS),$(BUILD_CXX_FLAGS)) -D__MOD_DEVICES__
 MODGUI_LDFLAGS = $(filter-out $(MODGUI_IGNORED_FLAGS),$(LINK_FLAGS))
 
-$(TARGET_DIR)/$(NAME).lv2/modgui/module.js: $(OBJS_UI) $(BUILD_DIR)/DistrhoUIMain_LV2.cpp.o $(DGL_LIB)
+$(TARGET_DIR)/$(NAME).lv2/modgui/module.js: $(OBJS_UI) $(BUILD_DIR)/DafUIMain_LV2.cpp.o $(DGL_LIB)
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating LV2 plugin modgui for $(NAME)"
 	$(SILENT)$(CXX) $^ $(LINK_FLAGS) $(EXTRA_LIBS) $(EXTRA_UI_LIBS) $(DGL_LIBS) \
@@ -820,9 +820,9 @@ modgui:
 vst2 vst: $(vst2) $(vst2files)
 
 ifeq ($(HAVE_DGL),true)
-$(vst2): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DistrhoPluginMain_VST2.cpp.o $(BUILD_DIR)/DistrhoUIMain_VST2.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
+$(vst2): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DafPluginMain_VST2.cpp.o $(BUILD_DIR)/DafUIMain_VST2.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
 else
-$(vst2): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_VST2.cpp.o
+$(vst2): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_VST2.cpp.o
 endif
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating VST2 plugin for $(NAME)"
@@ -834,9 +834,9 @@ endif
 vst3: $(vst3) $(vst3files)
 
 ifeq ($(HAVE_DGL),true)
-$(vst3): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DistrhoPluginMain_VST3.cpp.o $(BUILD_DIR)/DistrhoUIMain_VST3.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
+$(vst3): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DafPluginMain_VST3.cpp.o $(BUILD_DIR)/DafUIMain_VST3.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
 else
-$(vst3): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_VST3.cpp.o
+$(vst3): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_VST3.cpp.o
 endif
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating VST3 plugin for $(NAME)"
@@ -856,9 +856,9 @@ endif
 clap: $(clap) $(clapfiles)
 
 ifeq ($(HAVE_DGL),true)
-$(clap): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DistrhoPluginMain_CLAP.cpp.o $(BUILD_DIR)/DistrhoUIMain_CLAP.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
+$(clap): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DafPluginMain_CLAP.cpp.o $(BUILD_DIR)/DafUIMain_CLAP.cpp.o $(DGL_LIB) $(DGL_LIB_SHARED)
 else
-$(clap): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_CLAP.cpp.o
+$(clap): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_CLAP.cpp.o
 endif
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating CLAP plugin for $(NAME)"
@@ -870,9 +870,9 @@ endif
 au: $(au) $(aufiles)
 
 ifeq ($(HAVE_DGL),true)
-$(au): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DistrhoPluginMain_AU.cpp.o $(BUILD_DIR)/DistrhoUIMain_AU.cpp.o $(DGL_LIB)
+$(au): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DafPluginMain_AU.cpp.o $(BUILD_DIR)/DafUIMain_AU.cpp.o $(DGL_LIB)
 else
-$(au): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_AU.cpp.o
+$(au): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_AU.cpp.o
 endif
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating AU component for $(NAME)"
@@ -883,7 +883,7 @@ endif
 
 mapi: $(mapi)
 
-$(mapi): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_MAPI.cpp.o
+$(mapi): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_MAPI.cpp.o
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating MAPI for $(NAME)"
 	$(SILENT)$(CXX) $^ $(BUILD_CXX_FLAGS) $(LINK_FLAGS) $(EXTRA_LIBS) $(EXTRA_DSP_LIBS) $(EXTRA_UI_LIBS) $(DGL_LIBS) $(MAPI_SHARED) $(SYMBOLS_MAPI) -o $@
@@ -892,9 +892,9 @@ $(mapi): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_MAPI.cpp.o
 # Export
 
 ifeq ($(HAVE_DGL),true)
-$(BUILD_DIR)/export$(APP_EXT): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DistrhoPluginMain_EXPORT.cpp.o $(BUILD_DIR)/DistrhoUIMain_EXPORT.cpp.o $(DGL_LIB)
+$(BUILD_DIR)/export$(APP_EXT): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DafPluginMain_EXPORT.cpp.o $(BUILD_DIR)/DafUIMain_EXPORT.cpp.o $(DGL_LIB)
 else
-$(BUILD_DIR)/export$(APP_EXT): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_EXPORT.cpp.o
+$(BUILD_DIR)/export$(APP_EXT): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_EXPORT.cpp.o
 endif
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating export tool for $(NAME)"
@@ -906,9 +906,9 @@ endif
 static: $(static)
 
 ifeq ($(HAVE_DGL),true)
-$(static): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DistrhoPluginMain_STATIC.cpp.o $(BUILD_DIR)/DistrhoUIMain_STATIC.cpp.o
+$(static): $(OBJS_DSP) $(OBJS_UI) $(BUILD_DIR)/DafPluginMain_STATIC.cpp.o $(BUILD_DIR)/DafUIMain_STATIC.cpp.o
 else
-$(static): $(OBJS_DSP) $(BUILD_DIR)/DistrhoPluginMain_STATIC.cpp.o
+$(static): $(OBJS_DSP) $(BUILD_DIR)/DafPluginMain_STATIC.cpp.o
 endif
 	-@mkdir -p $(shell dirname $@)
 	@echo "Creating static library for $(NAME)"
@@ -920,19 +920,19 @@ endif
 
 ifeq ($(MACOS),true)
 
-$(TARGET_DIR)/%.app/Contents/Info.plist: $(DPF_PATH)/utils/plugin.app/Contents/Info.plist
+$(TARGET_DIR)/%.app/Contents/Info.plist: $(DAF_PATH)/utils/plugin.app/Contents/Info.plist
 	-@mkdir -p $(shell dirname $@)
 	$(SILENT)sed -e "s/@INFO_PLIST_PROJECT_NAME@/$(NAME)/" $< > $@
 
-$(TARGET_DIR)/%/Contents/Info.plist: $(DPF_PATH)/utils/plugin.bundle/Contents/Info.plist
+$(TARGET_DIR)/%/Contents/Info.plist: $(DAF_PATH)/utils/plugin.bundle/Contents/Info.plist
 	-@mkdir -p $(shell dirname $@)
 	$(SILENT)sed -e "s/@INFO_PLIST_PROJECT_NAME@/$(NAME)/" $< > $@
 
-$(TARGET_DIR)/%/Contents/PkgInfo: $(DPF_PATH)/utils/plugin.bundle/Contents/PkgInfo
+$(TARGET_DIR)/%/Contents/PkgInfo: $(DAF_PATH)/utils/plugin.bundle/Contents/PkgInfo
 	-@mkdir -p $(shell dirname $@)
 	$(SILENT)cp $< $@
 
-$(TARGET_DIR)/%/Resources/empty.lproj: $(DPF_PATH)/utils/plugin.bundle/Contents/Resources/empty.lproj
+$(TARGET_DIR)/%/Resources/empty.lproj: $(DAF_PATH)/utils/plugin.bundle/Contents/Resources/empty.lproj
 	-@mkdir -p $(shell dirname $@)
 	$(SILENT)cp $< $@
 
@@ -943,7 +943,7 @@ endif
 
 ifeq ($(WASM),true)
 
-$(TARGET_DIR)/$(NAME).html: $(DPF_PATH)/utils/emscripten.html.in
+$(TARGET_DIR)/$(NAME).html: $(DAF_PATH)/utils/emscripten.html.in
 	-@mkdir -p $(shell dirname $@)
 	$(SILENT)sed -e 's|@NAME@|$(NAME)|g' $< > $@
 
@@ -963,27 +963,27 @@ ifneq ($(UI_TYPE),)
 -include $(OBJS_UI:%.o=%.d)
 endif
 
--include $(BUILD_DIR)/DistrhoPluginMain_AU.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_CLAP.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_DSSI.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_Export.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_JACK.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_LADSPA.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_LV2.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_LV2_single_obj.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_MAPI.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_STATIC.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_VST2.cpp.d
--include $(BUILD_DIR)/DistrhoPluginMain_VST3.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_AU.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_CLAP.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_DSSI.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_Export.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_JACK.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_LADSPA.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_LV2.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_LV2_single_obj.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_MAPI.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_STATIC.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_VST2.cpp.d
+-include $(BUILD_DIR)/DafPluginMain_VST3.cpp.d
 
--include $(BUILD_DIR)/DistrhoUIMain_AU.cpp.d
--include $(BUILD_DIR)/DistrhoUIMain_CLAP.cpp.d
--include $(BUILD_DIR)/DistrhoUIMain_DSSI.cpp.d
--include $(BUILD_DIR)/DistrhoUIMain_JACK.cpp.d
--include $(BUILD_DIR)/DistrhoUIMain_LV2.cpp.d
--include $(BUILD_DIR)/DistrhoUIMain_LV2_single_obj.cpp.d
--include $(BUILD_DIR)/DistrhoUIMain_STATIC.cpp.d
--include $(BUILD_DIR)/DistrhoUIMain_VST2.cpp.d
--include $(BUILD_DIR)/DistrhoUIMain_VST3.cpp.d
+-include $(BUILD_DIR)/DafUIMain_AU.cpp.d
+-include $(BUILD_DIR)/DafUIMain_CLAP.cpp.d
+-include $(BUILD_DIR)/DafUIMain_DSSI.cpp.d
+-include $(BUILD_DIR)/DafUIMain_JACK.cpp.d
+-include $(BUILD_DIR)/DafUIMain_LV2.cpp.d
+-include $(BUILD_DIR)/DafUIMain_LV2_single_obj.cpp.d
+-include $(BUILD_DIR)/DafUIMain_STATIC.cpp.d
+-include $(BUILD_DIR)/DafUIMain_VST2.cpp.d
+-include $(BUILD_DIR)/DafUIMain_VST3.cpp.d
 
 # ---------------------------------------------------------------------------------------------------------------------

@@ -29,10 +29,10 @@
 
 #include <vector>
 
-#ifdef DISTRHO_NAMESPACE
-START_NAMESPACE_DISTRHO
+#ifdef DAF_NAMESPACE
+START_NAMESPACE_DAF
 class PluginWindow;
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF
 #endif
 
 START_NAMESPACE_DGL
@@ -63,7 +63,7 @@ class TopLevelWidget;
 
    ...
  */
-class DISTRHO_API Window
+class DAF_API Window
 {
    struct PrivateData;
 
@@ -112,8 +112,8 @@ public:
         /** Get a valid context back again. */
         void reinit();
 
-        DISTRHO_DECLARE_NON_COPYABLE(ScopedGraphicsContext)
-        DISTRHO_PREVENT_HEAP_ALLOCATION
+        DAF_DECLARE_NON_COPYABLE(ScopedGraphicsContext)
+        DAF_PREVENT_HEAP_ALLOCATION
 
     private:
         Window& window;
@@ -212,7 +212,7 @@ public:
       Set window as resizable (by the user or window manager).
       It is always possible to resize a window programmatically, which is not the same as the user being allowed to it.
       @note This function does nothing for plugins, where the resizable state is set via macro.
-      @see DISTRHO_UI_USER_RESIZABLE
+      @see DAF_UI_USER_RESIZABLE
     */
     void setResizable(bool resizable);
 
@@ -480,15 +480,15 @@ public:
     void setTransientParent(uintptr_t transientParentWindowHandle);
 
    /** DEPRECATED Use isIgnoringKeyRepeat(). */
-    DISTRHO_DEPRECATED_BY("isIgnoringKeyRepeat()")
+    DAF_DEPRECATED_BY("isIgnoringKeyRepeat()")
     inline bool getIgnoringKeyRepeat() const noexcept { return isIgnoringKeyRepeat(); }
 
    /** DEPRECATED Use getScaleFactor(). */
-    DISTRHO_DEPRECATED_BY("getScaleFactor()")
+    DAF_DEPRECATED_BY("getScaleFactor()")
     inline double getScaling() const noexcept { return getScaleFactor(); }
 
    /** DEPRECATED Use runAsModal(bool). */
-    DISTRHO_DEPRECATED_BY("runAsModal(bool)")
+    DAF_DEPRECATED_BY("runAsModal(bool)")
     inline void exec(bool blockWait = false) { runAsModal(blockWait); }
 
 protected:
@@ -514,7 +514,7 @@ protected:
       Returning true closes the window, which is the default behaviour.
       Override this method and return false to prevent the window from being closed by the user.
 
-      This method is not used for embed windows, and not even made available in DISTRHO_NAMESPACE::UI.
+      This method is not used for embed windows, and not even made available in DAF_NAMESPACE::UI.
       For embed windows, closing is handled by the host/parent process and we have no control over it.
       As such, a close action on embed windows will always succeed and cannot be cancelled.
 
@@ -551,7 +551,7 @@ protected:
     virtual void onFileSelected(const char* filename);
 
    /** DEPRECATED Use onFileSelected(). */
-    DISTRHO_DEPRECATED_BY("onFileSelected(const char*)")
+    DAF_DEPRECATED_BY("onFileSelected(const char*)")
     inline virtual void fileBrowserSelected(const char* filename) { return onFileSelected(filename); }
    #endif
 
@@ -559,8 +559,8 @@ private:
     PrivateData* const pData;
     friend class Application;
     friend class TopLevelWidget;
-   #ifdef DISTRHO_NAMESPACE
-    friend class DISTRHO_NAMESPACE::PluginWindow;
+   #ifdef DAF_NAMESPACE
+    friend class DAF_NAMESPACE::PluginWindow;
    #endif
 
    /** @internal */
@@ -574,7 +574,7 @@ private:
                     bool usesSizeRequest,
                     bool doPostInit);
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Window)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Window)
 };
 
 // -----------------------------------------------------------------------

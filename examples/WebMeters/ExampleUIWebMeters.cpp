@@ -14,9 +14,9 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoUI.hpp"
+#include "DafUI.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 // -----------------------------------------------------------------------------------------------------------
 
@@ -31,12 +31,12 @@ public:
 
         if (d_isNotEqual(scaleFactor, 1.0))
         {
-            setGeometryConstraints(DISTRHO_UI_DEFAULT_WIDTH * scaleFactor, DISTRHO_UI_DEFAULT_HEIGHT * scaleFactor);
-            setSize(DISTRHO_UI_DEFAULT_WIDTH * scaleFactor, DISTRHO_UI_DEFAULT_HEIGHT * scaleFactor);
+            setGeometryConstraints(DAF_UI_DEFAULT_WIDTH * scaleFactor, DAF_UI_DEFAULT_HEIGHT * scaleFactor);
+            setSize(DAF_UI_DEFAULT_WIDTH * scaleFactor, DAF_UI_DEFAULT_HEIGHT * scaleFactor);
         }
         else
         {
-            setGeometryConstraints(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT);
+            setGeometryConstraints(DAF_UI_DEFAULT_WIDTH, DAF_UI_DEFAULT_HEIGHT);
         }
         */
     }
@@ -45,11 +45,11 @@ private:
    /**
       Set our UI class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExampleUIMeters)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExampleUIMeters)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * UI entry point, called by DPF to create a new UI instance. */
+ * UI entry point, called by DAF to create a new UI instance. */
 
 UI* createUI()
 {
@@ -58,4 +58,4 @@ UI* createUI()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

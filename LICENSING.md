@@ -1,4 +1,4 @@
-# DPF - DISTRHO Plugin Framework
+# DPF - Dusk Audio Framework
 
 Even though DPF is quite liberally licensed, not all plugin formats follow the same ideals.  
 This is usually due to plugin APIs/headers being tied to a specific license or having commercial restrictions.  
@@ -40,6 +40,6 @@ With the Xaymar's work, both open-source and proprietary plugins can be created 
 ### VST3 special note
 
 Contrary to most plugins, DPF does not use the official VST3 SDK.  
-Instead, the API definitions are provided by the [travesty](distrho/src/travesty/) sub-project, licensed in the same way as DPF.
+Instead, the API definitions are provided by the [travesty](daf/src/travesty/) sub-project, licensed in the same way as DPF.
 This allows us to freely build plugins without being encumbered by restrictive licensing deals.  
 It makes the internal implementation much harder for DPF, but this is not an issue for external developers.

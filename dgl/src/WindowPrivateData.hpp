@@ -136,11 +136,11 @@ struct Window::PrivateData : IdleCallback {
         /** Destructor. */
         ~Modal() noexcept
         {
-            DISTRHO_SAFE_ASSERT(! enabled);
+            DAF_SAFE_ASSERT(! enabled);
         }
 
-        DISTRHO_DECLARE_NON_COPYABLE(Modal)
-        DISTRHO_PREVENT_HEAP_ALLOCATION
+        DAF_DECLARE_NON_COPYABLE(Modal)
+        DAF_PREVENT_HEAP_ALLOCATION
     } modal;
 
     /** Constructor for a regular, standalone window. */
@@ -224,7 +224,7 @@ struct Window::PrivateData : IdleCallback {
     // Pugl event handling entry point
     static PuglStatus puglEventCallback(PuglView* view, const PuglEvent* event);
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PrivateData)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PrivateData)
 };
 
 // -----------------------------------------------------------------------

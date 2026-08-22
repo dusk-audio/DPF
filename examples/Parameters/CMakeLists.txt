@@ -1,7 +1,7 @@
 # CMake file for DISTRHO Plugins #
 # ------------------------------ #
 
-dpf_add_plugin(d_parameters
+daf_add_plugin(d_parameters
   TARGETS jack ladspa dssi lv2 vst2 vst3 clap
   FILES_DSP
      ExamplePluginParameters.cpp

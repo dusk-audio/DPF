@@ -21,7 +21,7 @@
 
 #include <list>
 
-#ifdef DISTRHO_OS_WINDOWS
+#ifdef DAF_OS_WINDOWS
 # ifndef NOMINMAX
 #  define NOMINMAX
 # endif
@@ -33,7 +33,7 @@ typedef HANDLE d_ThreadHandle;
 typedef pthread_t d_ThreadHandle;
 #endif
 
-#ifdef DISTRHO_OS_MAC
+#ifdef DAF_OS_MAC
 typedef struct PuglWorldImpl PuglWorld;
 #endif
 
@@ -41,7 +41,7 @@ START_NAMESPACE_DGL
 
 class Window;
 
-#ifndef DISTRHO_OS_MAC
+#ifndef DAF_OS_MAC
 typedef struct PuglWorldImpl PuglWorld;
 #endif
 
@@ -115,7 +115,7 @@ struct Application::PrivateData {
     /** Set pugl world class name. */
     void setClassName(const char* name);
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PrivateData)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PrivateData)
 };
 
 // --------------------------------------------------------------------------------------------------------------------

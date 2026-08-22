@@ -1,7 +1,7 @@
-This directory contains several tests for DPF related things, from graphics to plugin stuff to utilities.
+This directory contains several tests for DAF related things, from graphics to plugin stuff to utilities.
 Each *.cpp file is meant to be its own test.
 
-In order to test DPF components individually, some of these tests do not link against DGL but import/include its files.
+In order to test DAF components individually, some of these tests do not link against DGL but import/include its files.
 All test files must be self-contained, in order to prevent surprises in regards global state and initialization stuff.
 
 The following tests are present:

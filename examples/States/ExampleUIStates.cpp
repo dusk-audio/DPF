@@ -14,10 +14,10 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoUI.hpp"
+#include "DafUI.hpp"
 #include "Color.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 /**
   We need a few classes from DGL.
@@ -304,11 +304,11 @@ private:
    /**
       Set our UI class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExampleUIParameters)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExampleUIParameters)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * UI entry point, called by DPF to create a new UI instance. */
+ * UI entry point, called by DAF to create a new UI instance. */
 
 UI* createUI()
 {
@@ -317,4 +317,4 @@ UI* createUI()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

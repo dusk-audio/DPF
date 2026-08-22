@@ -1,7 +1,7 @@
 # CMake file for DISTRHO Plugins #
 # ------------------------------ #
 
-dpf_add_plugin(d_files
+daf_add_plugin(d_files
   USE_FILE_BROWSER
   TARGETS jack lv2 vst2
   FILES_DSP

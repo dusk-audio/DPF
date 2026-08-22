@@ -9,7 +9,7 @@
         <key>CFBundleIconFile</key>
         <string></string>
         <key>CFBundleIdentifier</key>
-        <string>studio.kx.distrho.@INFO_PLIST_PROJECT_NAME@</string>
+        <string>studio.kx.daf.@INFO_PLIST_PROJECT_NAME@</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSRequiresAquaSystemAppearance</key>

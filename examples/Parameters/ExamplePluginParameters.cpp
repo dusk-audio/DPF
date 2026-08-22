@@ -14,9 +14,9 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoPlugin.hpp"
+#include "DafPlugin.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 // -----------------------------------------------------------------------------------------------------------
 
@@ -318,11 +318,11 @@ private:
    /**
       Set our plugin class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExamplePluginParameters)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExamplePluginParameters)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * Plugin entry point, called by DPF to create a new plugin instance. */
+ * Plugin entry point, called by DAF to create a new plugin instance. */
 
 Plugin* createPlugin()
 {
@@ -331,4 +331,4 @@ Plugin* createPlugin()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

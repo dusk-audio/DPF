@@ -14,17 +14,17 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoPlugin.hpp"
+#include "DafPlugin.hpp"
 
 #include <cmath>
 #include <cstring>
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 // -----------------------------------------------------------------------------------------------------------
 
 /**
-  Plugin that demonstrates sending notes from the editor in DPF.
+  Plugin that demonstrates sending notes from the editor in DAF.
  */
 class SendNoteExamplePlugin : public Plugin
 {
@@ -54,7 +54,7 @@ protected:
     */
     const char* getDescription() const override
     {
-        return "Plugin that demonstrates sending notes from the editor in DPF.";
+        return "Plugin that demonstrates sending notes from the editor in DAF.";
     }
 
    /**
@@ -176,11 +176,11 @@ private:
    /**
       Set our plugin class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SendNoteExamplePlugin)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SendNoteExamplePlugin)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * Plugin entry point, called by DPF to create a new plugin instance. */
+ * Plugin entry point, called by DAF to create a new plugin instance. */
 
 Plugin* createPlugin()
 {
@@ -189,4 +189,4 @@ Plugin* createPlugin()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

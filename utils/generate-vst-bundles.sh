@@ -12,14 +12,14 @@ else
   exit
 fi
 
-DPF_DIR=$(dirname $0)/..
+DAF_DIR=$(dirname $0)/..
 PLUGINS=$(ls | grep vst.dylib)
 
 rm -rf *.vst/
 
 for i in $PLUGINS; do
   BUNDLE=$(echo ${i} | awk 'sub("-vst.dylib","")')
-  cp -r ${DPF_DIR}/utils/plugin.vst/ ${BUNDLE}.vst
+  cp -r ${DAF_DIR}/utils/plugin.vst/ ${BUNDLE}.vst
   mv ${i} ${BUNDLE}.vst/Contents/MacOS/${BUNDLE}
   rm -f ${BUNDLE}.vst/Contents/MacOS/deleteme
   sed -i -e "s/@INFO_PLIST_PROJECT_NAME@/${BUNDLE}/" ${BUNDLE}.vst/Contents/Info.plist

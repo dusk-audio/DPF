@@ -1,5 +1,5 @@
 // Copyright 2012-2023 David Robillard <d@drobilla.net>
-// Copyright 2025 DISTRHO Plugin Framework contributors
+// Copyright 2025 Dusk Audio Framework contributors
 // SPDX-License-Identifier: ISC
 
 /*
@@ -403,7 +403,7 @@ puglWaylandSetSize(PuglView* const view, const PuglArea logicalRequest)
        buffer instead of shrinking the window. */
     logical = impl->logicalSize;
   } else {
-    /* First time.  DPF's default size is unscaled here, because getDesktopScaleFactor() has no
+    /* First time.  DAF's default size is unscaled here, because getDesktopScaleFactor() has no
        scale to report before a surface exists, so it is the logical size. */
     logical = puglGetInitialSize(view);
   }
@@ -478,7 +478,7 @@ puglUpdateSizeHints(PuglView* const view)
 
   /* Aspect ratio hints (PUGL_MIN_ASPECT / PUGL_MAX_ASPECT / PUGL_FIXED_ASPECT) have no xdg-shell
      equivalent: the compositor owns interactive resizing and there is no way to constrain it.
-     DPF keeps the aspect itself by resizing the view from its own configure handler. */
+     DAF keeps the aspect itself by resizing the view from its own configure handler. */
 
   return PUGL_SUCCESS;
 }
@@ -2210,7 +2210,7 @@ puglWaylandHasFormat(const PuglWaylandClipboard* const board,
 /**
    Fill a view's clipboard board from an offer's MIME list.
 
-   Two passes so that a UTF-8 flavour of a type always wins over a plain one: DPF only ever asks for
+   Two passes so that a UTF-8 flavour of a type always wins over a plain one: DAF only ever asks for
    "text/plain", and receiving that as UTF-8 is what it expects.
 */
 static PuglStatus

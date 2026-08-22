@@ -6,7 +6,7 @@ neither <GL/glext.h> nor <KHR/khrplatform.h>. DGL needs those to build its OpenG
 are vendored here instead of being downloaded at configure time (an unpinned network fetch during
 `cmake` is neither reproducible nor usable offline).
 
-Only cmake/DPF-plugin.cmake adds this directory to the include path, and only when MSVC is the
+Only cmake/DAF-plugin.cmake adds this directory to the include path, and only when MSVC is the
 compiler. Every other toolchain (MinGW, gcc, clang, Apple) keeps using its own system headers.
 
 Contents

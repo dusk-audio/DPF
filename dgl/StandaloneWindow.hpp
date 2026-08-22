@@ -91,7 +91,7 @@ public:
 private:
     ScopedGraphicsContext sgc;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StandaloneWindow)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StandaloneWindow)
 };
 
 // -----------------------------------------------------------------------

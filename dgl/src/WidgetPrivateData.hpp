@@ -52,7 +52,7 @@ struct Widget::PrivateData {
 
     static TopLevelWidget* findTopLevelWidget(Widget* const w);
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PrivateData)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PrivateData)
 };
 
 // --------------------------------------------------------------------------------------------------------------------

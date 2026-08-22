@@ -129,7 +129,7 @@ struct ImageBaseButton<ImageType>::PrivateData : public ButtonEventHandler::Call
                 callback->imageButtonClicked(imageButton, button);
     }
 
-    DISTRHO_DECLARE_NON_COPYABLE(PrivateData)
+    DAF_DECLARE_NON_COPYABLE(PrivateData)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -150,7 +150,7 @@ ImageBaseButton<ImageType>::ImageBaseButton(Widget* const parentWidget, const Im
       ButtonEventHandler(this),
       pData(new PrivateData(imageNormal, imageNormal, imageDown))
 {
-    DISTRHO_SAFE_ASSERT(imageNormal.getSize() == imageDown.getSize());
+    DAF_SAFE_ASSERT(imageNormal.getSize() == imageDown.getSize());
 
     ButtonEventHandler::setCallback(pData);
     setSize(imageNormal.getSize());
@@ -162,7 +162,7 @@ ImageBaseButton<ImageType>::ImageBaseButton(Widget* const parentWidget, const Im
       ButtonEventHandler(this),
       pData(new PrivateData(imageNormal, imageHover, imageDown))
 {
-    DISTRHO_SAFE_ASSERT(imageNormal.getSize() == imageHover.getSize() && imageHover.getSize() == imageDown.getSize());
+    DAF_SAFE_ASSERT(imageNormal.getSize() == imageHover.getSize() && imageHover.getSize() == imageDown.getSize());
 
     ButtonEventHandler::setCallback(pData);
     setSize(imageNormal.getSize());
@@ -327,7 +327,7 @@ struct ImageBaseKnob<ImageType>::PrivateData : public KnobEventHandler::Callback
     void init();
     void cleanup();
 
-    DISTRHO_DECLARE_NON_COPYABLE(PrivateData)
+    DAF_DECLARE_NON_COPYABLE(PrivateData)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -380,7 +380,7 @@ void ImageBaseKnob<ImageType>::setCallback(Callback* callback) noexcept
 template <class ImageType>
 void ImageBaseKnob<ImageType>::setImageLayerCount(uint count) noexcept
 {
-    DISTRHO_SAFE_ASSERT_RETURN(count > 1,);
+    DAF_SAFE_ASSERT_RETURN(count > 1,);
 
     pData->imgLayerCount = count;
 
@@ -506,7 +506,7 @@ struct ImageBaseSlider<ImageType>::PrivateData {
         }
     }
 
-    DISTRHO_DECLARE_NON_COPYABLE(PrivateData)
+    DAF_DECLARE_NON_COPYABLE(PrivateData)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -551,7 +551,7 @@ void ImageBaseSlider<ImageType>::setValue(float value, bool sendCallback) noexce
     {
         try {
             pData->callback->imageSliderValueChanged(this, pData->value);
-        } DISTRHO_SAFE_EXCEPTION("ImageBaseSlider::setValue");
+        } DAF_SAFE_EXCEPTION("ImageBaseSlider::setValue");
     }
 }
 
@@ -623,7 +623,7 @@ void ImageBaseSlider<ImageType>::setRange(float min, float max) noexcept
         {
             try {
                 pData->callback->imageSliderValueChanged(this, pData->value);
-            } DISTRHO_SAFE_EXCEPTION("ImageBaseSlider::setRange < min");
+            } DAF_SAFE_EXCEPTION("ImageBaseSlider::setRange < min");
         }
     }
     else if (pData->value > max)
@@ -635,7 +635,7 @@ void ImageBaseSlider<ImageType>::setRange(float min, float max) noexcept
         {
             try {
                 pData->callback->imageSliderValueChanged(this, pData->value);
-            } DISTRHO_SAFE_EXCEPTION("ImageBaseSlider::setRange > max");
+            } DAF_SAFE_EXCEPTION("ImageBaseSlider::setRange > max");
         }
     }
 }
@@ -862,7 +862,7 @@ struct ImageBaseSwitch<ImageType>::PrivateData {
           isDown(false),
           callback(nullptr)
     {
-        DISTRHO_SAFE_ASSERT(imageNormal.getSize() == imageDown.getSize());
+        DAF_SAFE_ASSERT(imageNormal.getSize() == imageDown.getSize());
     }
 
     PrivateData(PrivateData* const other)
@@ -871,7 +871,7 @@ struct ImageBaseSwitch<ImageType>::PrivateData {
           isDown(other->isDown),
           callback(other->callback)
     {
-        DISTRHO_SAFE_ASSERT(imageNormal.getSize() == imageDown.getSize());
+        DAF_SAFE_ASSERT(imageNormal.getSize() == imageDown.getSize());
     }
 
     void assignFrom(PrivateData* const other)
@@ -880,10 +880,10 @@ struct ImageBaseSwitch<ImageType>::PrivateData {
         imageDown   = other->imageDown;
         isDown      = other->isDown;
         callback    = other->callback;
-        DISTRHO_SAFE_ASSERT(imageNormal.getSize() == imageDown.getSize());
+        DAF_SAFE_ASSERT(imageNormal.getSize() == imageDown.getSize());
     }
 
-    DISTRHO_DECLARE_NON_COPYABLE(PrivateData)
+    DAF_DECLARE_NON_COPYABLE(PrivateData)
 };
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -15,9 +15,9 @@
  */
 
 // needed for IDE
-#include "DistrhoPluginInfo.h"
+#include "DafPluginInfo.h"
 
-#include "DistrhoUI.hpp"
+#include "DafUI.hpp"
 
 #define MPV_TEST
 // #define KDE_FIFO_TEST
@@ -30,7 +30,7 @@
 #include <sys/types.h>
 #endif
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 #ifdef KDE_FIFO_TEST
 // TODO: generate a random, not-yet-existing, filename
@@ -124,7 +124,7 @@ protected:
         std::memset(valueStr, 0, sizeof(valueStr));
         std::snprintf(valueStr, 23, "%i\n", static_cast<int>(value + 0.5f));
 
-        DISTRHO_SAFE_ASSERT(writeRetry(fFifo, valueStr, 24) == sizeof(valueStr));
+        DAF_SAFE_ASSERT(writeRetry(fFifo, valueStr, 24) == sizeof(valueStr));
        #endif
     }
 
@@ -152,7 +152,7 @@ protected:
        #ifdef KDE_FIFO_TEST
         if (visible)
         {
-            DISTRHO_SAFE_ASSERT_RETURN(fileExists(fExternalScript),);
+            DAF_SAFE_ASSERT_RETURN(fileExists(fExternalScript),);
 
             mkfifo(kFifoFilename, 0666);
             sync();
@@ -168,11 +168,11 @@ protected:
                 "--title", getTitle(),
                 nullptr,
             };
-            DISTRHO_SAFE_ASSERT_RETURN(startExternalProcess(args),);
+            DAF_SAFE_ASSERT_RETURN(startExternalProcess(args),);
 
             // NOTE: this can lockup the current thread if the other side does not read the file!
             fFifo = open(kFifoFilename, O_WRONLY);
-            DISTRHO_SAFE_ASSERT_RETURN(fFifo != -1,);
+            DAF_SAFE_ASSERT_RETURN(fFifo != -1,);
 
             parameterChanged(0, fValue);
         }
@@ -182,7 +182,7 @@ protected:
             {
                 if (isRunning())
                 {
-                    DISTRHO_SAFE_ASSERT(writeRetry(fFifo, "quit\n", 5) == 5);
+                    DAF_SAFE_ASSERT(writeRetry(fFifo, "quit\n", 5) == 5);
                     fsync(fFifo);
                 }
                 ::close(fFifo);
@@ -247,11 +247,11 @@ private:
    /**
       Set our UI class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExternalExampleUI)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExternalExampleUI)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * UI entry point, called by DPF to create a new UI instance. */
+ * UI entry point, called by DAF to create a new UI instance. */
 
 UI* createUI()
 {
@@ -260,4 +260,4 @@ UI* createUI()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

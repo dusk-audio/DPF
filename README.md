@@ -96,7 +96,7 @@ users, but it is not a substitute.
 
 Online documentation for the core API is at [https://distrho.github.io/DPF/](https://distrho.github.io/DPF/).
 It still applies here, since the public plugin and UI API is unchanged; anything under
-`distrho/src` or `dgl/src` may have diverged.
+`daf/src` or `dgl/src` may have diverged.
 
 DISTRHO's [DPF discussions](https://github.com/DISTRHO/DPF/discussions) cover DPF itself. Questions
 about *this* tree belong in this repository's issue tracker instead, since its maintainers do not

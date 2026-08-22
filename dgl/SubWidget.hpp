@@ -174,7 +174,7 @@ private:
     struct PrivateData;
     PrivateData* const pData;
     friend class Widget;
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SubWidget)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SubWidget)
 };
 
 // --------------------------------------------------------------------------------------------------------------------

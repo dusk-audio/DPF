@@ -14,14 +14,14 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoPlugin.hpp"
+#include "DafPlugin.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 // -----------------------------------------------------------------------------------------------------------
 
 /**
-  Plugin that demonstrates the latency API in DPF.
+  Plugin that demonstrates the latency API in DAF.
  */
 class LatencyExamplePlugin : public Plugin
 {
@@ -61,7 +61,7 @@ protected:
     */
     const char* getDescription() const override
     {
-        return "Plugin that demonstrates the latency API in DPF.";
+        return "Plugin that demonstrates the latency API in DAF.";
     }
 
    /**
@@ -255,11 +255,11 @@ private:
    /**
       Set our plugin class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LatencyExamplePlugin)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LatencyExamplePlugin)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * Plugin entry point, called by DPF to create a new plugin instance. */
+ * Plugin entry point, called by DAF to create a new plugin instance. */
 
 Plugin* createPlugin()
 {
@@ -268,4 +268,4 @@ Plugin* createPlugin()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

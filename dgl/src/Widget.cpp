@@ -127,19 +127,19 @@ void Widget::setSize(const Size<uint>& size) noexcept
 
 Application& Widget::getApp() const noexcept
 {
-    DISTRHO_SAFE_ASSERT(pData->topLevelWidget != nullptr);
+    DAF_SAFE_ASSERT(pData->topLevelWidget != nullptr);
     return pData->topLevelWidget->getApp();
 }
 
 Window& Widget::getWindow() const noexcept
 {
-    DISTRHO_SAFE_ASSERT(pData->topLevelWidget != nullptr);
+    DAF_SAFE_ASSERT(pData->topLevelWidget != nullptr);
     return pData->topLevelWidget->getWindow();
 }
 
 const GraphicsContext& Widget::getGraphicsContext() const noexcept
 {
-    DISTRHO_SAFE_ASSERT(pData->topLevelWidget != nullptr);
+    DAF_SAFE_ASSERT(pData->topLevelWidget != nullptr);
     return pData->topLevelWidget->getWindow().getGraphicsContext();
 }
 

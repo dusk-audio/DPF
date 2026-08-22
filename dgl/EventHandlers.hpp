@@ -87,7 +87,7 @@ private:
     struct PrivateData;
     PrivateData* const pData;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ButtonEventHandler)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ButtonEventHandler)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -174,7 +174,7 @@ private:
     PrivateData* const pData;
 
     /* not for use */
-#ifdef DISTRHO_PROPER_CPP11_SUPPORT
+#ifdef DAF_PROPER_CPP11_SUPPORT
     KnobEventHandler(KnobEventHandler& other) = delete;
     KnobEventHandler(const KnobEventHandler& other) = delete;
 #else
@@ -182,7 +182,7 @@ private:
     KnobEventHandler(const KnobEventHandler& other);
 #endif
 
-    DISTRHO_LEAK_DETECTOR(KnobEventHandler)
+    DAF_LEAK_DETECTOR(KnobEventHandler)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -197,7 +197,7 @@ private:
     struct PrivateData;
     PrivateData* const pData;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SliderEventHandler)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SliderEventHandler)
 };
 
 // --------------------------------------------------------------------------------------------------------------------

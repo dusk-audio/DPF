@@ -21,7 +21,7 @@
 
 // we will include all header files used in pugl.h in their C++ friendly form, then pugl stuff in custom namespace
 #include <cstddef>
-#ifdef DISTRHO_PROPER_CPP11_SUPPORT
+#ifdef DAF_PROPER_CPP11_SUPPORT
 # include <cstdbool>
 # include <cstdint>
 #else
@@ -52,7 +52,7 @@
 #define PUGL_NO_INCLUDE_GL_H
 #define PUGL_NO_INCLUDE_GLU_H
 
-#ifndef DISTRHO_OS_MAC
+#ifndef DAF_OS_MAC
 START_NAMESPACE_DGL
 #endif
 
@@ -87,11 +87,11 @@ void puglOnDisplayPrepare(PuglView* view);
 // DGL specific, build-specific fallback resize
 void puglFallbackOnResize(PuglView* view, uint width, uint height);
 
-#if defined(DISTRHO_OS_HAIKU)
+#if defined(DAF_OS_HAIKU)
 
 // nothing here yet
 
-#elif defined(DISTRHO_OS_MAC)
+#elif defined(DAF_OS_MAC)
 
 // macOS specific, add another view's window as child
 PuglStatus puglMacOSAddChildWindow(PuglView* view, PuglView* child);
@@ -102,11 +102,11 @@ PuglStatus puglMacOSRemoveChildWindow(PuglView* view, PuglView* child);
 // macOS specific, center view based on parent coordinates (if there is one)
 void puglMacOSShowCentered(PuglView* view);
 
-#elif defined(DISTRHO_OS_WASM)
+#elif defined(DAF_OS_WASM)
 
 // nothing here yet
 
-#elif defined(DISTRHO_OS_WINDOWS)
+#elif defined(DAF_OS_WINDOWS)
 
 // win32 specific, call ShowWindow with SW_RESTORE
 void puglWin32RestoreWindow(PuglView* view);
@@ -122,7 +122,7 @@ void puglWin32ShowCentered(PuglView* view);
 //
 // The reason is that a plugin UI is not free to pick its own windowing system. Hosts embed plugin
 // UIs into their own window, and the only embedding contract that every plugin format has is the
-// X11 one; of the formats DPF targets, only CLAP has a Wayland window API at all. Standalone
+// X11 one; of the formats DAF targets, only CLAP has a Wayland window API at all. Standalone
 // builds have no such constraint, but they run perfectly well on a Wayland session through
 // XWayland, so there is nothing to gain from splitting the backend choice between plugin and
 // standalone builds of the same source tree.
@@ -130,7 +130,7 @@ void puglWin32ShowCentered(PuglView* view);
 // Consequently the Wayland arm below is reachable only on a build where X11 is absent entirely
 // (no libx11-dev), which is the case this backend exists to serve. The build system mirrors this
 // exactly -- see DGL_BACKEND_WAYLAND in Makefile.base.mk and the X11_FOUND branch in
-// cmake/DPF-plugin.cmake, both of which refuse to define HAVE_WAYLAND when X11 is in play.
+// cmake/DAF-plugin.cmake, both of which refuse to define HAVE_WAYLAND when X11 is in play.
 //
 // A possible future step is runtime dispatch: build both backends and choose per window, so that a
 // CLAP plugin could hand the host a real Wayland surface while everything else keeps using X11.
@@ -163,7 +163,7 @@ void puglWaylandSetAppId(PuglView* view, const char* appId);
 
 // --------------------------------------------------------------------------------------------------------------------
 
-#ifndef DISTRHO_OS_MAC
+#ifndef DAF_OS_MAC
 END_NAMESPACE_DGL
 #endif
 

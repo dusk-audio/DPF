@@ -108,10 +108,10 @@ public:
    /**
       Special keyboard event.
 
-      DEPRECATED This used to be part of DPF due to pugl, but now deprecated and simply non-functional.
+      DEPRECATED This used to be part of DAF due to pugl, but now deprecated and simply non-functional.
       All events go through KeyboardEvent or CharacterInputEvent, use those instead.
     */
-    struct DISTRHO_DEPRECATED_BY("KeyboardEvent") SpecialEvent : BaseEvent {
+    struct DAF_DEPRECATED_BY("KeyboardEvent") SpecialEvent : BaseEvent {
         bool press;
         Key key;
 
@@ -147,7 +147,7 @@ public:
             : BaseEvent(),
               keycode(0),
               character(0),
-#ifdef DISTRHO_PROPER_CPP11_SUPPORT
+#ifdef DAF_PROPER_CPP11_SUPPORT
               string{'\0','\0','\0','\0','\0','\0','\0','\0'} {}
 #else
               string() { std::memset(string, 0, sizeof(string)); }
@@ -397,10 +397,10 @@ public:
     */
     virtual void repaint() noexcept;
 
-    DISTRHO_DEPRECATED_BY("getApp()")
+    DAF_DEPRECATED_BY("getApp()")
     Application& getParentApp() const noexcept { return getApp(); }
 
-    DISTRHO_DEPRECATED_BY("getWindow()")
+    DAF_DEPRECATED_BY("getWindow()")
     Window& getParentWindow() const noexcept { return getWindow(); }
 
 protected:
@@ -473,7 +473,7 @@ private:
     friend class SubWidget;
     friend class TopLevelWidget;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Widget)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Widget)
 };
 
 // --------------------------------------------------------------------------------------------------------------------

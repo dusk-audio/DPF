@@ -1,5 +1,5 @@
 // Copyright 2012-2022 David Robillard <d@drobilla.net>
-// Copyright 2025 DISTRHO Plugin Framework contributors
+// Copyright 2025 Dusk Audio Framework contributors
 // SPDX-License-Identifier: ISC
 
 /*

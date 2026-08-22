@@ -14,11 +14,11 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoUI.hpp"
+#include "DafUI.hpp"
 #include "Window.hpp"
 #include "extra/WebView.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -33,15 +33,15 @@ public:
     {
         const double scaleFactor = getScaleFactor();
 
-        const uint width = DISTRHO_UI_DEFAULT_WIDTH * scaleFactor;
-        const uint height = DISTRHO_UI_DEFAULT_HEIGHT * scaleFactor;
+        const uint width = DAF_UI_DEFAULT_WIDTH * scaleFactor;
+        const uint height = DAF_UI_DEFAULT_HEIGHT * scaleFactor;
 
         setGeometryConstraints(width, height);
 
         if (d_isNotEqual(scaleFactor, 1.0))
             setSize(width, height);
 
-        webview = webViewCreate("https://distrho.github.io/DPF/",
+        webview = webViewCreate("https://distrho.github.io/DAF/",
                                 getWindow().getNativeWindowHandle(),
                                 width, height, scaleFactor);
     }
@@ -97,11 +97,11 @@ protected:
    /**
       Set our UI class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EmbedExternalExampleUI)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EmbedExternalExampleUI)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * UI entry point, called by DPF to create a new UI instance. */
+ * UI entry point, called by DAF to create a new UI instance. */
 
 UI* createUI()
 {
@@ -110,4 +110,4 @@ UI* createUI()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

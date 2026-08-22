@@ -65,7 +65,7 @@ void Window::ScopedGraphicsContext::done()
     if (reenter)
     {
         reenter = false;
-        DISTRHO_SAFE_ASSERT_RETURN(ppData != nullptr,);
+        DAF_SAFE_ASSERT_RETURN(ppData != nullptr,);
 
         puglBackendEnter(ppData->view);
     }
@@ -73,9 +73,9 @@ void Window::ScopedGraphicsContext::done()
 
 void Window::ScopedGraphicsContext::reinit()
 {
-    DISTRHO_SAFE_ASSERT_RETURN(!active,);
-    DISTRHO_SAFE_ASSERT_RETURN(!reenter,);
-    DISTRHO_SAFE_ASSERT_RETURN(ppData != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(!active,);
+    DAF_SAFE_ASSERT_RETURN(!reenter,);
+    DAF_SAFE_ASSERT_RETURN(ppData != nullptr,);
 
     reenter = true;
     puglBackendLeave(ppData->view);
@@ -184,21 +184,21 @@ void Window::setResizable(const bool resizable)
 
 int Window::getOffsetX() const noexcept
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pData->view != nullptr, 0);
+    DAF_SAFE_ASSERT_RETURN(pData->view != nullptr, 0);
 
     return puglGetPositionHint(pData->view, PUGL_CURRENT_POSITION).x;
 }
 
 int Window::getOffsetY() const noexcept
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pData->view != nullptr, 0);
+    DAF_SAFE_ASSERT_RETURN(pData->view != nullptr, 0);
 
     return puglGetPositionHint(pData->view, PUGL_CURRENT_POSITION).y;
 }
 
 Point<int> Window::getOffset() const noexcept
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pData->view != nullptr, Point<int>());
+    DAF_SAFE_ASSERT_RETURN(pData->view != nullptr, Point<int>());
 
     const PuglPoint pos = puglGetPositionHint(pData->view, PUGL_CURRENT_POSITION);
     return Point<int>(pos.x, pos.y);
@@ -217,7 +217,7 @@ void Window::setOffsetY(const int y)
 void Window::setOffset(const int x, const int y)
 {
     // do not call this for embed windows!
-    DISTRHO_SAFE_ASSERT_RETURN(!pData->isEmbed,);
+    DAF_SAFE_ASSERT_RETURN(!pData->isEmbed,);
 
     if (pData->view != nullptr)
         puglSetPositionHint(pData->view, PUGL_CURRENT_POSITION, x, y);
@@ -230,29 +230,29 @@ void Window::setOffset(const Point<int>& offset)
 
 uint Window::getWidth() const noexcept
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pData->view != nullptr, 0);
+    DAF_SAFE_ASSERT_RETURN(pData->view != nullptr, 0);
 
     const PuglSpan width = puglGetSizeHint(pData->view, PUGL_CURRENT_SIZE).width;
-    DISTRHO_SAFE_ASSERT(width > 0);
+    DAF_SAFE_ASSERT(width > 0);
     return width;
 }
 
 uint Window::getHeight() const noexcept
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pData->view != nullptr, 0);
+    DAF_SAFE_ASSERT_RETURN(pData->view != nullptr, 0);
 
     const PuglSpan height = puglGetSizeHint(pData->view, PUGL_CURRENT_SIZE).height;
-    DISTRHO_SAFE_ASSERT(height > 0);
+    DAF_SAFE_ASSERT(height > 0);
     return height;
 }
 
 Size<uint> Window::getSize() const noexcept
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pData->view != nullptr, Size<uint>());
+    DAF_SAFE_ASSERT_RETURN(pData->view != nullptr, Size<uint>());
 
     const PuglArea size = puglGetSizeHint(pData->view, PUGL_CURRENT_SIZE);
-    DISTRHO_SAFE_ASSERT(size.width > 0);
-    DISTRHO_SAFE_ASSERT(size.height > 0);
+    DAF_SAFE_ASSERT(size.width > 0);
+    DAF_SAFE_ASSERT(size.height > 0);
     return Size<uint>(size.width, size.height);
 }
 
@@ -268,7 +268,7 @@ void Window::setHeight(const uint height)
 
 void Window::setSize(uint width, uint height)
 {
-    DISTRHO_SAFE_ASSERT_UINT2_RETURN(width > 1 && height > 1, width, height,);
+    DAF_SAFE_ASSERT_UINT2_RETURN(width > 1 && height > 1, width, height,);
 
     if (pData->isEmbed)
     {
@@ -310,10 +310,10 @@ void Window::setSize(uint width, uint height)
 
     if (pData->usesSizeRequest)
     {
-        DISTRHO_SAFE_ASSERT_RETURN(pData->topLevelWidgets.size() != 0,);
+        DAF_SAFE_ASSERT_RETURN(pData->topLevelWidgets.size() != 0,);
 
         TopLevelWidget* const topLevelWidget = pData->topLevelWidgets.front();
-        DISTRHO_SAFE_ASSERT_RETURN(topLevelWidget != nullptr,);
+        DAF_SAFE_ASSERT_RETURN(topLevelWidget != nullptr,);
 
         topLevelWidget->requestSizeChange(width, height);
     }
@@ -380,14 +380,14 @@ bool Window::setCursor(const MouseCursor cursor)
 
 bool Window::addIdleCallback(IdleCallback* const callback, const uint timerFrequencyInMs)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(callback != nullptr, false)
+    DAF_SAFE_ASSERT_RETURN(callback != nullptr, false)
 
     return pData->addIdleCallback(callback, timerFrequencyInMs);
 }
 
 bool Window::removeIdleCallback(IdleCallback* const callback)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(callback != nullptr, false)
+    DAF_SAFE_ASSERT_RETURN(callback != nullptr, false)
 
     return pData->removeIdleCallback(callback);
 }
@@ -397,7 +397,7 @@ Application& Window::getApp() const noexcept
     return pData->app;
 }
 
-#ifndef DPF_TEST_WINDOW_CPP
+#ifndef DAF_TEST_WINDOW_CPP
 const GraphicsContext& Window::getGraphicsContext() const noexcept
 {
     return pData->getGraphicsContext();
@@ -434,7 +434,7 @@ bool Window::createWebView(const char* const url, const DGL_NAMESPACE::WebViewOp
 
 void Window::evaluateJS(const char* const js)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pData->webViewHandle != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(pData->webViewHandle != nullptr,);
 
     webViewEvaluateJS(pData->webViewHandle, js);
 }
@@ -499,8 +499,8 @@ void Window::setGeometryConstraints(uint minimumWidth,
                                     const bool automaticallyScale,
                                     bool resizeNowIfAutoScaling)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(minimumWidth > 0,);
-    DISTRHO_SAFE_ASSERT_RETURN(minimumHeight > 0,);
+    DAF_SAFE_ASSERT_RETURN(minimumWidth > 0,);
+    DAF_SAFE_ASSERT_RETURN(minimumHeight > 0,);
 
     // prevent auto-scaling up 2x
     if (resizeNowIfAutoScaling && automaticallyScale && pData->autoScaling == automaticallyScale)

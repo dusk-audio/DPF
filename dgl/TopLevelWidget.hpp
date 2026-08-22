@@ -19,10 +19,10 @@
 
 #include "Widget.hpp"
 
-#ifdef DISTRHO_DEFINES_H_INCLUDED
-START_NAMESPACE_DISTRHO
+#ifdef DAF_DEFINES_H_INCLUDED
+START_NAMESPACE_DAF
 class UI;
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF
 #endif
 
 START_NAMESPACE_DGL
@@ -40,7 +40,7 @@ class Window;
    Sub-widgets can be added on top of this top-level widget, by creating them with this class as parent.
    Doing so allows for custom position and sizes.
 
-   This class is used as the type for DPF Plugin UIs.
+   This class is used as the type for DAF Plugin UIs.
    So anything that a plugin UI might need that does not belong in a simple Widget will go here.
  */
 class TopLevelWidget : public Widget
@@ -113,10 +113,10 @@ public:
                                 bool automaticallyScale = false,
                                 bool resizeNowIfAutoScaling = true);
 
-    DISTRHO_DEPRECATED_BY("getApp()")
+    DAF_DEPRECATED_BY("getApp()")
     Application& getParentApp() const noexcept { return getApp(); }
 
-    DISTRHO_DEPRECATED_BY("getWindow()")
+    DAF_DEPRECATED_BY("getWindow()")
     Window& getParentWindow() const noexcept { return getWindow(); }
 
 protected:
@@ -130,13 +130,13 @@ private:
     struct PrivateData;
     PrivateData* const pData;
     friend class Window;
-#ifdef DISTRHO_DEFINES_H_INCLUDED
-    friend class DISTRHO_NAMESPACE::UI;
+#ifdef DAF_DEFINES_H_INCLUDED
+    friend class DAF_NAMESPACE::UI;
 #endif
    /** @internal */
     virtual void requestSizeChange(uint width, uint height);
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TopLevelWidget)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TopLevelWidget)
 };
 
 // -----------------------------------------------------------------------

@@ -28,7 +28,7 @@ typedef std::list<DGL_NAMESPACE::Window*>::reverse_iterator WindowListReverseIte
 
 static d_ThreadHandle getCurrentThreadHandle() noexcept
 {
-   #ifdef DISTRHO_OS_WINDOWS
+   #ifdef DAF_OS_WINDOWS
     return GetCurrentThread();
    #else
     return pthread_self();
@@ -37,7 +37,7 @@ static d_ThreadHandle getCurrentThreadHandle() noexcept
 
 static bool isThisTheMainThread(const d_ThreadHandle mainThreadHandle) noexcept
 {
-   #ifdef DISTRHO_OS_WINDOWS
+   #ifdef DAF_OS_WINDOWS
     return GetCurrentThread() == mainThreadHandle; // IsGUIThread ?
    #else
     return pthread_equal(getCurrentThreadHandle(), mainThreadHandle) != 0;
@@ -67,19 +67,19 @@ Application::PrivateData::PrivateData(const bool standalone, const Type type)
       windows(),
       idleCallbacks()
 {
-    DISTRHO_SAFE_ASSERT_RETURN(world != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(world != nullptr,);
 
    #ifdef __EMSCRIPTEN__
     puglSetWorldString(world, PUGL_CLASS_NAME, "canvas");
    #else
-    puglSetWorldString(world, PUGL_CLASS_NAME, DISTRHO_MACRO_AS_STRING(DGL_NAMESPACE));
+    puglSetWorldString(world, PUGL_CLASS_NAME, DAF_MACRO_AS_STRING(DGL_NAMESPACE));
    #endif
 }
 
 Application::PrivateData::~PrivateData()
 {
-    DISTRHO_SAFE_ASSERT(isStarting || isQuitting);
-    DISTRHO_SAFE_ASSERT(visibleWindows == 0);
+    DAF_SAFE_ASSERT(isStarting || isQuitting);
+    DAF_SAFE_ASSERT(visibleWindows == 0);
 
     windows.clear();
     idleCallbacks.clear();
@@ -101,7 +101,7 @@ void Application::PrivateData::oneWindowShown() noexcept
 
 void Application::PrivateData::oneWindowClosed() noexcept
 {
-    DISTRHO_SAFE_ASSERT_RETURN(visibleWindows != 0,);
+    DAF_SAFE_ASSERT_RETURN(visibleWindows != 0,);
 
     if (--visibleWindows == 0)
         isQuitting = true;
@@ -165,7 +165,7 @@ void Application::PrivateData::quit()
 
     isQuitting = true;
 
-   #ifndef DPF_TEST_APPLICATION_CPP
+   #ifndef DAF_TEST_APPLICATION_CPP
     for (WindowListReverseIterator rit = windows.rbegin(), rite = windows.rend(); rit != rite; ++rit)
     {
         DGL_NAMESPACE::Window* const window(*rit);
@@ -181,7 +181,7 @@ double Application::PrivateData::getTime() const
 
 void Application::PrivateData::setClassName(const char* const name)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(name != nullptr && name[0] != '\0',);
+    DAF_SAFE_ASSERT_RETURN(name != nullptr && name[0] != '\0',);
 
     if (world != nullptr)
         puglSetWorldString(world, PUGL_CLASS_NAME, name);

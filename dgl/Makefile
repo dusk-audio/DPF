@@ -14,7 +14,7 @@ BUILD_CXX_FLAGS += -Isrc/pugl-upstream/include
 LINK_FLAGS      += $(DGL_LIBS)
 
 ifeq ($(MACOS),true)
-BUILD_CXX_FLAGS += -DDISTRHO_MACOS_NAMESPACE_TIME=$(shell date +%s)
+BUILD_CXX_FLAGS += -DDAF_MACOS_NAMESPACE_TIME=$(shell date +%s)
 BUILD_CXX_FLAGS += -Wno-deprecated-declarations
 else
 PUGL_EXTRA_FLAGS = -Wno-extra -Wmissing-field-initializers
@@ -151,7 +151,7 @@ endif
 
 ifeq ($(HAVE_OPENGL),true)
 # No GLES variants on macOS: Apple ships no GLES implementation, and dgl/OpenGL-include.hpp now errors out on
-# DGL_USE_GLES for DISTRHO_OS_MAC instead of silently #undef'ing it and building desktop GL3 behind your back.
+# DGL_USE_GLES for DAF_OS_MAC instead of silently #undef'ing it and building desktop GL3 behind your back.
 # Building these here would just be a guaranteed failure; there is no macOS product that could link them.
 ifneq ($(MACOS),true)
 TARGETS += $(BUILD_DIR)/libdgl-gles2.a

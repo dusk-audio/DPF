@@ -61,7 +61,7 @@ struct ButtonEventHandler::PrivateData {
         // button was released, handle it now
         if (button != -1 && ! ev.press)
         {
-            DISTRHO_SAFE_ASSERT(state & kButtonStateActive);
+            DAF_SAFE_ASSERT(state & kButtonStateActive);
 
             // release button
             const int button2 = button;
@@ -195,7 +195,7 @@ struct ButtonEventHandler::PrivateData {
         widget->repaint();
     }
 
-    DISTRHO_DECLARE_NON_COPYABLE(PrivateData)
+    DAF_DECLARE_NON_COPYABLE(PrivateData)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -616,7 +616,7 @@ struct KnobEventHandler::PrivateData {
 
     void setRange(const float min, const float max) noexcept
     {
-        DISTRHO_SAFE_ASSERT_RETURN(max > min,);
+        DAF_SAFE_ASSERT_RETURN(max > min,);
 
         if (value < min)
         {
@@ -645,7 +645,7 @@ struct KnobEventHandler::PrivateData {
         {
             try {
                 callback->knobValueChanged(widget, value);
-            } DISTRHO_SAFE_EXCEPTION("KnobEventHandler::setValue");
+            } DAF_SAFE_EXCEPTION("KnobEventHandler::setValue");
         }
 
         return true;

@@ -16,7 +16,7 @@
 
 #include "tests.hpp"
 
-#define DPF_TEST_APPLICATION_CPP
+#define DAF_TEST_APPLICATION_CPP
 #include "dgl/src/pugl.cpp"
 #include "dgl/src/Application.cpp"
 #include "dgl/src/ApplicationPrivateData.cpp"
@@ -53,16 +53,16 @@ int main()
         Application app(true);
         IdleCallbackCounter idleCounter;
         app.addIdleCallback(&idleCounter);
-        DISTRHO_ASSERT_EQUAL(app.isQuitting(), false, "app MUST NOT be set as quitting during init");
-        DISTRHO_ASSERT_EQUAL(idleCounter.counter, 0, "app MUST NOT have triggered idle callbacks yet");
+        DAF_ASSERT_EQUAL(app.isQuitting(), false, "app MUST NOT be set as quitting during init");
+        DAF_ASSERT_EQUAL(idleCounter.counter, 0, "app MUST NOT have triggered idle callbacks yet");
         app.idle();
-        DISTRHO_ASSERT_EQUAL(app.isQuitting(), false, "app MUST NOT be set as quitting after idle()");
-        DISTRHO_ASSERT_EQUAL(idleCounter.counter, 1, "app MUST have triggered 1 idle callback");
+        DAF_ASSERT_EQUAL(app.isQuitting(), false, "app MUST NOT be set as quitting after idle()");
+        DAF_ASSERT_EQUAL(idleCounter.counter, 1, "app MUST have triggered 1 idle callback");
         app.idle();
-        DISTRHO_ASSERT_EQUAL(idleCounter.counter, 2, "app MUST have triggered 2 idle callbacks");
+        DAF_ASSERT_EQUAL(idleCounter.counter, 2, "app MUST have triggered 2 idle callbacks");
         app.quit();
-        DISTRHO_ASSERT_EQUAL(app.isQuitting(), true, "app MUST be set as quitting after quit()");
-        DISTRHO_ASSERT_EQUAL(idleCounter.counter, 2, "app MUST have triggered only 2 idle callbacks in its lifetime");
+        DAF_ASSERT_EQUAL(app.isQuitting(), true, "app MUST be set as quitting after quit()");
+        DAF_ASSERT_EQUAL(idleCounter.counter, 2, "app MUST have triggered only 2 idle callbacks in its lifetime");
     }
 
     // standalone exec, must not block forever due to quit() called from another thread
@@ -72,8 +72,8 @@ int main()
         IdleCallbackCounter idleCounter;
         app.addIdleCallback(&idleCounter);
         app.exec();
-        DISTRHO_ASSERT_EQUAL(appQuitter.isThreadRunning(), false, "app quit triggered because we told it so");
-        DISTRHO_ASSERT_NOT_EQUAL(idleCounter.counter, 0, "app idle callbacks MUST have been triggered");
+        DAF_ASSERT_EQUAL(appQuitter.isThreadRunning(), false, "app quit triggered because we told it so");
+        DAF_ASSERT_NOT_EQUAL(idleCounter.counter, 0, "app idle callbacks MUST have been triggered");
     }
 
     // standalone exec, but with 0 as timeout
@@ -83,8 +83,8 @@ int main()
         IdleCallbackCounter idleCounter;
         app.addIdleCallback(&idleCounter);
         app.exec(0);
-        DISTRHO_ASSERT_EQUAL(appQuitter.isThreadRunning(), false, "app quit triggered because we told it so");
-        DISTRHO_ASSERT_NOT_EQUAL(idleCounter.counter, 0, "app idle callbacks MUST have been triggered");
+        DAF_ASSERT_EQUAL(appQuitter.isThreadRunning(), false, "app quit triggered because we told it so");
+        DAF_ASSERT_NOT_EQUAL(idleCounter.counter, 0, "app idle callbacks MUST have been triggered");
     }
 
     return 0;

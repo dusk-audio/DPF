@@ -82,8 +82,8 @@ void Color::setFor(const GraphicsContext& context, const bool includeAlpha)
 template<typename T>
 void Line<T>::draw(const GraphicsContext& context, const T width)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(posStart != posEnd,);
-    DISTRHO_SAFE_ASSERT_RETURN(width != 0,);
+    DAF_SAFE_ASSERT_RETURN(posStart != posEnd,);
+    DAF_SAFE_ASSERT_RETURN(width != 0,);
 
     cairo_t* const handle = static_cast<const CairoGraphicsContext&>(context).handle;
 
@@ -120,7 +120,7 @@ static void drawCircle(cairo_t* const handle,
                        const float cos,
                        const bool outline)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(numSegments >= 3 && size > 0.0f,);
+    DAF_SAFE_ASSERT_RETURN(numSegments >= 3 && size > 0.0f,);
 
     const T origx = pos.getX();
     const T origy = pos.getY();
@@ -161,7 +161,7 @@ void Circle<T>::draw(const GraphicsContext& context)
 template<typename T>
 void Circle<T>::drawOutline(const GraphicsContext& context, const T lineWidth)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(lineWidth != 0,);
+    DAF_SAFE_ASSERT_RETURN(lineWidth != 0,);
 
     cairo_t* const handle = static_cast<const CairoGraphicsContext&>(context).handle;
 
@@ -200,7 +200,7 @@ static void drawTriangle(cairo_t* const handle,
                          const Point<T>& pos3,
                          const bool outline)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(pos1 != pos2 && pos1 != pos3,);
+    DAF_SAFE_ASSERT_RETURN(pos1 != pos2 && pos1 != pos3,);
 
     cairo_move_to(handle, pos1.getX(), pos1.getY());
     cairo_line_to(handle, pos2.getX(), pos2.getY());
@@ -224,7 +224,7 @@ void Triangle<T>::draw(const GraphicsContext& context)
 template<typename T>
 void Triangle<T>::drawOutline(const GraphicsContext& context, const T lineWidth)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(lineWidth != 0,);
+    DAF_SAFE_ASSERT_RETURN(lineWidth != 0,);
 
     cairo_t* const handle = static_cast<const CairoGraphicsContext&>(context).handle;
 
@@ -270,7 +270,7 @@ static void drawRectangle(cairo_t* const handle, const Rectangle<T>& rect, const
 template<typename T>
 void Rectangle<T>::draw(const GraphicsContext& context)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(isValid(),);
+    DAF_SAFE_ASSERT_RETURN(isValid(),);
 
     cairo_t* const handle = static_cast<const CairoGraphicsContext&>(context).handle;
 
@@ -280,8 +280,8 @@ void Rectangle<T>::draw(const GraphicsContext& context)
 template<typename T>
 void Rectangle<T>::drawOutline(const GraphicsContext& context, const T lineWidth)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(isValid(),);
-    DISTRHO_SAFE_ASSERT_RETURN(lineWidth != 0,);
+    DAF_SAFE_ASSERT_RETURN(isValid(),);
+    DAF_SAFE_ASSERT_RETURN(lineWidth != 0,);
 
     cairo_t* const handle = static_cast<const CairoGraphicsContext&>(context).handle;
 
@@ -404,19 +404,19 @@ CairoImage::~CairoImage()
 void CairoImage::loadFromMemory(const char* const rdata, const Size<uint>& s, const ImageFormat fmt) noexcept
 {
     const cairo_format_t cairoformat = asCairoImageFormat(fmt);
-    DISTRHO_SAFE_ASSERT_RETURN(cairoformat != CAIRO_FORMAT_INVALID,);
+    DAF_SAFE_ASSERT_RETURN(cairoformat != CAIRO_FORMAT_INVALID,);
 
     const int width  = static_cast<int>(s.getWidth());
     const int height = static_cast<int>(s.getHeight());
     const int stride = cairo_format_stride_for_width(cairoformat, width);
 
     uchar* const newdata = static_cast<uchar*>(std::malloc(static_cast<size_t>(width * height * stride * 4)));
-    DISTRHO_SAFE_ASSERT_RETURN(newdata != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(newdata != nullptr,);
 
     cairo_surface_t* const newsurface = cairo_image_surface_create_for_data(newdata, cairoformat, width, height, stride);
-    DISTRHO_SAFE_ASSERT_RETURN(newsurface != nullptr,);
-    DISTRHO_SAFE_ASSERT_RETURN(static_cast<int>(s.getWidth()) == cairo_image_surface_get_width(newsurface),);
-    DISTRHO_SAFE_ASSERT_RETURN(static_cast<int>(s.getHeight()) == cairo_image_surface_get_height(newsurface),);
+    DAF_SAFE_ASSERT_RETURN(newsurface != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(static_cast<int>(s.getWidth()) == cairo_image_surface_get_width(newsurface),);
+    DAF_SAFE_ASSERT_RETURN(static_cast<int>(s.getHeight()) == cairo_image_surface_get_height(newsurface),);
 
     cairo_surface_destroy(surface);
 
@@ -534,12 +534,12 @@ void CairoImage::loadFromPNG(const char* const pngData, const uint pngSize) noex
     readerData.sizeLeft = pngSize;
 
     cairo_surface_t* const newsurface = cairo_image_surface_create_from_png_stream(PngReaderData::read, &readerData);
-    DISTRHO_SAFE_ASSERT_RETURN(newsurface != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(newsurface != nullptr,);
 
     const int newwidth = cairo_image_surface_get_width(newsurface);
     const int newheight = cairo_image_surface_get_height(newsurface);
-    DISTRHO_SAFE_ASSERT_INT_RETURN(newwidth > 0, newwidth,);
-    DISTRHO_SAFE_ASSERT_INT_RETURN(newheight > 0, newheight,);
+    DAF_SAFE_ASSERT_INT_RETURN(newwidth > 0, newwidth,);
+    DAF_SAFE_ASSERT_INT_RETURN(newheight > 0, newheight,);
 
     cairo_surface_destroy(surface);
 
@@ -559,7 +559,7 @@ void CairoImage::loadFromPNG(const char* const pngData, const uint pngSize) noex
 
 void CairoImage::drawAt(const GraphicsContext& context, const Point<int>& pos)
 {
-    DISTRHO_SAFE_ASSERT_RETURN(surface != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(surface != nullptr,);
 
     cairo_t* const handle = static_cast<const CairoGraphicsContext&>(context).handle;
 
@@ -671,7 +671,7 @@ static int getBytesPerPixel(const cairo_format_t format) noexcept
     case CAIRO_FORMAT_A8:
         return 1;
     default:
-        DISTRHO_SAFE_ASSERT(false);
+        DAF_SAFE_ASSERT(false);
         return 0;
     }
 }
@@ -679,10 +679,10 @@ static int getBytesPerPixel(const cairo_format_t format) noexcept
 static cairo_surface_t* getRegion(cairo_surface_t* origsurface, int x, int y, int width, int height) noexcept
 {
     const cairo_format_t format = cairo_image_surface_get_format(origsurface);
-    DISTRHO_SAFE_ASSERT_RETURN(format != CAIRO_FORMAT_INVALID, nullptr);
+    DAF_SAFE_ASSERT_RETURN(format != CAIRO_FORMAT_INVALID, nullptr);
 
     const int bpp = getBytesPerPixel(format);
-    DISTRHO_SAFE_ASSERT_RETURN(bpp != 0, nullptr);
+    DAF_SAFE_ASSERT_RETURN(bpp != 0, nullptr);
 
     const int fullWidth   = cairo_image_surface_get_width(origsurface);
     const int fullHeight  = cairo_image_surface_get_height(origsurface);
@@ -736,7 +736,7 @@ void ImageBaseKnob<CairoImage>::onDisplay()
             cairo_destroy(cr);
         }
 
-        DISTRHO_SAFE_ASSERT_RETURN(newsurface != nullptr,);
+        DAF_SAFE_ASSERT_RETURN(newsurface != nullptr,);
 
         cairo_surface_destroy(surface);
         pData->cairoSurface = surface = newsurface;

@@ -21,7 +21,7 @@
 // DGL Stuff
 
 #include "NanoVG.hpp"
-#include "../../dpf/distrho/extra/String.hpp"
+#include "../../dpf/daf/extra/String.hpp"
 
 // ------------------------------------------------------
 // get time
@@ -29,7 +29,7 @@
 #include <sys/time.h>
 #include <time.h>
 
-#ifdef DISTRHO_OS_WINDOWS
+#ifdef DAF_OS_WINDOWS
 #else
 struct TimePOSIX {
     bool monotonic;

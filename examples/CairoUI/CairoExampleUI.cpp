@@ -15,13 +15,13 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoUI.hpp"
+#include "DafUI.hpp"
 
 #include "Artwork.hpp"
 #include "DemoWidgetBanner.hpp"
 #include "DemoWidgetClickable.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 // We need a few classes from DGL.
 using DGL_NAMESPACE::CairoGraphicsContext;
@@ -74,7 +74,7 @@ public:
         fButton->setCallback(this);
         fButton->setId(kParameterButton);
 
-        setGeometryConstraints(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT, true, true);
+        setGeometryConstraints(DAF_UI_DEFAULT_WIDTH, DAF_UI_DEFAULT_HEIGHT, true, true);
     }
 
 protected:
@@ -154,4 +154,4 @@ UI* createUI()
     return new CairoExampleUI;
 }
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

@@ -1,0 +1,9 @@
+[Project]
+Manager=KDevGenericManager
+Name=DAF
+
+[Filters]
+Excludes=*/.*,*/*~,*/*.a
+
+[Project]
+VersionControlSupport=kdevgit

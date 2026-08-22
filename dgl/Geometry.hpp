@@ -374,7 +374,7 @@ public:
       Draw this line using the current OpenGL state.@n
       DEPRECATED Please use draw(const GraphicsContext&) instead.
     */
-    DISTRHO_DEPRECATED_BY("draw(const GraphicsContext&)")
+    DAF_DEPRECATED_BY("draw(const GraphicsContext&)")
     void draw();
    #endif
 
@@ -492,14 +492,14 @@ public:
       Draw this circle using the current OpenGL state.@n
       DEPRECATED Please use draw(const GraphicsContext&) instead.
     */
-    DISTRHO_DEPRECATED_BY("draw(const GraphicsContext&)")
+    DAF_DEPRECATED_BY("draw(const GraphicsContext&)")
     void draw();
 
    /**
       Draw lines (outline of this circle) using the current OpenGL state.@n
       DEPRECATED Please use drawOutline(const GraphicsContext&,T) instead.
     */
-    DISTRHO_DEPRECATED_BY("drawOutline(const GraphicsContext&)")
+    DAF_DEPRECATED_BY("drawOutline(const GraphicsContext&)")
     void drawOutline();
    #endif
 
@@ -585,14 +585,14 @@ public:
       Draw this triangle using the current OpenGL state.@n
       DEPRECATED Please use draw(const GraphicsContext&) instead.
     */
-    DISTRHO_DEPRECATED_BY("draw(const GraphicsContext&)")
+    DAF_DEPRECATED_BY("draw(const GraphicsContext&)")
     void draw();
 
    /**
       Draw lines (outline of this triangle) using the current OpenGL state.@n
       DEPRECATED Please use drawOutline(const GraphicsContext&,T) instead.
     */
-    DISTRHO_DEPRECATED_BY("drawOutline(const GraphicsContext&)")
+    DAF_DEPRECATED_BY("drawOutline(const GraphicsContext&)")
     void drawOutline();
    #endif
 
@@ -816,14 +816,14 @@ public:
       Draw this rectangle using the current OpenGL state.@n
       DEPRECATED Please use draw(const GraphicsContext&) instead.
     */
-    DISTRHO_DEPRECATED_BY("draw(const GraphicsContext&)")
+    DAF_DEPRECATED_BY("draw(const GraphicsContext&)")
     void draw();
 
    /**
       Draw lines (outline of this rectangle) using the current OpenGL state.@n
       DEPRECATED Please use drawOutline(const GraphicsContext&,T) instead.
     */
-    DISTRHO_DEPRECATED_BY("drawOutline(const GraphicsContext&)")
+    DAF_DEPRECATED_BY("drawOutline(const GraphicsContext&)")
     void drawOutline();
    #endif
 

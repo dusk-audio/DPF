@@ -65,7 +65,7 @@ protected:
 private:
     ImageType img;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImageBaseAboutWindow)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImageBaseAboutWindow)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ private:
     struct PrivateData;
     PrivateData* const pData;
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImageBaseButton)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImageBaseButton)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -161,7 +161,7 @@ private:
     struct PrivateData;
     PrivateData* const pData;
 
-    DISTRHO_LEAK_DETECTOR(ImageBaseKnob)
+    DAF_LEAK_DETECTOR(ImageBaseKnob)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -215,7 +215,7 @@ private:
     void setAbsolutePos(int, int) const noexcept {}
     void setAbsolutePos(const Point<int>&) const noexcept {}
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImageBaseSlider)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImageBaseSlider)
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -249,7 +249,7 @@ private:
     struct PrivateData;
     PrivateData* const pData;
 
-    DISTRHO_LEAK_DETECTOR(ImageBaseSwitch)
+    DAF_LEAK_DETECTOR(ImageBaseSwitch)
 };
 
 // --------------------------------------------------------------------------------------------------------------------

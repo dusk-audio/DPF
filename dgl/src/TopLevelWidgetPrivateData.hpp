@@ -40,7 +40,7 @@ struct TopLevelWidget::PrivateData {
     bool scrollEvent(const ScrollEvent& ev);
     void fallbackOnResize(uint width, uint height);
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PrivateData)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PrivateData)
 };
 
 // -----------------------------------------------------------------------

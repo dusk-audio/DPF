@@ -1,4 +1,4 @@
-# DPF - DISTRHO Plugin Framework
+# DPF - Dusk Audio Framework
 
 This file describes the available features for each plugin format.  
 The limitations could be due to the plugin format itself or within DPF.  
@@ -32,7 +32,7 @@ For things that could be unclear:
 
 - "States" refers to DPF API support, supporting key-value string pairs for internal state saving
 - "Full state" refers to plugins updating their state internally without outside intervention (like host or UI)
-- "UI direct access" means `DISTRHO_PLUGIN_WANT_DIRECT_ACCESS` is possible, that is, running DSP and UI on the same process
+- "UI direct access" means `DAF_PLUGIN_WANT_DIRECT_ACCESS` is possible, that is, running DSP and UI on the same process
 - "UI remote control" means running the UI on a separate machine (for example over the network)
 - An external UI on this table means that it cannot be embed into the host window, but the plugin can still provide one
 

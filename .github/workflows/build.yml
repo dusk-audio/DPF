@@ -91,7 +91,7 @@ jobs:
     - name: Custom namespace
       env:
         CFLAGS: -Werror
-        CXXFLAGS: -Werror -DDISTRHO_NAMESPACE=WubbWubb -DDGL_NAMESPACE=DabDab
+        CXXFLAGS: -Werror -DDAF_NAMESPACE=WubbWubb -DDGL_NAMESPACE=DabDab
       run: |
         make clean >/dev/null
         make -j ${{ env.JOBS }}

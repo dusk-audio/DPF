@@ -14,9 +14,9 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoPlugin.hpp"
+#include "DafPlugin.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 // -----------------------------------------------------------------------------------------------------------
 
@@ -128,7 +128,7 @@ The plugin will be treated as an effect, but it will not change the host audio."
    /**
       Initialize the state @a index.@n
       This function will be called once, shortly after the plugin is created.@n
-      Must be implemented by your plugin class only if DISTRHO_PLUGIN_WANT_STATE is enabled.
+      Must be implemented by your plugin class only if DAF_PLUGIN_WANT_STATE is enabled.
     */
     void initState(uint32_t index, State& state) override
     {
@@ -303,11 +303,11 @@ private:
    /**
       Set our plugin class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExamplePluginStates)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExamplePluginStates)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * Plugin entry point, called by DPF to create a new plugin instance. */
+ * Plugin entry point, called by DAF to create a new plugin instance. */
 
 Plugin* createPlugin()
 {
@@ -316,4 +316,4 @@ Plugin* createPlugin()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

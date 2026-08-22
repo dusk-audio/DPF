@@ -21,7 +21,7 @@
 
 START_NAMESPACE_DGL
 
-#include "../distrho/extra/FileBrowserDialogImpl.hpp"
+#include "../daf/extra/FileBrowserDialogImpl.hpp"
 
 END_NAMESPACE_DGL
 

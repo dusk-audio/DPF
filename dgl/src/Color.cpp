@@ -201,14 +201,14 @@ Color Color::fromHSL(float hue, float saturation, float lightness, float alpha)
 Color Color::fromHTML(const char* rgb, const float alpha) noexcept
 {
     Color fallback;
-    DISTRHO_SAFE_ASSERT_RETURN(rgb != nullptr && rgb[0] != '\0', fallback);
+    DAF_SAFE_ASSERT_RETURN(rgb != nullptr && rgb[0] != '\0', fallback);
 
     if (rgb[0] == '#')
         ++rgb;
-    DISTRHO_SAFE_ASSERT_RETURN(rgb[0] != '\0', fallback);
+    DAF_SAFE_ASSERT_RETURN(rgb[0] != '\0', fallback);
 
     std::size_t rgblen = std::strlen(rgb);
-    DISTRHO_SAFE_ASSERT_RETURN(rgblen == 3 || rgblen == 6, fallback);
+    DAF_SAFE_ASSERT_RETURN(rgblen == 3 || rgblen == 6, fallback);
 
     char rgbtmp[5] = { '0', 'x', '\0', '\0', '\0' };
     int r, g, b;

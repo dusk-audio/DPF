@@ -15,16 +15,16 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoPlugin.hpp"
+#include "DafPlugin.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 // -----------------------------------------------------------------------------------------------------------
 
 static constexpr const float kMaxHoldTime = 1.0f;
 
 /**
-  Simple plugin to demonstrate how to modify input/output port type in DPF.
+  Simple plugin to demonstrate how to modify input/output port type in DAF.
   The plugin outputs sample & hold (S&H) value of input signal.
   User can specify hold time via parameter and/or Hold Time CV port.
  */
@@ -129,7 +129,7 @@ protected:
                 port.symbol  = "hold_time";
                 return;
             }
-            // Add more conditions here when increasing DISTRHO_PLUGIN_NUM_INPUTS.
+            // Add more conditions here when increasing DAF_PLUGIN_NUM_INPUTS.
         }
         else
         {
@@ -141,7 +141,7 @@ protected:
                 port.symbol  = "cv_out";
                 return;
             }
-            // Add more conditions here when increasing DISTRHO_PLUGIN_NUM_OUTPUTS.
+            // Add more conditions here when increasing DAF_PLUGIN_NUM_OUTPUTS.
         }
 
         // It shouldn't reach here, but just in case if index is greater than 0.
@@ -257,11 +257,11 @@ private:
    /**
       Set our plugin class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExamplePluginCVPort)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ExamplePluginCVPort)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * Plugin entry point, called by DPF to create a new plugin instance. */
+ * Plugin entry point, called by DAF to create a new plugin instance. */
 
 Plugin* createPlugin()
 {
@@ -270,4 +270,4 @@ Plugin* createPlugin()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

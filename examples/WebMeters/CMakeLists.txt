@@ -1,7 +1,7 @@
 # CMake file for DISTRHO Plugins #
 # ------------------------------ #
 
-dpf_add_plugin(d_webmeters
+daf_add_plugin(d_webmeters
   UI_TYPE webview
   TARGETS jack lv2 vst2 vst3 clap au
   FILES_DSP

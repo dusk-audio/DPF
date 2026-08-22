@@ -59,26 +59,26 @@ public:
         img2(createImageFromRawMemory(CatPics::cat2Width, CatPics::cat2Height, (uchar*)CatPics::cat2Data, 0, kImageFormatBGR)),
         img3(createImageFromRawMemory(CatPics::cat3Width, CatPics::cat3Height, (uchar*)CatPics::cat3Data, 0, kImageFormatBGR))
     {
-        DISTRHO_SAFE_ASSERT(img1.isValid());
-        DISTRHO_SAFE_ASSERT(img2.isValid());
-        DISTRHO_SAFE_ASSERT(img3.isValid());
+        DAF_SAFE_ASSERT(img1.isValid());
+        DAF_SAFE_ASSERT(img2.isValid());
+        DAF_SAFE_ASSERT(img3.isValid());
 
-        DISTRHO_SAFE_ASSERT_UINT2(img1.getSize().getWidth() == CatPics::cat1Width,
+        DAF_SAFE_ASSERT_UINT2(img1.getSize().getWidth() == CatPics::cat1Width,
                                   img1.getSize().getWidth(), CatPics::cat1Width);
 
-        DISTRHO_SAFE_ASSERT_UINT2(img1.getSize().getHeight() == CatPics::cat1Height,
+        DAF_SAFE_ASSERT_UINT2(img1.getSize().getHeight() == CatPics::cat1Height,
                                   img1.getSize().getHeight(), CatPics::cat1Height);
 
-        DISTRHO_SAFE_ASSERT_UINT2(img2.getSize().getWidth() == CatPics::cat2Width,
+        DAF_SAFE_ASSERT_UINT2(img2.getSize().getWidth() == CatPics::cat2Width,
                                   img2.getSize().getWidth(), CatPics::cat2Width);
 
-        DISTRHO_SAFE_ASSERT_UINT2(img2.getSize().getHeight() == CatPics::cat2Height,
+        DAF_SAFE_ASSERT_UINT2(img2.getSize().getHeight() == CatPics::cat2Height,
                                   img2.getSize().getHeight(), CatPics::cat2Height);
 
-        DISTRHO_SAFE_ASSERT_UINT2(img3.getSize().getWidth() == CatPics::cat3Width,
+        DAF_SAFE_ASSERT_UINT2(img3.getSize().getWidth() == CatPics::cat3Width,
                                   img3.getSize().getWidth(), CatPics::cat3Width);
 
-        DISTRHO_SAFE_ASSERT_UINT2(img3.getSize().getHeight() == CatPics::cat3Height,
+        DAF_SAFE_ASSERT_UINT2(img3.getSize().getHeight() == CatPics::cat3Height,
                                   img3.getSize().getHeight(), CatPics::cat3Height);
 
         setResizable(true);

@@ -17,8 +17,8 @@
 #ifndef DGL_BASE_HPP_INCLUDED
 #define DGL_BASE_HPP_INCLUDED
 
-#include "../distrho/extra/LeakDetector.hpp"
-#include "../distrho/extra/ScopedPointer.hpp"
+#include "../daf/extra/LeakDetector.hpp"
+#include "../daf/extra/ScopedPointer.hpp"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Compatibility checks
@@ -94,7 +94,7 @@ enum Modifier {
    Keys that do not have a standard code point use values in the Private Use
    Area in the Basic Multilingual Plane (`U+E000` to `U+F8FF`).
    Applications must take care to not interpret these values beyond key detection,
-   the mapping used here is arbitrary and specific to DPF.
+   the mapping used here is arbitrary and specific to DAF.
  */
 enum Key {
     // Convenience symbols for ASCII control characters
@@ -171,15 +171,15 @@ enum Key {
     kKeyPadDecimal,            ///< Keypad Decimal
     kKeyPadDivide,             ///< Keypad Divide
 
-    // Backwards compatibility with old DPF
-    kCharBackspace DISTRHO_DEPRECATED_BY("kKeyBackspace") = kKeyBackspace,
-    kCharEscape    DISTRHO_DEPRECATED_BY("kKeyEscape") = kKeyEscape,
-    kCharDelete    DISTRHO_DEPRECATED_BY("kKeyDelete") = kKeyDelete,
+    // Backwards compatibility with old DAF
+    kCharBackspace DAF_DEPRECATED_BY("kKeyBackspace") = kKeyBackspace,
+    kCharEscape    DAF_DEPRECATED_BY("kKeyEscape") = kKeyEscape,
+    kCharDelete    DAF_DEPRECATED_BY("kKeyDelete") = kKeyDelete,
 
-    kKeyShift   DISTRHO_DEPRECATED_BY("kKeyShiftL") = kKeyShiftL,
-    kKeyControl DISTRHO_DEPRECATED_BY("kKeyControlL") = kKeyControlL,
-    kKeyAlt     DISTRHO_DEPRECATED_BY("kKeyAltL") = kKeyAltL,
-    kKeySuper   DISTRHO_DEPRECATED_BY("kKeySuperL") = kKeySuperL,
+    kKeyShift   DAF_DEPRECATED_BY("kKeyShiftL") = kKeyShiftL,
+    kKeyControl DAF_DEPRECATED_BY("kKeyControlL") = kKeyControlL,
+    kKeyAlt     DAF_DEPRECATED_BY("kKeyAltL") = kKeyAltL,
+    kKeySuper   DAF_DEPRECATED_BY("kKeySuperL") = kKeySuperL,
 };
 
 /**
@@ -239,9 +239,9 @@ enum MouseCursor {
     kMouseCursorUpRightDownLeft, ///< Diagonal arrow for down/left resize
     kMouseCursorAllScroll,       ///< Omnidirectional "arrow" for scrolling
 
-    // Backwards compatibility with old DPF
-    kMouseCursorDiagonal     DISTRHO_DEPRECATED_BY("kMouseCursorUpLeftDownRight") = kMouseCursorUpLeftDownRight,
-    kMouseCursorAntiDiagonal DISTRHO_DEPRECATED_BY("kMouseCursorUpRightDownLeft") = kMouseCursorUpRightDownLeft,
+    // Backwards compatibility with old DAF
+    kMouseCursorDiagonal     DAF_DEPRECATED_BY("kMouseCursorUpLeftDownRight") = kMouseCursorUpLeftDownRight,
+    kMouseCursorAntiDiagonal DAF_DEPRECATED_BY("kMouseCursorUpRightDownLeft") = kMouseCursorUpRightDownLeft,
 };
 
 /**

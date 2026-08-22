@@ -17,14 +17,14 @@
 #ifndef DGL_OPENGL_INCLUDE_HPP_INCLUDED
 #define DGL_OPENGL_INCLUDE_HPP_INCLUDED
 
-#include "../distrho/src/DistrhoDefines.h"
+#include "../daf/src/DafDefines.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Fix OpenGL includes for Windows, based on glfw code (part 1)
 
 #undef DGL_WINGDIAPI_DEFINED
 
-#ifdef DISTRHO_OS_WINDOWS
+#ifdef DAF_OS_WINDOWS
 
 #ifndef WINAPI
 # define WINAPI __stdcall
@@ -46,12 +46,12 @@
 # define DGL_WINGDIAPI_DEFINED
 #endif // WINGDIAPI
 
-#endif // DISTRHO_OS_WINDOWS
+#endif // DAF_OS_WINDOWS
 
 // --------------------------------------------------------------------------------------------------------------------
 // OpenGL includes
 
-#ifdef DISTRHO_OS_MAC
+#ifdef DAF_OS_MAC
 // There is no OpenGL ES on macOS: Apple ships no desktop GLES implementation and no <GLES2/gl2.h>, so there is
 // nothing to include here for a GLES build. This used to silently #undef DGL_USE_GLES/GLES2/GLES3 and fall
 // through to the desktop gl3.h path below, which meant a UI_TYPE=gles2 or gles3 build on macOS quietly produced
@@ -67,7 +67,7 @@
 #  include <OpenGL/gl.h>
 # endif
 #else
-# ifndef DISTRHO_OS_WINDOWS
+# ifndef DAF_OS_WINDOWS
 #  define GL_GLEXT_PROTOTYPES
 # endif
 # ifndef __GLEW_H__

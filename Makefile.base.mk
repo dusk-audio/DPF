@@ -1,5 +1,5 @@
 #!/usr/bin/make -f
-# Makefile for DPF #
+# Makefile for DAF #
 # ---------------- #
 # Created by falkTX
 #
@@ -49,9 +49,9 @@ CXX ?= g++
 # ---------------------------------------------------------------------------------------------------------------------
 # Protect against multiple inclusion
 
-ifneq ($(DPF_MAKEFILE_BASE_INCLUDED),true)
+ifneq ($(DAF_MAKEFILE_BASE_INCLUDED),true)
 
-DPF_MAKEFILE_BASE_INCLUDED = true
+DAF_MAKEFILE_BASE_INCLUDED = true
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Auto-detect target compiler if not defined
@@ -341,7 +341,7 @@ BASE_OPTS  = -O2 -ffast-math -fdata-sections -ffunction-sections
 endif
 
 ifeq ($(DEBUG),true)
-BASE_FLAGS += -DDEBUG -DDPF_DEBUG -O0 -g
+BASE_FLAGS += -DDEBUG -DDAF_DEBUG -O0 -g
 # ifneq ($(HAIKU),true)
 # BASE_FLAGS += -fsanitize=address
 # endif
@@ -626,7 +626,7 @@ else ifeq ($(DGL_BACKEND_WAYLAND),true)
 # than a supported configuration, and it silently pulls the whole desktop GL stack into a GLES-only binary.
 #
 # Note the X11 arm above deliberately stays on gl: GLX cannot create an ES context at all (pugl's x11_gl.c
-# would need EGL for that), so an X11 GLES build is desktop GL by construction. That is pre-existing DPF
+# would need EGL for that), so an X11 GLES build is desktop GL by construction. That is pre-existing DAF
 # design and is not changed here.
 #
 # Both GLESv2 and GLESv3 resolve to glesv2: there is no glesv3.pc, libGLESv2 is where Mesa exports the ES 3.x
@@ -723,8 +723,8 @@ endif
 # ---------------------------------------------------------------------------------------------------------------------
 # Namespace flags
 
-ifneq ($(DISTRHO_NAMESPACE),)
-BUILD_CXX_FLAGS += -DDISTRHO_NAMESPACE=$(DISTRHO_NAMESPACE)
+ifneq ($(DAF_NAMESPACE),)
+BUILD_CXX_FLAGS += -DDAF_NAMESPACE=$(DAF_NAMESPACE)
 endif
 
 ifneq ($(DGL_NAMESPACE),)
@@ -850,7 +850,7 @@ else ifeq ($(WINDOWS)$(CPU_X86_64),truetrue)
 VST3_BINARY_DIR = Contents/x86_64-win
 else ifeq ($(WINDOWS)$(CPU_ARM64),truetrue)
 # NOTE the folder is "arm64-win" even for an aarch64-* toolchain triplet,
-# matching both the VST3 locations spec and dpf__determine_vst3_package_architecture in cmake/
+# matching both the VST3 locations spec and daf__determine_vst3_package_architecture in cmake/
 VST3_BINARY_DIR = Contents/arm64-win
 else ifeq ($(WINDOWS)$(CPU_ARM32),truetrue)
 VST3_BINARY_DIR = Contents/arm-win
@@ -1077,6 +1077,6 @@ mingw64-arm64:
 # ---------------------------------------------------------------------------------------------------------------------
 # Protect against multiple inclusion
 
-endif # DPF_MAKEFILE_BASE_INCLUDED
+endif # DAF_MAKEFILE_BASE_INCLUDED
 
 # ---------------------------------------------------------------------------------------------------------------------

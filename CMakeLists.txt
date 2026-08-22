@@ -13,10 +13,10 @@ cmake_minimum_required(VERSION 3.8...3.31)
 # does still reach most per-target compile flags at generate time, but the detection results then no
 # longer match the flags actually used, so that is not a reliable place to set it.
 #
-# DPF is normally consumed as a subproject, where the parent project's project() call has already
+# DAF is normally consumed as a subproject, where the parent project's project() call has already
 # run and this file can no longer influence it. Parent projects must therefore set
 # CMAKE_OSX_DEPLOYMENT_TARGET themselves (or export MACOSX_DEPLOYMENT_TARGET) before their own
-# project() call. The default below only kicks in when DPF is the top-level project, and never
+# project() call. The default below only kicks in when DAF is the top-level project, and never
 # overrides an explicit choice.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
    AND NOT DEFINED CMAKE_SYSTEM_NAME
@@ -26,16 +26,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
   # so it cannot be relied on this early. Ask the host directly instead; on hosts without uname
   # (Windows) the call is a silent no-op and leaves the variable empty, which is fine here.
   execute_process(COMMAND uname -s
-                  OUTPUT_VARIABLE DPF_HOST_UNAME
+                  OUTPUT_VARIABLE DAF_HOST_UNAME
                   OUTPUT_STRIP_TRAILING_WHITESPACE
                   ERROR_QUIET)
-  if(DPF_HOST_UNAME STREQUAL "Darwin")
+  if(DAF_HOST_UNAME STREQUAL "Darwin")
     set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version to target")
   endif()
-  unset(DPF_HOST_UNAME)
+  unset(DAF_HOST_UNAME)
 endif()
 
-project(DPF)
+project(DAF)
 
 # ensure c++11 at minimum, the parent project can override
 if(NOT CMAKE_CXX_STANDARD)
@@ -44,33 +44,33 @@ endif()
 
 # check if we are building from this project, or are imported by another
 if(PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-  set(DPF_BUILD_FROM_HERE TRUE)
+  set(DAF_BUILD_FROM_HERE TRUE)
 else()
-  set(DPF_BUILD_FROM_HERE FALSE)
+  set(DAF_BUILD_FROM_HERE FALSE)
 endif()
 
-option(DPF_LIBRARIES "Build the libraries" "${DPF_BUILD_FROM_HERE}")
-option(DPF_EXAMPLES "Build the examples" "${DPF_BUILD_FROM_HERE}")
+option(DAF_LIBRARIES "Build the libraries" "${DAF_BUILD_FROM_HERE}")
+option(DAF_EXAMPLES "Build the examples" "${DAF_BUILD_FROM_HERE}")
 
-set(DPF_ROOT_DIR "${PROJECT_SOURCE_DIR}" CACHE INTERNAL
-  "Root directory of the DISTRHO Plugin Framework.")
+set(DAF_ROOT_DIR "${PROJECT_SOURCE_DIR}" CACHE INTERNAL
+  "Root directory of the Dusk Audio Framework.")
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
-include(DPF-plugin)
+include(DAF-plugin)
 
-if(DPF_LIBRARIES)
+if(DAF_LIBRARIES)
   find_package(PkgConfig QUIET)
   if(PKG_CONFIG_FOUND)
     pkg_check_modules(CAIRO "cairo")
     if(CAIRO_FOUND AND (NOT HAIKU))
-      dpf__add_dgl_cairo(TRUE TRUE TRUE)
+      daf__add_dgl_cairo(TRUE TRUE TRUE)
     endif()
   endif()
-  dpf__add_dgl_external(TRUE TRUE)
-  dpf__add_dgl_opengl(TRUE TRUE TRUE)
+  daf__add_dgl_external(TRUE TRUE)
+  daf__add_dgl_opengl(TRUE TRUE TRUE)
 endif()
 
-if(DPF_EXAMPLES)
+if(DAF_EXAMPLES)
   find_package(PkgConfig QUIET)
   if(PKG_CONFIG_FOUND)
     pkg_check_modules(CAIRO "cairo")

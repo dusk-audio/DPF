@@ -14,9 +14,9 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "DistrhoPlugin.hpp"
+#include "DafPlugin.hpp"
 
-START_NAMESPACE_DISTRHO
+START_NAMESPACE_DAF
 
 // -----------------------------------------------------------------------------------------------------------
 
@@ -28,8 +28,8 @@ class EmbedExternalExamplePlugin : public Plugin
 public:
     EmbedExternalExamplePlugin()
         : Plugin(kParameterCount, 0, 0),
-          fWidth(DISTRHO_UI_DEFAULT_WIDTH),
-          fHeight(DISTRHO_UI_DEFAULT_HEIGHT)
+          fWidth(DAF_UI_DEFAULT_WIDTH),
+          fHeight(DAF_UI_DEFAULT_HEIGHT)
     {
     }
 
@@ -122,7 +122,7 @@ protected:
         {
         case kParameterWidth:
             parameter.hints      = kParameterIsAutomatable|kParameterIsInteger;
-            parameter.ranges.def = DISTRHO_UI_DEFAULT_WIDTH;
+            parameter.ranges.def = DAF_UI_DEFAULT_WIDTH;
             parameter.ranges.min = 512.0f;
             parameter.ranges.max = 4096.0f;
             parameter.name   = "Width";
@@ -131,7 +131,7 @@ protected:
             break;
         case kParameterHeight:
             parameter.hints      = kParameterIsAutomatable|kParameterIsInteger;
-            parameter.ranges.def = DISTRHO_UI_DEFAULT_HEIGHT;
+            parameter.ranges.def = DAF_UI_DEFAULT_HEIGHT;
             parameter.ranges.min = 512.0f;
             parameter.ranges.max = 4096.0f;
             parameter.name   = "Height";
@@ -210,11 +210,11 @@ private:
    /**
       Set our plugin class as non-copyable and add a leak detector just in case.
     */
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EmbedExternalExamplePlugin)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EmbedExternalExamplePlugin)
 };
 
 /* ------------------------------------------------------------------------------------------------------------
- * Plugin entry point, called by DPF to create a new plugin instance. */
+ * Plugin entry point, called by DAF to create a new plugin instance. */
 
 Plugin* createPlugin()
 {
@@ -223,4 +223,4 @@ Plugin* createPlugin()
 
 // -----------------------------------------------------------------------------------------------------------
 
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF

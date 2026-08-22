@@ -21,7 +21,7 @@
 
 START_NAMESPACE_DGL
 
-#include "../distrho/extra/WebViewImpl.hpp"
+#include "../daf/extra/WebViewImpl.hpp"
 
 END_NAMESPACE_DGL
 

@@ -19,10 +19,10 @@
 
 #include "Base.hpp"
 
-#ifdef DISTRHO_NAMESPACE
-START_NAMESPACE_DISTRHO
+#ifdef DAF_NAMESPACE
+START_NAMESPACE_DAF
 class PluginApplication;
-END_NAMESPACE_DISTRHO
+END_NAMESPACE_DAF
 #endif
 
 START_NAMESPACE_DGL
@@ -40,12 +40,12 @@ START_NAMESPACE_DGL
    Make sure the flags used to build DGL match the ones used by your program and the link errors should go away.
  */
 #define BUILD_CONFIG_SENTINEL(NAME) \
-   static struct DISTRHO_JOIN_MACRO(_, NAME) { bool ok; DISTRHO_JOIN_MACRO(_, NAME)() noexcept; } NAME;
+   static struct DAF_JOIN_MACRO(_, NAME) { bool ok; DAF_JOIN_MACRO(_, NAME)() noexcept; } NAME;
 
-#ifdef DPF_DEBUG
-BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_dpf_debug_on)
+#ifdef DAF_DEBUG
+BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_daf_debug_on)
 #else
-BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_dpf_debug_off)
+BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_daf_debug_off)
 #endif
 
 #ifdef DGL_USE_FILE_BROWSER
@@ -80,7 +80,7 @@ BUILD_CONFIG_SENTINEL(fail_to_link_is_mismatch_dgl_no_shared_resources_off)
 
    Unless stated otherwise, functions within this class are not thread-safe.
  */
-class DISTRHO_API Application
+class DAF_API Application
 {
 public:
    /**
@@ -178,7 +178,7 @@ public:
       It is not displayed to the user, but can be used in scripts and by window managers,
       so it should be the same for every instance of the application, but different from other applications.
 
-      Plugins created with DPF have their class name automatically set based on DGL_NAMESPACE and plugin name.
+      Plugins created with DAF have their class name automatically set based on DGL_NAMESPACE and plugin name.
     */
     const char* getClassName() const noexcept;
 
@@ -192,11 +192,11 @@ private:
     struct PrivateData;
     PrivateData* const pData;
     friend class Window;
-   #ifdef DISTRHO_NAMESPACE
-    friend class DISTRHO_NAMESPACE::PluginApplication;
+   #ifdef DAF_NAMESPACE
+    friend class DAF_NAMESPACE::PluginApplication;
    #endif
 
-    DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Application)
+    DAF_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Application)
 };
 
 // --------------------------------------------------------------------------------------------------------------------

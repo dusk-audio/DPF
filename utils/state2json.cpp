@@ -53,9 +53,9 @@ int main(int argc, char* argv[])
         if (buffer[i] == '\0')
         {
             // special keys
-            if (key == "__dpf_state_begin__")
+            if (key == "__daf_state_begin__")
             {
-                DISTRHO_SAFE_ASSERT_INT_RETURN(queryingType == 'i' || queryingType == 'n', queryingType, 1);
+                DAF_SAFE_ASSERT_INT_RETURN(queryingType == 'i' || queryingType == 'n', queryingType, 1);
                 if (queryingType == 'n')
                     printf(",");
                 printf("\n  \"states\": {");
@@ -66,9 +66,9 @@ int main(int argc, char* argv[])
                 hasValue = false;
                 continue;
             }
-            if (key == "__dpf_state_end__")
+            if (key == "__daf_state_end__")
             {
-                DISTRHO_SAFE_ASSERT_INT_RETURN(queryingType == 's', queryingType, 1);
+                DAF_SAFE_ASSERT_INT_RETURN(queryingType == 's', queryingType, 1);
                 printf("\n  }");
                 queryingType = 'n';
                 key.clear();
@@ -76,9 +76,9 @@ int main(int argc, char* argv[])
                 hasValue = false;
                 continue;
             }
-            if (key == "__dpf_parameters_begin__")
+            if (key == "__daf_parameters_begin__")
             {
-                DISTRHO_SAFE_ASSERT_INT_RETURN(queryingType == 'i' || queryingType == 'n', queryingType, 1);
+                DAF_SAFE_ASSERT_INT_RETURN(queryingType == 'i' || queryingType == 'n', queryingType, 1);
                 if (queryingType == 'n')
                     printf(",");
                 printf("\n  \"parameters\": {");
@@ -89,9 +89,9 @@ int main(int argc, char* argv[])
                 hasValue = false;
                 continue;
             }
-            if (key == "__dpf_parameters_end__")
+            if (key == "__daf_parameters_end__")
             {
-                DISTRHO_SAFE_ASSERT_INT_RETURN(queryingType == 'p', queryingType, 1);
+                DAF_SAFE_ASSERT_INT_RETURN(queryingType == 'p', queryingType, 1);
                 printf("\n  }");
                 queryingType = 'x';
                 key.clear();
@@ -107,9 +107,9 @@ int main(int argc, char* argv[])
             if (! hasValue)
                 continue;
 
-            if (key == "__dpf_program__")
+            if (key == "__daf_program__")
             {
-                DISTRHO_SAFE_ASSERT_INT_RETURN(queryingType == 'i', queryingType, 1);
+                DAF_SAFE_ASSERT_INT_RETURN(queryingType == 'i', queryingType, 1);
                 queryingType = 'n';
 
                 printf("\n  \"program\": %s", value.buffer());

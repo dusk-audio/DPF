@@ -55,7 +55,7 @@ OpenGLImage::OpenGLImage(const char* const rdata, const uint w, const uint h, co
     #endif
 {
     glGenTextures(1, &textureId);
-    DISTRHO_SAFE_ASSERT(textureId != 0);
+    DAF_SAFE_ASSERT(textureId != 0);
 }
 
 OpenGLImage::OpenGLImage(const char* const rdata, const Size<uint>& s, const ImageFormat fmt)
@@ -69,7 +69,7 @@ OpenGLImage::OpenGLImage(const char* const rdata, const Size<uint>& s, const Ima
     #endif
 {
     glGenTextures(1, &textureId);
-    DISTRHO_SAFE_ASSERT(textureId != 0);
+    DAF_SAFE_ASSERT(textureId != 0);
 }
 
 OpenGLImage::OpenGLImage(const OpenGLImage& image)
@@ -83,7 +83,7 @@ OpenGLImage::OpenGLImage(const OpenGLImage& image)
     #endif
 {
     glGenTextures(1, &textureId);
-    DISTRHO_SAFE_ASSERT(textureId != 0);
+    DAF_SAFE_ASSERT(textureId != 0);
 }
 
 OpenGLImage::~OpenGLImage()
@@ -102,7 +102,7 @@ void OpenGLImage::loadFromMemory(const char* const rdata, const Size<uint>& s, c
     {
         textureInit = true;
         glGenTextures(1, &textureId);
-        DISTRHO_SAFE_ASSERT(textureId != 0);
+        DAF_SAFE_ASSERT(textureId != 0);
     }
     setupCalled = false;
     ImageBase::loadFromMemory(rdata, s, fmt);
@@ -119,7 +119,7 @@ OpenGLImage& OpenGLImage::operator=(const OpenGLImage& image) noexcept
     {
         textureInit = true;
         glGenTextures(1, &textureId);
-        DISTRHO_SAFE_ASSERT(textureId != 0);
+        DAF_SAFE_ASSERT(textureId != 0);
     }
 
     return *this;
@@ -137,7 +137,7 @@ OpenGLImage::OpenGLImage(const char* const rdata, const uint w, const uint h, co
     #endif
 {
     glGenTextures(1, &textureId);
-    DISTRHO_SAFE_ASSERT(textureId != 0);
+    DAF_SAFE_ASSERT(textureId != 0);
 }
 
 OpenGLImage::OpenGLImage(const char* const rdata, const Size<uint>& s, const GLenum fmt)
@@ -151,7 +151,7 @@ OpenGLImage::OpenGLImage(const char* const rdata, const Size<uint>& s, const GLe
     #endif
 {
     glGenTextures(1, &textureId);
-    DISTRHO_SAFE_ASSERT(textureId != 0);
+    DAF_SAFE_ASSERT(textureId != 0);
 }
 #endif
 
@@ -245,7 +245,7 @@ void Window::PrivateData::renderToPicture(const char* const filename,
                                           const uint height)
 {
     FILE* const f = fopen(filename, "w");
-    DISTRHO_SAFE_ASSERT_RETURN(f != nullptr,);
+    DAF_SAFE_ASSERT_RETURN(f != nullptr,);
 
     GLubyte* const pixels = new GLubyte[width * height * 3 * sizeof(GLubyte)];
 

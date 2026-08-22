@@ -1,6 +1,6 @@
 # Metronome example
 
-This example will show tempo sync in DPF.<br/>
+This example will show tempo sync in DAF.<br/>
 
 This plugin will output a sine wave at the start of every beat.<br/>
 The pitch of sine wave is 1 octave higher at the start of every bar.<br/>
@@ -31,4 +31,4 @@ if (timePos.bbt.valid)
 ```
 
 Reference:
-- [DISTRHO Plugin Framework: TimePosition::BarBeatTick Struct Reference](https://distrho.github.io/DPF/structTimePosition_1_1BarBeatTick.html)
+- [Dusk Audio Framework: TimePosition::BarBeatTick Struct Reference](https://distrho.github.io/DAF/structTimePosition_1_1BarBeatTick.html)
