@@ -207,14 +207,6 @@ static constexpr const uint32_t kWantedAudioFormat = 0
                                                    | kAudioFormatFlagIsNonInterleaved;
 
 
-// --------------------------------------------------------------------------------------------------------------------
-// clang `std::max` is not constexpr compatible, we need to define our own
-
-template<typename T>
-static inline constexpr T d_max(const T a, const T b) { return a > b ? a : b; }
-
-// --------------------------------------------------------------------------------------------------------------------
-
 static constexpr const AUChannelInfo kChannelInfo[] = {
     { DAF_PLUGIN_NUM_INPUTS, DAF_PLUGIN_NUM_OUTPUTS },
    #ifdef DAF_PLUGIN_EXTRA_IO
@@ -226,17 +218,6 @@ static constexpr const AUChannelInfo kChannelInfo[] = {
 #if DAF_PLUGIN_NUM_INPUTS + DAF_PLUGIN_NUM_OUTPUTS == 0
 #error DAF_PLUGIN_EXTRA_IO defined but no IO available
 #endif
-
-static inline
-bool isInputNumChannelsValid(const uint16_t numChannels)
-{
-    for (uint16_t i = 0; i < ARRAY_SIZE(kChannelInfo); ++i)
-    {
-        if (kChannelInfo[i].inChannels == numChannels)
-            return true;
-    }
-    return false;
-}
 
 static inline
 bool isOutputNumChannelsValid(const uint16_t numChannels)
@@ -273,6 +254,40 @@ struct RenderListener {
     AURenderCallback proc;
     void* userData;
 };
+
+#if DAF_PLUGIN_NUM_INPUTS != 0
+struct AUInputBus {
+    uint32_t groupId;
+    uint16_t declaredChannels;
+    uint16_t channels;
+    bool grouped;
+    bool sidechain;
+    AudioUnitConnection connection;
+    AURenderCallbackStruct renderCallback;
+    Float64 sampleRate;
+    AudioBufferList* bufferList;
+
+    AUInputBus() noexcept
+        : groupId(kPortGroupNone),
+          declaredChannels(0),
+          channels(0),
+          grouped(false),
+          sidechain(false),
+          connection(),
+          renderCallback(),
+          sampleRate(0.0),
+          bufferList(nullptr)
+    {
+        std::memset(&connection, 0, sizeof(connection));
+        std::memset(&renderCallback, 0, sizeof(renderCallback));
+    }
+
+    bool hasSource() const noexcept
+    {
+        return connection.sourceAudioUnit != nullptr || renderCallback.inputProc != nullptr;
+    }
+};
+#endif
 
 typedef std::vector<PropertyListener> PropertyListeners;
 typedef std::vector<RenderListener> RenderListeners;
@@ -329,9 +344,7 @@ public:
           fPropertyListeners(),
           fRenderListeners(),
         #if DAF_PLUGIN_NUM_INPUTS != 0
-          fInputConnectionBus(0),
-          fInputConnectionUnit(nullptr),
-          fSampleRateForInput(d_nextSampleRate),
+          fInputBusCount(0),
          #ifdef DAF_PLUGIN_EXTRA_IO
           fNumInputs(DAF_PLUGIN_NUM_INPUTS),
          #endif
@@ -345,6 +358,7 @@ public:
          #if DAF_PLUGIN_NUM_INPUTS + DAF_PLUGIN_NUM_OUTPUTS != 0
           fAudioBufferList(nullptr),
          #endif
+          fChannelInfoCount(0),
           fUsingRenderListeners(false),
           fParameterCount(fPlugin.getParameterCount()),
           fLastParameterValues(nullptr),
@@ -390,9 +404,9 @@ public:
         }
 
        #if DAF_PLUGIN_NUM_INPUTS != 0
-        std::memset(&fInputRenderCallback, 0, sizeof(fInputRenderCallback));
-        fInputRenderCallback.inputProc = nullptr;
-        fInputRenderCallback.inputProcRefCon = nullptr;
+        configureInputBuses();
+       #else
+        configureChannelInfo();
        #endif
 
        #if DAF_PLUGIN_WANT_MIDI_INPUT
@@ -473,8 +487,8 @@ public:
 
     OSStatus auInitialize()
     {
-       #if defined(DAF_PLUGIN_EXTRA_IO) && DAF_PLUGIN_NUM_INPUTS != 0 && DAF_PLUGIN_NUM_OUTPUTS != 0
-        if (! isNumChannelsComboValid(fNumInputs, fNumOutputs))
+       #ifdef DAF_PLUGIN_EXTRA_IO
+        if (! updatePluginAudioPortIO())
             return kAudioUnitErr_FormatNotSupported;
        #endif
 
@@ -526,8 +540,8 @@ public:
 
         case kAudioUnitProperty_MakeConnection:
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Input, inScope, kAudioUnitErr_InvalidScope);
-            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
            #if DAF_PLUGIN_NUM_INPUTS != 0
+            DAF_SAFE_ASSERT_UINT_RETURN(inElement < fInputBusCount, inElement, kAudioUnitErr_InvalidElement);
             outDataSize = sizeof(AudioUnitConnection);
             outWritable = true;
             return noErr;
@@ -536,10 +550,10 @@ public:
            #endif
 
         case kAudioUnitProperty_SampleRate:
-            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
            #if DAF_PLUGIN_NUM_INPUTS != 0
             if (inScope == kAudioUnitScope_Input)
             {
+                DAF_SAFE_ASSERT_UINT_RETURN(inElement < fInputBusCount, inElement, kAudioUnitErr_InvalidElement);
                 outDataSize = sizeof(Float64);
                 outWritable = true;
                 return noErr;
@@ -548,6 +562,7 @@ public:
            #if DAF_PLUGIN_NUM_OUTPUTS != 0
             if (inScope == kAudioUnitScope_Output)
             {
+                DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
                 outDataSize = sizeof(Float64);
                 outWritable = true;
                 return noErr;
@@ -577,10 +592,10 @@ public:
        #endif
 
         case kAudioUnitProperty_StreamFormat:
-            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
            #if DAF_PLUGIN_NUM_INPUTS != 0
             if (inScope == kAudioUnitScope_Input)
             {
+                DAF_SAFE_ASSERT_UINT_RETURN(inElement < fInputBusCount, inElement, kAudioUnitErr_InvalidElement);
                 outDataSize = sizeof(AudioStreamBasicDescription);
                 outWritable = true;
                 return noErr;
@@ -589,6 +604,7 @@ public:
            #if DAF_PLUGIN_NUM_OUTPUTS != 0
             if (inScope == kAudioUnitScope_Output)
             {
+                DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
                 outDataSize = sizeof(AudioStreamBasicDescription);
                 outWritable = true;
                 return noErr;
@@ -617,7 +633,7 @@ public:
         case kAudioUnitProperty_SupportedNumChannels:
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
             DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
-            outDataSize = sizeof(kChannelInfo);
+            outDataSize = sizeof(AUChannelInfo) * fChannelInfoCount;
             outWritable = false;
             return noErr;
 
@@ -647,8 +663,8 @@ public:
 
         case kAudioUnitProperty_SetRenderCallback:
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Input, inScope, kAudioUnitErr_InvalidScope);
-            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
            #if DAF_PLUGIN_NUM_INPUTS != 0
+            DAF_SAFE_ASSERT_UINT_RETURN(inElement < fInputBusCount, inElement, kAudioUnitErr_InvalidElement);
             outDataSize = sizeof(AURenderCallbackStruct);
             outWritable = true;
             return noErr;
@@ -847,7 +863,9 @@ public:
            #if DAF_PLUGIN_NUM_INPUTS != 0
             if (inScope == kAudioUnitScope_Input)
             {
-                *static_cast<Float64*>(outData) = fSampleRateForInput;
+                if (inElement >= fInputBusCount)
+                    return kAudioUnitErr_InvalidElement;
+                *static_cast<Float64*>(outData) = fInputBuses[inElement].sampleRate;
             }
             else
            #endif
@@ -952,28 +970,27 @@ public:
                 AudioStreamBasicDescription* const desc = static_cast<AudioStreamBasicDescription*>(outData);
                 std::memset(desc, 0, sizeof(*desc));
 
-                if (inElement != 0)
-                    return kAudioUnitErr_InvalidElement;
-
                #if DAF_PLUGIN_NUM_INPUTS != 0
                 if (inScope == kAudioUnitScope_Input)
                 {
-                   #ifdef DAF_PLUGIN_EXTRA_IO
-                    desc->mChannelsPerFrame = fNumInputs;
-                   #else
-                    desc->mChannelsPerFrame = DAF_PLUGIN_NUM_INPUTS;
-                   #endif
+                    if (inElement >= fInputBusCount)
+                        return kAudioUnitErr_InvalidElement;
+                    desc->mChannelsPerFrame = fInputBuses[inElement].channels;
+                    desc->mSampleRate = fInputBuses[inElement].sampleRate;
                 }
                 else
                #endif
                #if DAF_PLUGIN_NUM_OUTPUTS != 0
                 if (inScope == kAudioUnitScope_Output)
                 {
+                    if (inElement != 0)
+                        return kAudioUnitErr_InvalidElement;
                    #ifdef DAF_PLUGIN_EXTRA_IO
                     desc->mChannelsPerFrame = fNumOutputs;
-                   #else
+                    #else
                     desc->mChannelsPerFrame = DAF_PLUGIN_NUM_OUTPUTS;
                    #endif
+                    desc->mSampleRate = fSampleRateForOutput;
                 }
                 else
                #endif
@@ -983,7 +1000,6 @@ public:
 
                 desc->mFormatID         = kAudioFormatLinearPCM;
                 desc->mFormatFlags      = kWantedAudioFormat;
-                desc->mSampleRate       = fPlugin.getSampleRate();
                 desc->mBitsPerChannel   = 32;
                 desc->mBytesPerFrame    = sizeof(float);
                 desc->mBytesPerPacket   = sizeof(float);
@@ -998,7 +1014,11 @@ public:
                 *static_cast<UInt32*>(outData) = 1;
                 break;
             case kAudioUnitScope_Input:
-                *static_cast<UInt32*>(outData) = DAF_PLUGIN_NUM_INPUTS != 0 ? 1 : 0;
+               #if DAF_PLUGIN_NUM_INPUTS != 0
+                *static_cast<UInt32*>(outData) = fInputBusCount;
+               #else
+                *static_cast<UInt32*>(outData) = 0;
+               #endif
                 break;
             case kAudioUnitScope_Output:
                 *static_cast<UInt32*>(outData) = DAF_PLUGIN_NUM_OUTPUTS != 0 ? 1 : 0;
@@ -1016,7 +1036,7 @@ public:
        #endif
 
         case kAudioUnitProperty_SupportedNumChannels:
-            std::memcpy(outData, kChannelInfo, sizeof(kChannelInfo));
+            std::memcpy(outData, fChannelInfo, sizeof(AUChannelInfo) * fChannelInfoCount);
             return noErr;
 
         case kAudioUnitProperty_MaximumFramesPerSlice:
@@ -1034,7 +1054,9 @@ public:
 
        #if DAF_PLUGIN_NUM_INPUTS != 0
         case kAudioUnitProperty_SetRenderCallback:
-            std::memcpy(outData, &fInputRenderCallback, sizeof(AURenderCallbackStruct));
+            if (inElement >= fInputBusCount)
+                return kAudioUnitErr_InvalidElement;
+            std::memcpy(outData, &fInputBuses[inElement].renderCallback, sizeof(AURenderCallbackStruct));
             return noErr;
        #endif
 
@@ -1059,15 +1081,14 @@ public:
 
        #if DAF_PLUGIN_NUM_INPUTS != 0 && DAF_PLUGIN_NUM_OUTPUTS != 0
         case kAudioUnitProperty_InPlaceProcessing:
-            // Only when the host's single buffer list can serve both
-            // directions. With more inputs than outputs (a sidechain pair on
-            // a stereo effect) it cannot, and claiming otherwise makes hosts
-            // hand us a list too short for the inputs.
+            // Auxiliary input buses have their own buffer lists, so only the
+            // main input and output bus widths determine in-place support.
            #ifdef DAF_PLUGIN_EXTRA_IO
-            *static_cast<UInt32*>(outData) = fNumInputs == fNumOutputs ? 1 : 0;
+            *static_cast<UInt32*>(outData) =
+                fInputBuses[0].channels == fNumOutputs ? 1 : 0;
            #else
             *static_cast<UInt32*>(outData) =
-                DAF_PLUGIN_NUM_INPUTS == DAF_PLUGIN_NUM_OUTPUTS ? 1 : 0;
+                fInputBuses[0].channels == DAF_PLUGIN_NUM_OUTPUTS ? 1 : 0;
            #endif
             return noErr;
        #endif
@@ -1223,16 +1244,24 @@ public:
 
         case kAudioUnitProperty_MakeConnection:
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Input, inScope, kAudioUnitErr_InvalidScope);
-            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
             DAF_SAFE_ASSERT_UINT_RETURN(inDataSize == sizeof(AudioUnitConnection), inDataSize, kAudioUnitErr_InvalidPropertyValue);
            #if DAF_PLUGIN_NUM_INPUTS != 0
+            DAF_SAFE_ASSERT_UINT_RETURN(inElement < fInputBusCount, inElement, kAudioUnitErr_InvalidElement);
             {
                 const AudioUnitConnection conn = *static_cast<const AudioUnitConnection*>(inData);
+                AUInputBus& bus(fInputBuses[inElement]);
+                const AudioUnitConnection previous = bus.connection;
 
                 if (conn.sourceAudioUnit == nullptr)
                 {
-                    fInputConnectionBus = 0;
-                    fInputConnectionUnit = nullptr;
+                    std::memset(&bus.connection, 0, sizeof(bus.connection));
+                   #ifdef DAF_PLUGIN_EXTRA_IO
+                    if (! updatePluginAudioPortIO())
+                    {
+                        bus.connection = previous;
+                        return kAudioUnitErr_FormatNotSupported;
+                    }
+                   #endif
                     return noErr;
                 }
 
@@ -1257,16 +1286,17 @@ public:
                                                desc.mFramesPerPacket, kAudioUnitErr_FormatNotSupported);
                 DAF_SAFE_ASSERT_INT_RETURN(desc.mFormatFlags == kWantedAudioFormat,
                                                desc.mFormatFlags, kAudioUnitErr_FormatNotSupported);
-               #ifdef DAF_PLUGIN_EXTRA_IO
-                DAF_SAFE_ASSERT_UINT_RETURN(desc.mChannelsPerFrame == fNumInputs,
-                                                desc.mChannelsPerFrame, kAudioUnitErr_FormatNotSupported);
-               #else
-                DAF_SAFE_ASSERT_UINT_RETURN(desc.mChannelsPerFrame == DAF_PLUGIN_NUM_INPUTS,
-                                                desc.mChannelsPerFrame, kAudioUnitErr_FormatNotSupported);
-               #endif
+                DAF_SAFE_ASSERT_UINT_RETURN(desc.mChannelsPerFrame == bus.channels,
+                                            desc.mChannelsPerFrame, kAudioUnitErr_FormatNotSupported);
 
-                fInputConnectionBus = conn.sourceOutputNumber;
-                fInputConnectionUnit = conn.sourceAudioUnit;
+                bus.connection = conn;
+               #ifdef DAF_PLUGIN_EXTRA_IO
+                if (! updatePluginAudioPortIO())
+                {
+                    bus.connection = previous;
+                    return kAudioUnitErr_FormatNotSupported;
+                }
+               #endif
             }
             return noErr;
            #else
@@ -1281,7 +1311,6 @@ public:
            #else
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Input, inScope, kAudioUnitErr_InvalidScope);
            #endif
-            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
             DAF_SAFE_ASSERT_UINT_RETURN(inDataSize == sizeof(Float64), inDataSize, kAudioUnitErr_InvalidPropertyValue);
             {
                #if DAF_PLUGIN_NUM_INPUTS != 0 || DAF_PLUGIN_NUM_OUTPUTS != 0
@@ -1291,13 +1320,16 @@ public:
                #if DAF_PLUGIN_NUM_INPUTS != 0
                 if (inScope == kAudioUnitScope_Input)
                 {
-                    if (d_isNotEqual(fSampleRateForInput, sampleRate))
+                    DAF_SAFE_ASSERT_UINT_RETURN(inElement < fInputBusCount, inElement, kAudioUnitErr_InvalidElement);
+                    AUInputBus& bus(fInputBuses[inElement]);
+                    if (d_isNotEqual(bus.sampleRate, sampleRate))
                     {
-                        fSampleRateForInput = sampleRate;
-                        d_nextSampleRate = sampleRate;
+                        bus.sampleRate = sampleRate;
+                        if (inElement == 0)
+                            d_nextSampleRate = sampleRate;
 
                        #if DAF_PLUGIN_NUM_OUTPUTS != 0
-                        if (d_isEqual(fSampleRateForOutput, sampleRate))
+                        if (inElement == 0 && d_isEqual(fSampleRateForOutput, sampleRate))
                        #endif
                         {
                             fPlugin.setSampleRate(sampleRate, true);
@@ -1312,13 +1344,14 @@ public:
                #if DAF_PLUGIN_NUM_OUTPUTS != 0
                 if (inScope == kAudioUnitScope_Output)
                 {
+                    DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
                     if (d_isNotEqual(fSampleRateForOutput, sampleRate))
                     {
                         fSampleRateForOutput = sampleRate;
                         d_nextSampleRate = sampleRate;
 
                        #if DAF_PLUGIN_NUM_INPUTS != 0
-                        if (d_isEqual(fSampleRateForInput, sampleRate))
+                        if (d_isEqual(fInputBuses[0].sampleRate, sampleRate))
                        #endif
                         {
                             fPlugin.setSampleRate(sampleRate, true);
@@ -1340,7 +1373,6 @@ public:
            #else
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Input, inScope, kAudioUnitErr_InvalidScope);
            #endif
-            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
             DAF_SAFE_ASSERT_UINT_RETURN(inDataSize == sizeof(AudioStreamBasicDescription), inDataSize, kAudioUnitErr_InvalidPropertyValue);
             {
                 const AudioStreamBasicDescription* const desc = static_cast<const AudioStreamBasicDescription*>(inData);
@@ -1367,33 +1399,30 @@ public:
                #if DAF_PLUGIN_NUM_INPUTS != 0
                 if (inScope == kAudioUnitScope_Input)
                 {
+                    DAF_SAFE_ASSERT_UINT_RETURN(inElement < fInputBusCount, inElement, kAudioUnitErr_InvalidElement);
+                    AUInputBus& bus(fInputBuses[inElement]);
                     bool changed = false;
 
-                   #ifdef DAF_PLUGIN_EXTRA_IO
-                    if (! isInputNumChannelsValid(desc->mChannelsPerFrame))
+                    if (! isInputBusChannelCountValid(inElement, desc->mChannelsPerFrame))
                         return kAudioUnitErr_FormatNotSupported;
 
-                    if (fNumInputs != desc->mChannelsPerFrame)
+                    if (bus.channels != desc->mChannelsPerFrame)
                     {
                         changed = true;
-                        fNumInputs = desc->mChannelsPerFrame;
+                        bus.channels = desc->mChannelsPerFrame;
 
-                       #if DAF_PLUGIN_NUM_OUTPUTS != 0
-                        if (isNumChannelsComboValid(fNumInputs, fNumOutputs))
+                       #ifdef DAF_PLUGIN_EXTRA_IO
+                        updatePluginAudioPortIO();
                        #endif
-                        {
-                            fPlugin.setAudioPortIO(fNumInputs, fNumOutputs);
-                        }
                     }
-                   #endif
 
-                    if (d_isNotEqual(fSampleRateForInput, desc->mSampleRate))
+                    if (d_isNotEqual(bus.sampleRate, desc->mSampleRate))
                     {
                         changed = true;
-                        fSampleRateForInput = desc->mSampleRate;
+                        bus.sampleRate = desc->mSampleRate;
 
                        #if DAF_PLUGIN_NUM_OUTPUTS != 0
-                        if (d_isEqual(fSampleRateForOutput, desc->mSampleRate))
+                        if (inElement == 0 && d_isEqual(fSampleRateForOutput, desc->mSampleRate))
                        #endif
                         {
                             fPlugin.setSampleRate(desc->mSampleRate, true);
@@ -1412,6 +1441,7 @@ public:
                #if DAF_PLUGIN_NUM_OUTPUTS != 0
                 if (inScope == kAudioUnitScope_Output)
                 {
+                    DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
                     bool changed = false;
 
                    #ifdef DAF_PLUGIN_EXTRA_IO
@@ -1422,13 +1452,7 @@ public:
                     {
                         changed = true;
                         fNumOutputs = desc->mChannelsPerFrame;
-
-                       #if DAF_PLUGIN_NUM_INPUTS != 0
-                        if (isNumChannelsComboValid(fNumInputs, fNumOutputs))
-                       #endif
-                        {
-                            fPlugin.setAudioPortIO(fNumInputs, fNumOutputs);
-                        }
+                        updatePluginAudioPortIO();
                     }
                    #endif
 
@@ -1438,7 +1462,7 @@ public:
                         fSampleRateForOutput = desc->mSampleRate;
 
                        #if DAF_PLUGIN_NUM_INPUTS != 0
-                        if (d_isEqual(fSampleRateForInput, desc->mSampleRate))
+                        if (d_isEqual(fInputBuses[0].sampleRate, desc->mSampleRate))
                        #endif
                         {
                             fPlugin.setSampleRate(desc->mSampleRate, true);
@@ -1488,10 +1512,21 @@ public:
 
         case kAudioUnitProperty_SetRenderCallback:
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Input, inScope, kAudioUnitErr_InvalidScope);
-            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
             DAF_SAFE_ASSERT_UINT_RETURN(inDataSize == sizeof(AURenderCallbackStruct), inDataSize, kAudioUnitErr_InvalidPropertyValue);
            #if DAF_PLUGIN_NUM_INPUTS != 0
-            std::memcpy(&fInputRenderCallback, inData, sizeof(AURenderCallbackStruct));
+            DAF_SAFE_ASSERT_UINT_RETURN(inElement < fInputBusCount, inElement, kAudioUnitErr_InvalidElement);
+            {
+                AUInputBus& bus(fInputBuses[inElement]);
+                const AURenderCallbackStruct previous = bus.renderCallback;
+                std::memcpy(&bus.renderCallback, inData, sizeof(AURenderCallbackStruct));
+               #ifdef DAF_PLUGIN_EXTRA_IO
+                if (! updatePluginAudioPortIO())
+                {
+                    bus.renderCallback = previous;
+                    return kAudioUnitErr_FormatNotSupported;
+                }
+               #endif
+            }
             return noErr;
            #else
             return kAudioUnitErr_PropertyNotInUse;
@@ -1880,7 +1915,16 @@ public:
     OSStatus auReset(const AudioUnitScope scope, const AudioUnitElement elem)
     {
         DAF_SAFE_ASSERT_UINT_RETURN(scope == kAudioUnitScope_Global || scope == kAudioUnitScope_Input || scope == kAudioUnitScope_Output, scope, kAudioUnitErr_InvalidScope);
-        DAF_SAFE_ASSERT_UINT_RETURN(elem == 0, elem, kAudioUnitErr_InvalidElement);
+       #if DAF_PLUGIN_NUM_INPUTS != 0
+        if (scope == kAudioUnitScope_Input)
+        {
+            DAF_SAFE_ASSERT_UINT_RETURN(elem < fInputBusCount, elem, kAudioUnitErr_InvalidElement);
+        }
+        else
+       #endif
+        {
+            DAF_SAFE_ASSERT_UINT_RETURN(elem == 0, elem, kAudioUnitErr_InvalidElement);
+        }
 
         if (fResetParameterIndex != UINT32_MAX)
         {
@@ -1961,12 +2005,7 @@ public:
         }
 
       #if DAF_PLUGIN_NUM_INPUTS != 0
-       #ifdef DAF_PLUGIN_EXTRA_IO
-        const uint32_t numInputs = fNumInputs;
-       #else
-        constexpr const uint32_t numInputs = DAF_PLUGIN_NUM_INPUTS;
-       #endif
-        const float* inputs[numInputs];
+        const float* inputs[DAF_PLUGIN_NUM_INPUTS] = {};
       #else
         constexpr const float** inputs = nullptr;
       #endif
@@ -1982,16 +2021,48 @@ public:
         constexpr float** outputs = nullptr;
       #endif
 
+       #if DAF_PLUGIN_NUM_OUTPUTS != 0
+        for (uint16_t i = 0; i < numOutputs; ++i)
+        {
+            if (ioData->mBuffers[i].mData == nullptr)
+            {
+                ioData->mBuffers[i].mData = fAudioBufferList->mBuffers[i].mData;
+                std::memset(ioData->mBuffers[i].mData, 0, sizeof(float) * inFramesToProcess);
+            }
+            outputs[i] = static_cast<float*>(ioData->mBuffers[i].mData);
+        }
+       #endif
+
        #if DAF_PLUGIN_NUM_INPUTS != 0
-        if (fInputConnectionUnit != nullptr)
+        for (uint16_t busIndex = 0; busIndex < fInputBusCount; ++busIndex)
         {
-            AudioUnitRenderActionFlags ioActionFlags = 0;
-            const OSStatus err = AudioUnitRender(fInputConnectionUnit,
-                                                 &ioActionFlags,
-                                                 inTimeStamp,
-                                                 fInputConnectionBus,
-                                                 inFramesToProcess,
-                                                 fAudioBufferList);
+            AUInputBus& bus(fInputBuses[busIndex]);
+            AudioBufferList* const busData = bus.bufferList;
+            busData->mNumberBuffers = bus.channels;
+            for (uint16_t channel = 0; channel < bus.channels; ++channel)
+                busData->mBuffers[channel].mDataByteSize = sizeof(float) * inFramesToProcess;
+
+            OSStatus err = noErr;
+            if (bus.channels != 0 && bus.connection.sourceAudioUnit != nullptr)
+            {
+                AudioUnitRenderActionFlags ioActionFlags = 0;
+                err = AudioUnitRender(bus.connection.sourceAudioUnit,
+                                      &ioActionFlags,
+                                      inTimeStamp,
+                                      bus.connection.sourceOutputNumber,
+                                      inFramesToProcess,
+                                      busData);
+            }
+            else if (bus.channels != 0 && bus.renderCallback.inputProc != nullptr)
+            {
+                AudioUnitRenderActionFlags ioActionFlags = 0;
+                err = bus.renderCallback.inputProc(bus.renderCallback.inputProcRefCon,
+                                                   &ioActionFlags,
+                                                   inTimeStamp,
+                                                   busIndex,
+                                                   inFramesToProcess,
+                                                   busData);
+            }
 
             if (err != noErr)
             {
@@ -1999,130 +2070,42 @@ public:
                 return err;
             }
 
-            for (uint16_t i = 0; i < numInputs; ++i)
-                inputs[i] = static_cast<const float*>(fAudioBufferList->mBuffers[i].mData);
-
-           #if DAF_PLUGIN_NUM_OUTPUTS != 0
-            for (uint16_t i = 0; i < numOutputs; ++i)
+            if (bus.hasSource())
             {
-                if (ioData->mBuffers[i].mData == nullptr)
-                    ioData->mBuffers[i].mData = fAudioBufferList->mBuffers[i].mData;
-
-                outputs[i] = static_cast<float*>(ioData->mBuffers[i].mData);
-            }
-           #endif
-        }
-        else if (fInputRenderCallback.inputProc != nullptr)
-        {
-            // The host buffer list can only stand in for the input pull when
-            // it has one buffer per input channel; with more inputs than
-            // outputs (sidechain pairs) the private list must be used.
-            bool adjustDataByteSize, usingHostBuffer = numInputs == ioData->mNumberBuffers;
-            UInt32 prevDataByteSize;
-
-            for (uint16_t i = 0; i < ioData->mNumberBuffers; ++i)
-            {
-                if (ioData->mBuffers[i].mData == nullptr)
+                if (busData->mNumberBuffers != bus.channels)
                 {
-                    usingHostBuffer = false;
-                    ioData->mBuffers[i].mData = fAudioBufferList->mBuffers[i].mData;
+                    setLastRenderError(kAudio_ParamError);
+                    return kAudio_ParamError;
+                }
+                for (uint16_t channel = 0; channel < bus.channels; ++channel)
+                {
+                    if (busData->mBuffers[channel].mData == nullptr)
+                    {
+                        setLastRenderError(kAudio_ParamError);
+                        return kAudio_ParamError;
+                    }
                 }
             }
 
-            if (! usingHostBuffer)
+            for (uint16_t portIndex = 0; portIndex < DAF_PLUGIN_NUM_INPUTS; ++portIndex)
             {
-                prevDataByteSize = fAudioBufferList->mBuffers[0].mDataByteSize;
-                adjustDataByteSize = prevDataByteSize != sizeof(float) * inFramesToProcess;
+                if (fInputPortBuses[portIndex] != busIndex)
+                    continue;
 
-                if (adjustDataByteSize)
+                const uint16_t channel = fInputPortChannels[portIndex];
+                if (! bus.hasSource() && busIndex == 0 && channel < ioData->mNumberBuffers)
                 {
-                    for (uint16_t i = 0; i < fAudioBufferList->mNumberBuffers; ++i)
-                        fAudioBufferList->mBuffers[i].mDataByteSize = sizeof(float) * inFramesToProcess;
-                }
-            }
-            else
-            {
-                adjustDataByteSize = false;
-            }
-
-            AudioUnitRenderActionFlags rActionFlags = 0;
-            AudioBufferList* const rData = usingHostBuffer ? ioData : fAudioBufferList;
-            const OSStatus err = fInputRenderCallback.inputProc(fInputRenderCallback.inputProcRefCon,
-                                                                &rActionFlags,
-                                                                inTimeStamp,
-                                                                inBusNumber,
-                                                                inFramesToProcess,
-                                                                rData);
-
-            if (err != noErr)
-            {
-                if (adjustDataByteSize)
-                {
-                    for (uint16_t i = 0; i < fAudioBufferList->mNumberBuffers; ++i)
-                        fAudioBufferList->mBuffers[i].mDataByteSize = prevDataByteSize;
-                }
-
-                setLastRenderError(err);
-                return err;
-            }
-
-            if (usingHostBuffer)
-            {
-                for (uint16_t i = 0; i < numInputs; ++i)
-                    inputs[i] = static_cast<const float*>(ioData->mBuffers[i].mData);
-
-               #if DAF_PLUGIN_NUM_OUTPUTS != 0
-                for (uint16_t i = 0; i < numOutputs; ++i)
-                    outputs[i] = static_cast<float*>(ioData->mBuffers[i].mData);
-               #endif
-
-            }
-            else
-            {
-                for (uint16_t i = 0; i < numInputs; ++i)
-                    inputs[i] = static_cast<const float*>(fAudioBufferList->mBuffers[i].mData);
-
-               #if DAF_PLUGIN_NUM_OUTPUTS != 0
-                for (uint16_t i = 0; i < numOutputs; ++i)
-                    outputs[i] = static_cast<float*>(ioData->mBuffers[i].mData);
-               #endif
-            }
-        }
-        else
-       #endif // DAF_PLUGIN_NUM_INPUTS != 0
-        {
-           #if DAF_PLUGIN_NUM_INPUTS != 0
-            for (uint16_t i = 0; i < numInputs; ++i)
-            {
-                // Inputs past the end of the host's (output-sized) list have
-                // no source at all here, so they read silence from ours.
-                if (i >= ioData->mNumberBuffers)
-                {
-                    std::memset(fAudioBufferList->mBuffers[i].mData, 0, sizeof(float) * inFramesToProcess);
-                    inputs[i] = static_cast<const float*>(fAudioBufferList->mBuffers[i].mData);
+                    inputs[portIndex] = static_cast<const float*>(ioData->mBuffers[channel].mData);
                     continue;
                 }
 
-                if (ioData->mBuffers[i].mData == nullptr)
-                {
-                    ioData->mBuffers[i].mData = fAudioBufferList->mBuffers[i].mData;
-                    std::memset(ioData->mBuffers[i].mData, 0, sizeof(float) * inFramesToProcess);
-                }
-
-                inputs[i] = static_cast<const float*>(ioData->mBuffers[i].mData);
+                if (! bus.hasSource() || channel >= bus.channels)
+                    std::memset(busData->mBuffers[channel].mData, 0,
+                                sizeof(float) * inFramesToProcess);
+                inputs[portIndex] = static_cast<const float*>(busData->mBuffers[channel].mData);
             }
-           #endif
-
-           #if DAF_PLUGIN_NUM_OUTPUTS != 0
-            for (uint16_t i = 0; i < numOutputs; ++i)
-            {
-                if (ioData->mBuffers[i].mData == nullptr)
-                    ioData->mBuffers[i].mData = fAudioBufferList->mBuffers[i].mData;
-
-                outputs[i] = static_cast<float*>(ioData->mBuffers[i].mData);
-            }
-           #endif
         }
+       #endif
 
         if (fUsingRenderListeners)
         {
@@ -2253,10 +2236,10 @@ private:
     PropertyListeners fPropertyListeners;
     RenderListeners fRenderListeners;
   #if DAF_PLUGIN_NUM_INPUTS != 0
-    UInt32 fInputConnectionBus;
-    AudioUnit fInputConnectionUnit;
-    AURenderCallbackStruct fInputRenderCallback;
-    Float64 fSampleRateForInput;
+    AUInputBus fInputBuses[DAF_PLUGIN_NUM_INPUTS];
+    uint16_t fInputPortBuses[DAF_PLUGIN_NUM_INPUTS];
+    uint16_t fInputPortChannels[DAF_PLUGIN_NUM_INPUTS];
+    uint16_t fInputBusCount;
    #ifdef DAF_PLUGIN_EXTRA_IO
     uint32_t fNumInputs;
    #endif
@@ -2270,6 +2253,8 @@ private:
    #if DAF_PLUGIN_NUM_INPUTS + DAF_PLUGIN_NUM_OUTPUTS != 0
     AudioBufferList* fAudioBufferList;
    #endif
+    AUChannelInfo fChannelInfo[ARRAY_SIZE(kChannelInfo)];
+    uint16_t fChannelInfoCount;
     bool fUsingRenderListeners;
 
     // Caching
@@ -2307,6 +2292,132 @@ private:
     HostCallbackInfo fHostCallbackInfo;
     TimePosition fTimePosition;
    #endif
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+#if DAF_PLUGIN_NUM_INPUTS != 0
+    void configureInputBuses()
+    {
+        for (uint16_t portIndex = 0; portIndex < DAF_PLUGIN_NUM_INPUTS; ++portIndex)
+        {
+            const AudioPortWithBusId& port(fPlugin.getAudioPort(true, portIndex));
+            const bool grouped = port.groupId != kPortGroupNone;
+            const bool sidechain = (port.hints & kAudioPortIsSidechain) != 0x0;
+            uint16_t busIndex = fInputBusCount;
+
+            for (uint16_t i = 0; i < fInputBusCount; ++i)
+            {
+                const AUInputBus& bus(fInputBuses[i]);
+                if (grouped ? (bus.grouped && bus.groupId == port.groupId)
+                            : (! bus.grouped && bus.sidechain == sidechain))
+                {
+                    busIndex = i;
+                    break;
+                }
+            }
+
+            if (busIndex == fInputBusCount)
+            {
+                AUInputBus& bus(fInputBuses[fInputBusCount++]);
+                bus.groupId = port.groupId;
+                bus.grouped = grouped;
+                bus.sidechain = sidechain;
+                bus.sampleRate = d_nextSampleRate;
+            }
+
+            AUInputBus& bus(fInputBuses[busIndex]);
+            DAF_SAFE_ASSERT(bus.sidechain == sidechain);
+            fInputPortBuses[portIndex] = busIndex;
+            fInputPortChannels[portIndex] = bus.declaredChannels++;
+            bus.channels = bus.declaredChannels;
+        }
+
+        configureChannelInfo();
+    }
+
+    uint16_t getInputBusChannelsForTotal(const uint16_t busIndex, const int16_t total) const noexcept
+    {
+        if (total <= 0)
+            return 0;
+
+        uint16_t channels = 0;
+        const uint16_t portCount = std::min<uint16_t>(static_cast<uint16_t>(total),
+                                                       DAF_PLUGIN_NUM_INPUTS);
+        for (uint16_t portIndex = 0; portIndex < portCount; ++portIndex)
+            if (fInputPortBuses[portIndex] == busIndex)
+                ++channels;
+        return channels;
+    }
+
+    bool isInputBusChannelCountValid(const uint16_t busIndex, const uint16_t channels) const noexcept
+    {
+        for (uint16_t i = 0; i < ARRAY_SIZE(kChannelInfo); ++i)
+            if (getInputBusChannelsForTotal(busIndex, kChannelInfo[i].inChannels) == channels)
+                return true;
+        return false;
+    }
+
+    uint16_t getActiveInputCount() const noexcept
+    {
+        uint16_t channels = fInputBuses[0].channels;
+        for (uint16_t busIndex = 1; busIndex < fInputBusCount; ++busIndex)
+            if (fInputBuses[busIndex].hasSource())
+                channels += fInputBuses[busIndex].channels;
+        return channels;
+    }
+#endif
+
+    void configureChannelInfo()
+    {
+        for (uint16_t i = 0; i < ARRAY_SIZE(kChannelInfo); ++i)
+        {
+            AUChannelInfo info = kChannelInfo[i];
+           #if DAF_PLUGIN_NUM_INPUTS != 0
+            info.inChannels = static_cast<SInt16>(getInputBusChannelsForTotal(0, info.inChannels));
+           #endif
+
+            bool duplicate = false;
+            for (uint16_t j = 0; j < fChannelInfoCount; ++j)
+            {
+                if (fChannelInfo[j].inChannels == info.inChannels
+                    && fChannelInfo[j].outChannels == info.outChannels)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+
+            if (! duplicate)
+                fChannelInfo[fChannelInfoCount++] = info;
+        }
+    }
+
+#ifdef DAF_PLUGIN_EXTRA_IO
+    bool updatePluginAudioPortIO()
+    {
+       #if DAF_PLUGIN_NUM_INPUTS != 0
+        const uint16_t numInputs = getActiveInputCount();
+       #else
+        constexpr const uint16_t numInputs = 0;
+       #endif
+       #if DAF_PLUGIN_NUM_OUTPUTS != 0
+        const uint16_t numOutputs = fNumOutputs;
+       #else
+        constexpr const uint16_t numOutputs = 0;
+       #endif
+
+       #if DAF_PLUGIN_NUM_INPUTS != 0 && DAF_PLUGIN_NUM_OUTPUTS != 0
+        if (! isNumChannelsComboValid(numInputs, numOutputs))
+            return false;
+       #endif
+
+       #if DAF_PLUGIN_NUM_INPUTS != 0
+        fNumInputs = numInputs;
+       #endif
+        fPlugin.setAudioPortIO(numInputs, numOutputs);
+        return true;
+    }
+#endif
 
     // ----------------------------------------------------------------------------------------------------------------
 
@@ -2489,53 +2600,78 @@ private:
     // ----------------------------------------------------------------------------------------------------------------
 
    #if DAF_PLUGIN_NUM_INPUTS + DAF_PLUGIN_NUM_OUTPUTS != 0
+    static void freeAudioBufferList(AudioBufferList*& list, const uint16_t numBuffers)
+    {
+        if (list == nullptr)
+            return;
+
+        for (uint16_t i = 0; i < numBuffers; ++i)
+            delete[] static_cast<float*>(list->mBuffers[i].mData);
+        std::free(list);
+        list = nullptr;
+    }
+
+    static bool allocateAudioBufferList(AudioBufferList*& list,
+                                        const uint16_t numBuffers,
+                                        const uint32_t bufferSize)
+    {
+        list = static_cast<AudioBufferList*>(
+            std::malloc(offsetof(AudioBufferList, mBuffers) + sizeof(AudioBuffer) * numBuffers));
+        if (list == nullptr)
+            return false;
+
+        list->mNumberBuffers = numBuffers;
+        for (uint16_t i = 0; i < numBuffers; ++i)
+        {
+            list->mBuffers[i].mNumberChannels = 1;
+            list->mBuffers[i].mData = new float[bufferSize];
+            list->mBuffers[i].mDataByteSize = sizeof(float) * bufferSize;
+        }
+        return true;
+    }
+
     bool reallocAudioBufferList(const bool alloc)
     {
-        if (fAudioBufferList != nullptr)
-        {
-            for (uint16_t i = 0; i < fAudioBufferList->mNumberBuffers; ++i)
-                delete[] static_cast<float*>(fAudioBufferList->mBuffers[i].mData);
-        }
+        const uint16_t oldNumBuffers = fAudioBufferList != nullptr
+                                     ? fAudioBufferList->mNumberBuffers : 0;
+        freeAudioBufferList(fAudioBufferList, oldNumBuffers);
 
-      #ifdef DAF_PLUGIN_EXTRA_IO
-       #if DAF_PLUGIN_NUM_INPUTS != 0 && DAF_PLUGIN_NUM_OUTPUTS != 0
-        const uint16_t numBuffers = std::max(fNumInputs, fNumOutputs);
-       #elif DAF_PLUGIN_NUM_INPUTS != 0
-        const uint16_t numBuffers = fNumInputs;
-       #else
-        const uint16_t numBuffers = fNumOutputs;
+       #if DAF_PLUGIN_NUM_INPUTS != 0
+        for (uint16_t busIndex = 0; busIndex < fInputBusCount; ++busIndex)
+            freeAudioBufferList(fInputBuses[busIndex].bufferList,
+                                fInputBuses[busIndex].declaredChannels);
        #endif
-      #else
-        constexpr const uint16_t numBuffers = d_max(DAF_PLUGIN_NUM_INPUTS, DAF_PLUGIN_NUM_OUTPUTS);
-      #endif
+
+       #if DAF_PLUGIN_NUM_OUTPUTS != 0
+        #ifdef DAF_PLUGIN_EXTRA_IO
+        const uint16_t numBuffers = fNumOutputs;
+        #else
+        constexpr const uint16_t numBuffers = DAF_PLUGIN_NUM_OUTPUTS;
+        #endif
+       #else
+        const uint16_t numBuffers = fInputBuses[0].declaredChannels;
+       #endif
         const uint32_t bufferSize = fPlugin.getBufferSize();
 
         if (! alloc)
-        {
-            std::free(fAudioBufferList);
-            fAudioBufferList = nullptr;
             return true;
-        }
 
-        if (AudioBufferList* const abl = static_cast<AudioBufferList*>(
-            std::realloc(fAudioBufferList, sizeof(uint32_t) + sizeof(AudioBuffer) * numBuffers)))
+        if (! allocateAudioBufferList(fAudioBufferList, numBuffers, bufferSize))
+            return false;
+
+       #if DAF_PLUGIN_NUM_INPUTS != 0
+        for (uint16_t busIndex = 0; busIndex < fInputBusCount; ++busIndex)
         {
-            abl->mNumberBuffers = numBuffers;
-
-            for (uint16_t i = 0; i < numBuffers; ++i)
+            AUInputBus& bus(fInputBuses[busIndex]);
+            if (! allocateAudioBufferList(bus.bufferList, bus.declaredChannels, bufferSize))
             {
-                abl->mBuffers[i].mNumberChannels = 1;
-                abl->mBuffers[i].mData = new float[bufferSize];
-                abl->mBuffers[i].mDataByteSize = sizeof(float) * bufferSize;
+                reallocAudioBufferList(false);
+                return false;
             }
-
-            fAudioBufferList = abl;
-            return true;
         }
+       #endif
 
-        std::free(fAudioBufferList);
-        fAudioBufferList = nullptr;
-        return false;
+        return true;
     }
    #endif
 
