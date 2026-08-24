@@ -1637,7 +1637,26 @@ function(daf__add_dgl_system_libs)
         "development files (e.g. libwayland-dev, libxkbcommon-dev, libegl-dev).\n"
         "Installing either one is enough; X11 is preferred when both are present.")
     endif()
-    if(X11_FOUND)
+
+    # auto keeps the historical behaviour, where a machine that has the X11 development files
+    # installed builds the X11 backend whether or not it ever runs an X server. An application
+    # targeting Wayland has to be able to say so, since on a dual-stack developer box the
+    # accident is silent: everything builds and runs, just against XWayland.
+    set(DGL_BACKEND "auto" CACHE STRING "DGL windowing backend on Linux: auto, x11 or wayland")
+    set_property(CACHE DGL_BACKEND PROPERTY STRINGS auto x11 wayland)
+    if(NOT DGL_BACKEND MATCHES "^(auto|x11|wayland)$")
+      message(FATAL_ERROR "DGL_BACKEND must be auto, x11 or wayland, not '${DGL_BACKEND}'.")
+    endif()
+    if(DGL_BACKEND STREQUAL "x11" AND NOT X11_FOUND)
+      message(FATAL_ERROR "DGL_BACKEND=x11, but the X11 development files were not found.")
+    endif()
+    if(DGL_BACKEND STREQUAL "wayland" AND NOT WAYLAND_FOUND)
+      message(FATAL_ERROR
+        "DGL_BACKEND=wayland, but wayland-client, wayland-egl, wayland-cursor, xkbcommon or egl "
+        "development files were not found.")
+    endif()
+
+    if(X11_FOUND AND NOT DGL_BACKEND STREQUAL "wayland")
       target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_X11")
       target_include_directories(dgl-system-libs INTERFACE "${X11_INCLUDE_DIR}")
       target_link_libraries(dgl-system-libs INTERFACE "${X11_X11_LIB}")
@@ -1661,9 +1680,9 @@ function(daf__add_dgl_system_libs)
       endif()
       message(STATUS "DGL windowing backend: X11")
     else()
-      # Only reached when X11 is absent, so this is the mirror of the Makefile's
-      # DGL_BACKEND_WAYLAND gate: never wire Wayland in on a system that builds against X11,
-      # otherwise every existing dual-stack build would start dragging in unused libraries.
+      # Reached when X11 is absent, or when DGL_BACKEND asked for Wayland. A dual-stack build
+      # that did not ask keeps taking X11, so no existing build starts dragging in unused
+      # libraries.
       target_compile_definitions(dgl-system-libs-definitions INTERFACE "HAVE_WAYLAND")
       target_include_directories(dgl-system-libs INTERFACE "${WAYLAND_INCLUDE_DIRS}")
       # Not daf__target_link_directories: it uses PUBLIC, which an INTERFACE library cannot take.
@@ -1674,7 +1693,11 @@ function(daf__add_dgl_system_libs)
       set(THREADS_PREFER_PTHREAD_FLAG TRUE)
       find_package(Threads REQUIRED)
       target_link_libraries(dgl-system-libs INTERFACE Threads::Threads)
-      message(STATUS "DGL windowing backend: Wayland (X11 not found)")
+      if(X11_FOUND)
+        message(STATUS "DGL windowing backend: Wayland (requested)")
+      else()
+        message(STATUS "DGL windowing backend: Wayland (X11 not found)")
+      endif()
     endif()
    endif()
 
