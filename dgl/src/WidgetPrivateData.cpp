@@ -216,6 +216,18 @@ bool Widget::PrivateData::giveScrollEventForSubWidgets(ScrollEvent& ev)
     return false;
 }
 
+void Widget::PrivateData::giveFocusChangedEventForSubWidgets(const FocusEvent& ev)
+{
+    // No visibility check here, unlike the input events above: a widget that was hidden while
+    // holding a key or a button still has that state to clear.
+    FOR_EACH_SUBWIDGET(it)
+    {
+        SubWidget* const widget(*it);
+
+        widget->onFocusChanged(ev);
+    }
+}
+
 // -----------------------------------------------------------------------
 
 TopLevelWidget* Widget::PrivateData::findTopLevelWidget(Widget* const pw)

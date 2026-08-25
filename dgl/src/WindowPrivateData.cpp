@@ -782,6 +782,19 @@ void Window::PrivateData::onPuglFocus(const bool focus, const CrossingMode mode)
         return modal.child->focus();
 
     self->onFocus(focus, mode);
+
+#ifndef DAF_TEST_WINDOW_CPP
+    Widget::FocusEvent ev;
+    ev.focus = focus;
+    ev.mode  = mode;
+
+    FOR_EACH_TOP_LEVEL_WIDGET(it)
+    {
+        TopLevelWidget* const widget(*it);
+
+        widget->onFocusChanged(ev);
+    }
+#endif
 }
 
 void Window::PrivateData::onPuglKey(const Widget::KeyboardEvent& ev)
