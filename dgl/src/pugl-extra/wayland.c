@@ -2526,6 +2526,7 @@ static const char* const puglWaylandCursorNames[PUGL_NUM_CURSORS] = {
   "size_fdiag",        // UP_LEFT_DOWN_RIGHT
   "size_bdiag",        // UP_RIGHT_DOWN_LEFT
   "all-scroll",        // ALL_SCROLL
+  NULL,                // NONE, hidden with a null surface instead of a theme image
 };
 
 /// Legacy X11 cursor names, for themes that predate the XDG cursor naming spec
@@ -2540,6 +2541,7 @@ static const char* const puglWaylandLegacyCursorNames[PUGL_NUM_CURSORS] = {
   "bottom_right_corner",
   "bottom_left_corner",
   "fleur",
+  NULL,
 };
 
 static bool
@@ -2588,13 +2590,20 @@ puglWaylandApplyCursor(PuglWorldInternals* const impl, const PuglCursor cursor)
     return PUGL_FAILURE;
   }
 
-  if (!puglWaylandLoadCursorTheme(impl)) {
-    return PUGL_UNSUPPORTED;
-  }
-
   const unsigned index = (unsigned)cursor;
   if (index >= PUGL_NUM_CURSORS) {
     return PUGL_BAD_PARAMETER;
+  }
+
+  /* Hiding needs no theme and no surface: a null surface *is* the hidden pointer, so this is
+     handled before the theme is loaded, and works on a compositor with no cursor theme at all. */
+  if (cursor == PUGL_CURSOR_NONE) {
+    wl_pointer_set_cursor(impl->pointer, impl->pointerEnterSerial, NULL, 0, 0);
+    return PUGL_SUCCESS;
+  }
+
+  if (!puglWaylandLoadCursorTheme(impl)) {
+    return PUGL_UNSUPPORTED;
   }
 
   struct wl_cursor* wlCursor = wl_cursor_theme_get_cursor(

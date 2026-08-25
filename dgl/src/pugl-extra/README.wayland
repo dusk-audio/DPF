@@ -125,6 +125,20 @@ EGL's own swap-interval throttle is therefore switched off by default (interval 
 both would just add a frame of latency. An explicit PUGL_SWAP_INTERVAL hint still wins.
 
 
+Focus and cursors
+-----------------
+
+Keyboard focus follows wl_keyboard.enter and .leave, which is the only focus signal Wayland has, so
+PUGL_FOCUS_IN and PUGL_FOCUS_OUT arrive only when the seat advertises a keyboard. A compositor
+started without a seat (a headless mutter, for example) never delivers either, and an application
+that hangs state off focus must cope with never being told it has it.
+
+PUGL_CURSOR_NONE hides the pointer with wl_pointer.set_cursor and a null surface, which needs
+neither a cursor theme nor wl_shm. Like every other cursor it applies to the pointer that is
+currently over the view: setting one while the pointer is elsewhere is remembered and applied on the
+next enter, and reported as success.
+
+
 Known limitations
 -----------------
 
