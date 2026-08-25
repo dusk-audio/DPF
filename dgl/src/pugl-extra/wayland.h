@@ -141,6 +141,7 @@ struct PuglWorldInternalsImpl {
   struct wp_viewporter*                  viewporter;
   struct wp_fractional_scale_manager_v1* fractionalScaleManager;
   struct zxdg_decoration_manager_v1*     decorationManager;
+  struct zxdg_exporter_v2*               exporter;
 
   // Cursor theme, loaded lazily on the first puglSetCursor() that needs it
   struct wl_cursor_theme* cursorTheme;
@@ -209,6 +210,12 @@ struct PuglInternalsImpl {
   struct wp_viewport*                 viewport;
   struct wp_fractional_scale_v1*      fractionalScale;
   struct wl_callback*                 frameCallback;
+
+  /* The surface exported through xdg-foreign, and the handle the compositor answered with.  Other
+     processes, xdg-desktop-portal above all, take a dialog's parent as such a handle since Wayland
+     has no window ids. */
+  struct zxdg_exported_v2* exported;
+  char*                    exportedHandle;
 
   /// Private data of the graphics backend (see wayland_gl.c / wayland_cairo.c)
   PuglSurface* surface;

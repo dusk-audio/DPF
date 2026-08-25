@@ -159,6 +159,11 @@ PuglStatus puglWaylandUpdateWithoutExposures(PuglWorld* world);
 // compositor keys window rules and icon matching off the app id instead.
 void puglWaylandSetAppId(PuglView* view, const char* appId);
 
+// Wayland specific, get this view's xdg-foreign handle, or null if it has none
+// The handle is asked for while realizing and arrives in a later event, so it is null until the
+// compositor answers, and stays null on a compositor without xdg-foreign.
+const char* puglWaylandGetExportedHandle(const PuglView* view);
+
 #endif
 
 // --------------------------------------------------------------------------------------------------------------------

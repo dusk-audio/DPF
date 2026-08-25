@@ -168,6 +168,7 @@ extern "C" {
 # include "pugl-extra/wayland-protocols/xdg-decoration-unstable-v1-protocol.c"
 # include "pugl-extra/wayland-protocols/viewporter-protocol.c"
 # include "pugl-extra/wayland-protocols/fractional-scale-v1-protocol.c"
+# include "pugl-extra/wayland-protocols/xdg-foreign-unstable-v2-protocol.c"
 }
 # if defined(__GNUC__)
 #  pragma GCC diagnostic pop
@@ -176,6 +177,7 @@ extern "C" {
 # include "pugl-extra/wayland-protocols/xdg-decoration-unstable-v1-client-protocol.h"
 # include "pugl-extra/wayland-protocols/viewporter-client-protocol.h"
 # include "pugl-extra/wayland-protocols/fractional-scale-v1-client-protocol.h"
+# include "pugl-extra/wayland-protocols/xdg-foreign-unstable-v2-client-protocol.h"
 # ifdef DGL_CAIRO
 #  include <cairo.h>
 # endif

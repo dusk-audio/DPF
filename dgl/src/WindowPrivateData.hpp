@@ -107,6 +107,9 @@ struct Window::PrivateData : IdleCallback {
     /** Render to a picture file when non-null, automatically free+unset after saving. */
     char* filenameToRenderInto;
 
+    /** Storage behind getPortalParentHandle(), rebuilt on each call. */
+    char portalParentHandle[80];
+
    #ifdef DGL_USE_FILE_BROWSER
     /** Handle for file browser dialog operations. */
     DGL_NAMESPACE::FileBrowserHandle fileBrowserHandle;
