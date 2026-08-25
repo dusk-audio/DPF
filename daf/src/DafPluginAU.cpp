@@ -1250,7 +1250,9 @@ public:
             {
                 const AudioUnitConnection conn = *static_cast<const AudioUnitConnection*>(inData);
                 AUInputBus& bus(fInputBuses[inElement]);
+               #ifdef DAF_PLUGIN_EXTRA_IO
                 const AudioUnitConnection previous = bus.connection;
+               #endif
 
                 if (conn.sourceAudioUnit == nullptr)
                 {
@@ -1517,7 +1519,9 @@ public:
             DAF_SAFE_ASSERT_UINT_RETURN(inElement < fInputBusCount, inElement, kAudioUnitErr_InvalidElement);
             {
                 AUInputBus& bus(fInputBuses[inElement]);
+               #ifdef DAF_PLUGIN_EXTRA_IO
                 const AURenderCallbackStruct previous = bus.renderCallback;
+               #endif
                 std::memcpy(&bus.renderCallback, inData, sizeof(AURenderCallbackStruct));
                #ifdef DAF_PLUGIN_EXTRA_IO
                 if (! updatePluginAudioPortIO())
