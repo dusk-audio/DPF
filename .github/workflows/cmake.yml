@@ -60,9 +60,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: daf/dpf-cmake-action@v1
+      # Somebody else's action, so its owner and its input names keep their own
+      # spelling, and it is pinned to a commit rather than to the moving v1 tag:
+      # an upstream rebase must not change what this CI runs.
+      - uses: distrho/dpf-cmake-action@c5786bfc026771e312cf0b3ce02d13a5a1cc0a0c # v1
         with:
-          daf_path: .
+          dpf_path: .
           suffix: _22_04
           target: ${{ matrix.target }}
 
@@ -93,7 +96,7 @@ jobs:
   # distros is a glibc-floor packaging concern, handled in the product repos by
   # building inside an older-glibc container — deliberately not done here.
   #
-  # Why inline steps instead of `uses: daf/dpf-cmake-action@v1`: the action's
+  # Why inline steps instead of `uses: distrho/dpf-cmake-action`: the action's
   # native (`linux-x86_64`) dependency and build steps are arch-neutral and are
   # reproduced verbatim below, but its "Fix GitHub's mess (ubuntu-24.04)" step
   # runs for *every* Linux target regardless of arch and rewrites
@@ -164,9 +167,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: daf/dpf-cmake-action@v1
+      - uses: distrho/dpf-cmake-action@c5786bfc026771e312cf0b3ce02d13a5a1cc0a0c # v1
         with:
-          daf_path: .
+          dpf_path: .
           suffix: _15
           target: ${{ matrix.target }}
 
