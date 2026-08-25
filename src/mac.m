@@ -1927,6 +1927,45 @@ extendedCursor(const SEL cursorSelector)
 }
 
 static NSCursor*
+emptyCursor(void)
+{
+  // MacOS has no "no cursor" constant, so hiding means a cursor with nothing
+  // in it. [NSCursor hide] would have to be balanced against the whole
+  // application, while this stays a property of the view like any other cursor.
+  static NSCursor* cursor = NULL;
+
+  if (!cursor) {
+    NSBitmapImageRep* const rep =
+      [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+                                              pixelsWide:1
+                                              pixelsHigh:1
+                                           bitsPerSample:8
+                                         samplesPerPixel:4
+                                                hasAlpha:YES
+                                                isPlanar:NO
+                                          colorSpaceName:NSDeviceRGBColorSpace
+                                             bytesPerRow:4
+                                            bitsPerPixel:32];
+
+    if (!rep) {
+      return NULL;
+    }
+
+    memset([rep bitmapData], 0, 4);
+
+    NSImage* const image = [[NSImage alloc] initWithSize:NSMakeSize(1, 1)];
+    [image addRepresentation:rep];
+
+    cursor = [[NSCursor alloc] initWithImage:image hotSpot:NSMakePoint(0, 0)];
+
+    [image release];
+    [rep release];
+  }
+
+  return cursor;
+}
+
+static NSCursor*
 puglGetNsCursor(const PuglCursor cursor)
 {
   switch (cursor) {
@@ -1950,6 +1989,8 @@ puglGetNsCursor(const PuglCursor cursor)
     return extendedCursor(@selector(_windowResizeNorthEastSouthWestCursor));
   case PUGL_CURSOR_ALL_SCROLL:
     return [NSCursor closedHandCursor];
+  case PUGL_CURSOR_NONE:
+    return emptyCursor();
   }
 
   return NULL;

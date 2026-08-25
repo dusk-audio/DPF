@@ -1456,10 +1456,11 @@ typedef enum {
   PUGL_CURSOR_UP_LEFT_DOWN_RIGHT, ///< Diagonal arrow for down/right resize
   PUGL_CURSOR_UP_RIGHT_DOWN_LEFT, ///< Diagonal arrow for down/left resize
   PUGL_CURSOR_ALL_SCROLL,         ///< Omnidirectional "arrow" for scrolling
+  PUGL_CURSOR_NONE,               ///< No cursor at all, the pointer is hidden
 } PuglCursor;
 
 /// The number of #PuglCursor values
-#define PUGL_NUM_CURSORS 10U
+#define PUGL_NUM_CURSORS ((unsigned)PUGL_CURSOR_NONE + 1U)
 
 /**
    Grab the keyboard input focus.

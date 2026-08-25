@@ -446,9 +446,11 @@ enum class Cursor {
   upLeftDownRight, ///< @copydoc PUGL_CURSOR_UP_LEFT_DOWN_RIGHT
   upRightDownLeft, ///< @copydoc PUGL_CURSOR_UP_RIGHT_DOWN_LEFT
   allScroll,       ///< @copydoc PUGL_CURSOR_ALL_SCROLL
+  none,            ///< @copydoc PUGL_CURSOR_NONE
 };
 
 static_assert(static_cast<Cursor>(PUGL_CURSOR_ALL_SCROLL) == Cursor::allScroll);
+static_assert(static_cast<Cursor>(PUGL_CURSOR_NONE) == Cursor::none);
 
 /// @copydoc PuglShowCommand
 enum class ShowCommand {
