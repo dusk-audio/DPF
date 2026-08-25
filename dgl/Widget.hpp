@@ -241,6 +241,27 @@ public:
     };
 
    /**
+      Keyboard focus event.
+
+      This event is sent when the window a widget belongs to gains or loses the keyboard focus.
+      The @a mode field tells whether the change is a plain focus change or the side-effect of a
+      grab, which matters because a grab is temporary and does not mean the user moved away.
+
+      @see onFocusChanged
+    */
+    struct FocusEvent {
+        /** True if the window gained the focus, false if it lost it. */
+        bool focus;
+        /** The reason for the focus change. @see CrossingMode */
+        CrossingMode mode;
+
+        /** Constructor for default/null values */
+        FocusEvent() noexcept
+            : focus(false),
+              mode(kCrossingNormal) {}
+    };
+
+   /**
       Widget position changed event.
       @see onPositionChanged
     */
@@ -443,6 +464,14 @@ protected:
       A function called when the widget is resized.
     */
     virtual void onResize(const ResizeEvent&);
+
+   /**
+      A function called when the window this widget belongs to gains or loses the keyboard focus.
+      Unlike the input events this is delivered to every widget, visible or not,
+      so that a widget holding input state can clear it.
+      @note The window itself has its own Window::onFocus, this is the widget-side view of it.
+    */
+    virtual void onFocusChanged(const FocusEvent&);
 
    /**
       A function called when a special key is pressed or released.

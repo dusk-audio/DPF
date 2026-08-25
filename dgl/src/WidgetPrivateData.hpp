@@ -49,6 +49,7 @@ struct Widget::PrivateData {
     bool giveMouseEventForSubWidgets(MouseEvent& ev);
     bool giveMotionEventForSubWidgets(MotionEvent& ev);
     bool giveScrollEventForSubWidgets(ScrollEvent& ev);
+    void giveFocusChangedEventForSubWidgets(const FocusEvent& ev);
 
     static TopLevelWidget* findTopLevelWidget(Widget* const w);
 

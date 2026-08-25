@@ -19,6 +19,8 @@
 
 #include "pugl.hpp"
 
+#include <cstdio>
+
 START_NAMESPACE_DGL
 
 // -----------------------------------------------------------------------
@@ -415,6 +417,26 @@ const GraphicsContext& Window::getGraphicsContext() const noexcept
 uintptr_t Window::getNativeWindowHandle() const noexcept
 {
     return pData->view != nullptr ? puglGetNativeView(pData->view) : 0;
+}
+
+const char* Window::getPortalParentHandle() const noexcept
+{
+    char* const handle = pData->portalParentHandle;
+    handle[0] = '\0';
+
+    if (pData->view == nullptr)
+        return handle;
+
+   #if defined(DGL_USING_X11)
+    if (const uintptr_t win = puglGetNativeView(pData->view))
+        std::snprintf(handle, sizeof(pData->portalParentHandle), "x11:0x%llx",
+                      static_cast<unsigned long long>(win));
+   #elif defined(DGL_USING_WAYLAND)
+    if (const char* const exported = puglWaylandGetExportedHandle(pData->view))
+        std::snprintf(handle, sizeof(pData->portalParentHandle), "wayland:%s", exported);
+   #endif
+
+    return handle;
 }
 
 double Window::getScaleFactor() const noexcept

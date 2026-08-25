@@ -210,6 +210,11 @@ void Widget::onResize(const ResizeEvent&)
 {
 }
 
+void Widget::onFocusChanged(const FocusEvent& ev)
+{
+    pData->giveFocusChangedEventForSubWidgets(ev);
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 END_NAMESPACE_DGL

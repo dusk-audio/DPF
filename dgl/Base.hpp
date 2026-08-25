@@ -238,6 +238,7 @@ enum MouseCursor {
     kMouseCursorUpLeftDownRight, ///< Diagonal arrow for down/right resize
     kMouseCursorUpRightDownLeft, ///< Diagonal arrow for down/left resize
     kMouseCursorAllScroll,       ///< Omnidirectional "arrow" for scrolling
+    kMouseCursorNone,            ///< No cursor at all, the pointer is hidden
 
     // Backwards compatibility with old DAF
     kMouseCursorDiagonal     DAF_DEPRECATED_BY("kMouseCursorUpLeftDownRight") = kMouseCursorUpLeftDownRight,

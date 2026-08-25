@@ -43,6 +43,7 @@ at commit afb614d5fcbd02d261a6ae91920aa91cf3915a8a
   viewporter.xml                    stable/viewporter/viewporter.xml
   fractional-scale-v1.xml           staging/fractional-scale/fractional-scale-v1.xml
   xdg-decoration-unstable-v1.xml    unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
+  xdg-foreign-unstable-v2.xml       unstable/xdg-foreign/xdg-foreign-unstable-v2.xml
 
 Interface versions in the generated code:
 
@@ -50,6 +51,8 @@ Interface versions in the generated code:
   wp_viewporter, wp_viewport                                          1
   wp_fractional_scale_manager_v1, wp_fractional_scale_v1              1
   zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1             2
+  zxdg_exporter_v2, zxdg_exported_v2                                  1
+  zxdg_importer_v2, zxdg_imported_v2                                  1
 
 Note that these are the versions the *bindings* can speak. wayland.c binds each global at
 `MIN(advertised, what this backend actually implements)`, so a newer protocol version here never
@@ -64,7 +67,8 @@ Regenerating
 
 With wayland-scanner installed, from this directory:
 
-    for p in xdg-shell viewporter fractional-scale-v1 xdg-decoration-unstable-v1; do
+    for p in xdg-shell viewporter fractional-scale-v1 xdg-decoration-unstable-v1 \
+             xdg-foreign-unstable-v2; do
         wayland-scanner client-header "$p.xml" "$p-client-protocol.h"
         wayland-scanner private-code   "$p.xml" "$p-protocol.c"
     done
@@ -80,7 +84,7 @@ own copy of the same protocol.
 How this is compiled
 --------------------
 
-dgl/src/pugl.cpp includes all four `-protocol.c` files at global scope inside `extern "C"`, before
+dgl/src/pugl.cpp includes every `-protocol.c` file at global scope inside `extern "C"`, before
 the matching `-client-protocol.h` headers and before it enters the DGL namespace. The ordering and
 the reasons for it are explained in the comment there; in short, the marshalling code has to keep C
 linkage and has to be the first declaration the compiler sees for its own symbols.

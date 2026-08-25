@@ -83,9 +83,10 @@ Used when advertised, degraded gracefully when not:
   wp_viewporter        + wp_fractional_scale_v1: exact fractional scaling
   zxdg_decoration_manager_v1   server-side decorations are requested; compositors without it
                                (GNOME, notably) leave the window undecorated
+  zxdg_exporter_v2             an xdg-foreign handle another process can parent a dialog to
 
 Deliberately not used: cursor-shape-v1 (drags in tablet-v2 for no real gain over wl_cursor themes),
-primary selection, text-input, DnD, Vulkan.
+primary selection, text-input, DnD, Vulkan, and the importer half of xdg-foreign.
 
 
 Coordinates and scaling
@@ -123,6 +124,35 @@ callback has ever come back, longer afterwards. See PUGL_WAYLAND_FIRST_FRAME_TIM
 
 EGL's own swap-interval throttle is therefore switched off by default (interval 0), since running
 both would just add a frame of latency. An explicit PUGL_SWAP_INTERVAL hint still wins.
+
+
+Focus and cursors
+-----------------
+
+Keyboard focus follows wl_keyboard.enter and .leave, which is the only focus signal Wayland has, so
+PUGL_FOCUS_IN and PUGL_FOCUS_OUT arrive only when the seat advertises a keyboard. A headless mutter
+has a seat with no capabilities at all, so a window there is never told it has the focus, and an
+application that hangs state off focus has to cope with that.
+
+PUGL_CURSOR_NONE hides the pointer with wl_pointer.set_cursor and a null surface, which needs
+neither a cursor theme nor wl_shm. Like every other cursor it applies to the pointer that is
+currently over the view: setting one while the pointer is elsewhere is remembered and applied on the
+next enter, and reported as success.
+
+
+Portal parenting
+----------------
+
+Wayland has no window ids, so a dialog run by another process -- xdg-desktop-portal's file chooser
+above all -- cannot be told which window it belongs to by handle the way it can on X11. xdg-foreign
+is the protocol that fills the gap: the toplevel is exported with zxdg_exporter_v2 while it is
+realized, the compositor answers with a string, and passing "wayland:" plus that string as the
+portal's parent_window makes the dialog modal to this window.
+
+The answer arrives in a later event, which is why the export happens at realize rather than at the
+point a dialog opens. puglWaylandGetExportedHandle() returns null until it lands, and on a
+compositor with no xdg-foreign it stays null; DGL's Window::getPortalParentHandle() then returns an
+empty string and the caller opens an unparented dialog, which is what happens today anyway.
 
 
 Known limitations

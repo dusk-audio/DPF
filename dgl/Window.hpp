@@ -396,6 +396,17 @@ public:
     uintptr_t getNativeWindowHandle() const noexcept;
 
    /**
+      Get this window's handle in the form xdg-desktop-portal expects for a dialog's parent,
+      so that a portal file chooser opens on top of it instead of floating free.
+      On X11 that is "x11:" and the window id, on Wayland "wayland:" and an xdg-foreign handle.
+
+      Returns an empty string when there is nothing to give: on platforms with no portals, and on
+      a Wayland compositor that has not answered with a handle (or does not implement xdg-foreign).
+      The returned string belongs to the window and is valid until the next call.
+    */
+    const char* getPortalParentHandle() const noexcept;
+
+   /**
       Get the scale factor requested for this window.
       This is purely informational, and up to developers to choose what to do with it.
 

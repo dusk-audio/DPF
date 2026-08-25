@@ -712,6 +712,21 @@ static const struct zxdg_toplevel_decoration_v1_listener
   puglWaylandDecorationListener = {puglWaylandDecorationConfigure};
 
 static void
+puglWaylandExportedHandle(void* const                    data,
+                          struct zxdg_exported_v2* const PUGL_UNUSED(exported),
+                          const char* const              handle)
+{
+  PuglView* const      view = (PuglView*)data;
+  PuglInternals* const impl = view->impl;
+
+  free(impl->exportedHandle);
+  impl->exportedHandle = handle ? strdup(handle) : NULL;
+}
+
+static const struct zxdg_exported_v2_listener puglWaylandExportedListener = {
+  puglWaylandExportedHandle};
+
+static void
 puglWaylandPreferredScale(void* const                          data,
                           struct wp_fractional_scale_v1* const PUGL_UNUSED(fs),
                           const uint32_t                       scale)
@@ -2526,6 +2541,7 @@ static const char* const puglWaylandCursorNames[PUGL_NUM_CURSORS] = {
   "size_fdiag",        // UP_LEFT_DOWN_RIGHT
   "size_bdiag",        // UP_RIGHT_DOWN_LEFT
   "all-scroll",        // ALL_SCROLL
+  NULL,                // NONE, hidden with a null surface instead of a theme image
 };
 
 /// Legacy X11 cursor names, for themes that predate the XDG cursor naming spec
@@ -2540,6 +2556,7 @@ static const char* const puglWaylandLegacyCursorNames[PUGL_NUM_CURSORS] = {
   "bottom_right_corner",
   "bottom_left_corner",
   "fleur",
+  NULL,
 };
 
 static bool
@@ -2588,13 +2605,20 @@ puglWaylandApplyCursor(PuglWorldInternals* const impl, const PuglCursor cursor)
     return PUGL_FAILURE;
   }
 
-  if (!puglWaylandLoadCursorTheme(impl)) {
-    return PUGL_UNSUPPORTED;
-  }
-
   const unsigned index = (unsigned)cursor;
   if (index >= PUGL_NUM_CURSORS) {
     return PUGL_BAD_PARAMETER;
+  }
+
+  /* Hiding needs no theme and no surface: a null surface *is* the hidden pointer, so this is
+     handled before the theme is loaded, and works on a compositor with no cursor theme at all. */
+  if (cursor == PUGL_CURSOR_NONE) {
+    wl_pointer_set_cursor(impl->pointer, impl->pointerEnterSerial, NULL, 0, 0);
+    return PUGL_SUCCESS;
+  }
+
+  if (!puglWaylandLoadCursorTheme(impl)) {
+    return PUGL_UNSUPPORTED;
   }
 
   struct wl_cursor* wlCursor = wl_cursor_theme_get_cursor(
@@ -2725,6 +2749,10 @@ puglWaylandRegistryGlobal(void* const               data,
     impl->decorationManager =
       (struct zxdg_decoration_manager_v1*)wl_registry_bind(
         registry, name, &zxdg_decoration_manager_v1_interface, 1U);
+
+  } else if (!strcmp(interface, zxdg_exporter_v2_interface.name)) {
+    impl->exporter = (struct zxdg_exporter_v2*)wl_registry_bind(
+      registry, name, &zxdg_exporter_v2_interface, 1U);
   }
 }
 
@@ -2872,6 +2900,9 @@ puglWaylandDestroyWorldInternals(PuglWorldInternals* const impl)
     wl_output_destroy(impl->outputs[i].output);
   }
 
+  if (impl->exporter) {
+    zxdg_exporter_v2_destroy(impl->exporter);
+  }
   if (impl->decorationManager) {
     zxdg_decoration_manager_v1_destroy(impl->decorationManager);
   }
@@ -3100,6 +3131,12 @@ puglWaylandDestroyViewSurface(PuglInternals* const impl)
     zxdg_toplevel_decoration_v1_destroy(impl->decoration);
     impl->decoration = NULL;
   }
+  if (impl->exported) {
+    zxdg_exported_v2_destroy(impl->exported);
+    impl->exported = NULL;
+  }
+  free(impl->exportedHandle);
+  impl->exportedHandle = NULL;
   if (impl->xdgToplevel) {
     xdg_toplevel_destroy(impl->xdgToplevel);
     impl->xdgToplevel = NULL;
@@ -3192,6 +3229,18 @@ puglRealize(PuglView* const view)
       impl->decoration, &puglWaylandDecorationListener, view);
     zxdg_toplevel_decoration_v1_set_mode(
       impl->decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+  }
+
+  /* Exported eagerly rather than on demand: the handle comes back in a later event, and the point
+     where an application wants it (opening a portal dialog) is too late to start waiting. */
+  if (wimpl->exporter) {
+    impl->exported =
+      zxdg_exporter_v2_export_toplevel(wimpl->exporter, impl->wlSurface);
+
+    if (impl->exported) {
+      zxdg_exported_v2_add_listener(
+        impl->exported, &puglWaylandExportedListener, view);
+    }
   }
 
   if (view->strings[PUGL_WINDOW_TITLE]) {
@@ -4200,4 +4249,10 @@ puglWaylandSetAppId(PuglView* const view, const char* const appId)
   if (view->impl->xdgToplevel && appId && *appId) {
     xdg_toplevel_set_app_id(view->impl->xdgToplevel, appId);
   }
+}
+
+const char*
+puglWaylandGetExportedHandle(const PuglView* const view)
+{
+  return view && view->impl ? view->impl->exportedHandle : NULL;
 }
