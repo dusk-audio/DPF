@@ -1768,16 +1768,18 @@ dispatchX11Events(PuglWorld* const world)
       mergeExposeEvents(&view->impl->pendingExpose.expose, &event.expose);
       break;
     case PUGL_FOCUS_IN:
-      // Set the input context focus
+      // Set the input context focus, then let the application know as well
       if (view->impl->xic) {
         XSetICFocus(view->impl->xic);
       }
+      st = puglDispatchEvent(view, &event);
       break;
     case PUGL_FOCUS_OUT:
-      // Unset the input context focus
+      // Unset the input context focus, then let the application know as well
       if (view->impl->xic) {
         XUnsetICFocus(view->impl->xic);
       }
+      st = puglDispatchEvent(view, &event);
       break;
     default:
       // Dispatch event to application immediately
