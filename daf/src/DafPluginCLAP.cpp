@@ -1525,33 +1525,80 @@ public:
             }
         }
 
-        if (out != nullptr)
+        // -1 for note_id/port_index/channel/key, as in sendUIEventsToHost: a parameter the plugin
+        // moves reports one global value, not one belonging to voice 0 on channel 0.
+        clap_event_param_value_t clapEvent = {
+            { sizeof(clap_event_param_value_t), frameOffset, 0, CLAP_EVENT_PARAM_VALUE, CLAP_EVENT_IS_LIVE },
+            0, nullptr, -1, -1, -1, -1, 0.0
+        };
+
+        float value;
+        for (uint i=0; i<fCachedParameters.numParams; ++i)
         {
-            // -1 for note_id/port_index/channel/key, as in sendUIEventsToHost: an output parameter
-            // reports one global value, not one belonging to voice 0 on channel 0.
-            clap_event_param_value_t clapEvent = {
-                { sizeof(clap_event_param_value_t), frameOffset, 0, CLAP_EVENT_PARAM_VALUE, CLAP_EVENT_IS_LIVE },
-                0, nullptr, -1, -1, -1, -1, 0.0
-            };
+            if (! fPlugin.isParameterOutputOrTrigger(i))
+                continue;
 
-            float value;
-            for (uint i=0; i<fCachedParameters.numParams; ++i)
-            {
-                if (fPlugin.isParameterOutputOrTrigger(i))
-                {
-                    value = fPlugin.getParameterValue(i);
+            value = fPlugin.getParameterValue(i);
 
-                    if (d_isEqual(fCachedParameters.values[i], value))
-                        continue;
+            if (d_isEqual(fCachedParameters.values[i], value))
+                continue;
 
-                    fCachedParameters.values[i] = value;
-                    fCachedParameters.changed[i] = true;
+            // The two kinds treat a missing output list differently, and the asymmetry is the point.
+            //
+            // Output parameters take the cache update unconditionally: nothing below will report
+            // them anyway, and the cache is what feeds the embedded UI (ClapUI::idleCallback drains
+            // changed[]), so gating it on a host connection would freeze the plugin's own meters
+            // whenever a host flushes without one.
+            //
+            // Trigger parameters defer instead, leaving the cache untouched so the next call with a
+            // real list still sees the change and reports it. Caching now would make d_isEqual
+            // swallow it there, pinning the host's value at "pressed" forever, the same loss that
+            // sendUIEventsToHost's watermark exists to avoid.
+            //
+            // Neither read nor write of values[]/changed[] is synchronised against idleCallback.
+            // Pre-existing and unchanged here.
+            if (out == nullptr && ! fPlugin.isParameterOutput(i))
+                continue;
 
-                    clapEvent.param_id = i;
-                    clapEvent.value = value;
-                    out->try_push(out, &clapEvent.header);
-                }
-            }
+            fCachedParameters.values[i] = value;
+            fCachedParameters.changed[i] = true;
+
+            // Output parameters are deliberately never reported to the host. Note the test is
+            // isParameterOutput, not the CLAP flag: getParameterInfo also stamps
+            // CLAP_PARAM_IS_READONLY on the Reset designation, which is a trigger and still reports.
+            //
+            // clap/ext/params.h grants the host clap_plugin_params.get_value() "at any time" on the
+            // main thread, and an output parameter is one "changed by the plugin and never modified
+            // by the host": there is no automation lane and no MIDI mapping riding on the host's
+            // cached copy. A host that wants to display the value polls for it.
+            //
+            // For a meter that is the whole story, and reporting one costs far more than it buys. A
+            // meter moves nearly every block, so a plugin like TapeMachine 2 pushed two
+            // CLAP_EVENT_PARAM_VALUE per block (750 a second at 48kHz with 128-frame buffers) into
+            // the same out_events queue that carries genuine user edits from the plugin's own GUI.
+            // Unlike VST3, which has a separate outputParameterChanges channel, CLAP gives a host
+            // no way to tell the two apart beyond the header flags, and these events claimed
+            // CLAP_EVENT_IS_LIVE ("a user turning a physical knob") while carrying no
+            // CLAP_EVENT_DONT_RECORD. In Bitwig the meter kept capturing the device panel's
+            // last-accessed-parameter slot and re-marked the project modified immediately after
+            // every save (dusk-audio/plugins#231). Whether that host keys on the flags or on the
+            // events existing at all was never isolated, which is exactly why the events go rather
+            // than just their flags: dropping them fixes the symptom under either reading.
+            //
+            // The trade, for honesty: a low-rate informational output parameter (DAF's Info and
+            // FileHandling examples publish buffer size and file sizes that way) now only reaches a
+            // host that polls. That is a real regression for those, judged well worth trading for a
+            // format-wide meter fix, and get_value is always there to serve it.
+            //
+            // Trigger parameters still report. Their reset back to default is a real value the host
+            // must see to stop re-firing them, it happens once per press rather than continuously,
+            // and it is the tail of an actual user gesture.
+            if (fPlugin.isParameterOutput(i))
+                continue;
+
+            clapEvent.param_id = i;
+            clapEvent.value = value;
+            out->try_push(out, &clapEvent.header);
         }
     }
 
