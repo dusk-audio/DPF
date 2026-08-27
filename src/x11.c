@@ -1928,10 +1928,12 @@ puglGetScaleFactor(const PuglView* const view)
 PuglStatus
 puglSetWindowPosition(PuglView* const view, const int x, const int y)
 {
-  return puglX11Status(XMoveWindow(view->world->impl->display,
-                                   view->impl->win,
-                                   (int)(x - view->impl->frameExtentLeft),
-                                   (int)(y - view->impl->frameExtentTop)));
+  return !view->impl->win
+           ? PUGL_SUCCESS
+           : puglX11Status(XMoveWindow(view->world->impl->display,
+                                        view->impl->win,
+                                        (int)(x - view->impl->frameExtentLeft),
+                                        (int)(y - view->impl->frameExtentTop)));
 }
 
 PuglStatus

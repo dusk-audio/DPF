@@ -357,6 +357,12 @@ dispatchCurrentChildViewConfiguration(PuglView* const view)
   return YES;
 }
 
+- (BOOL)acceptsFirstMouse:(NSEvent*)event
+{
+  (void)event;
+  return YES;
+}
+
 - (void)setReshaped
 {
   reshaped = true;
