@@ -2943,6 +2943,52 @@ private:
             fParameterValueChangesForUI[kVst3InternalParameterBaseCount + i] = true;
            #endif
 
+           #if ! DAF_VST3_USES_SEPARATE_CONTROLLER
+            // Output parameters are deliberately never reported to the host, the same
+            // decision the CLAP wrapper reached in flushParameters (dusk-audio/DAF#18).
+            // Everything above this line still runs for them: the cache is what
+            // getParameterNormalized answers a polling host from, and the UI flag is
+            // what feeds the embedded editor's meters through the "idle" message, so a
+            // plugin's own meters and a host that asks are both unaffected.
+            //
+            // What stops is the push. A meter moves on nearly every block, so a plugin
+            // with two of them handed the host two parameter edits per block for as long
+            // as audio flowed: 375 a second each at 48kHz with 128-frame buffers. VST3
+            // has a dedicated outputParameterChanges channel and DAF marks these
+            // parameters V3_PARAM_READ_ONLY, but neither stops a host acting on the
+            // values arriving. Bitwig turns each into an undoable plug-in change; the
+            // undo history churns until Undo and Redo are no longer offered at all, and
+            // the project is modified again the instant it is saved
+            // (dusk-audio/plugins#233, and #231 for the CLAP half of the same bug).
+            //
+            // Only for the single-component build, and that restriction is not caution.
+            // With DAF_VST3_USES_SEPARATE_CONTROLLER the component and the controller are
+            // two objects with two caches, and the round trip through the host --
+            // outputParameterChanges out, setParameterNormalized back in -- is the only
+            // thing that carries an output parameter's value to the controller. The
+            // component-to-controller connection point handles "midi" and "state-set"
+            // and nothing else, and this function runs on the audio thread where
+            // creating a message is not allowed, so there is no second channel to move
+            // to. Suppressing the push there would freeze the plugin's own editor
+            // meters, which is a worse bug than the one being fixed. Closing that half
+            // needs a lock-free component-to-controller queue drained on the
+            // controller's idle timer; until then a plugin that wants this fix wants
+            // DAF_PLUGIN_WANT_DIRECT_ACCESS, which every Dusk Audio plugin already sets.
+            //
+            // The cost, the same one the CLAP change accepted: a low-rate informational
+            // output parameter, as DAF's Info and FileHandling examples publish buffer
+            // size and file sizes, now only reaches a host that polls
+            // IEditController::getParamNormalized. A generic host editor that draws
+            // parameters from the values it is sent will show such a parameter frozen at
+            // whatever it read last.
+            //
+            // Trigger parameters keep reporting. Their reset back to default is a value
+            // the host must see to stop re-firing them, and it happens once per press
+            // rather than continuously. Same for the internal latency parameter below.
+            if (fPlugin.isParameterOutput(i))
+                continue;
+           #endif
+
             normalized = _getNormalizedParameterValue(i, curValue);
 
             if (! addParameterDataToHostOutputEvents(outparamsptr, kVst3InternalParameterCount + i, normalized, offset))
