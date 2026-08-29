@@ -555,6 +555,10 @@ public:
         ui->idleFromNativeIdle();
        #endif
 
+        // Constraints can also move without a resize following, so catch those
+        // here rather than only on the resize path.
+        notifyResizeHintsIfChanged();
+
         for (uint i=0; i<fCachedParameters.numParams; ++i)
         {
             if (fCachedParameters.changed[i])
@@ -623,6 +627,15 @@ private:
     const clap_host_t* const fHost;
     const clap_host_params_t* const fHostParams;
     const clap_host_gui_t* const fHostGui;
+
+    // Last geometry constraints the host was told about. A CLAP host caches
+    // get_resize_hints and keeps enforcing the cached aspect afterwards, so it
+    // has to be told when they move or it silently applies the old ratio to
+    // everything, including a size this plugin asks for.
+    uint fNotifiedMinWidth = 0;
+    uint fNotifiedMinHeight = 0;
+    bool fNotifiedKeepAspect = false;
+    bool fNotifiedAny = false;
    #if DAF_CLAP_USING_HOST_TIMER
     clap_id fTimerId;
     const clap_host_timer_support_t* const fHostTimer;
@@ -819,6 +832,33 @@ private:
         static_cast<ClapUI*>(ptr)->setParameterValue(rindex, value);
     }
 
+    // Ask the host to re-read get_resize_hints when this UI's constraints have
+    // moved since it was last told. Three comparisons per call, and the host call
+    // only happens on a real change, so it is cheap enough for the idle tick.
+    void notifyResizeHintsIfChanged()
+    {
+        if (fIsFloating || fUI == nullptr)
+            return;
+
+        uint minimumWidth = 0, minimumHeight = 0;
+        bool keepAspectRatio = false;
+        fUI->getGeometryConstraints(minimumWidth, minimumHeight, keepAspectRatio);
+
+        if (fNotifiedAny
+            && minimumWidth == fNotifiedMinWidth
+            && minimumHeight == fNotifiedMinHeight
+            && keepAspectRatio == fNotifiedKeepAspect)
+            return;
+
+        fNotifiedMinWidth = minimumWidth;
+        fNotifiedMinHeight = minimumHeight;
+        fNotifiedKeepAspect = keepAspectRatio;
+        fNotifiedAny = true;
+
+        // Documented "[thread-safe & !floating]".
+        fHostGui->resize_hints_changed(fHost);
+    }
+
     void setSizeFromPlugin(const uint width, const uint height)
     {
         DAF_SAFE_ASSERT_RETURN(fUI != nullptr,);
@@ -839,6 +879,15 @@ private:
         const uint hostWidth = width;
         const uint hostHeight = height;
        #endif
+
+        // BEFORE asking, not after: the host resolves the request against the hints
+        // it currently holds. A plugin that changes its aspect (an editor with a
+        // collapsible section, say) and then asks for the matching size gets a
+        // window built to the OLD ratio otherwise -- Bitwig answered a 960x516
+        // request with a 902x601 window, 1.5008 being the ratio from before the
+        // section was collapsed, leaving the view clipped on one side and short on
+        // the other.
+        notifyResizeHintsIfChanged();
 
         if (fHostGui->request_resize(fHost, hostWidth, hostHeight))
             fUI->setWindowSizeFromHost(width, height);
