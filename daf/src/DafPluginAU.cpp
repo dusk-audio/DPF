@@ -29,6 +29,8 @@
 #include <AudioUnit/AudioUnit.h>
 #include <AudioToolbox/AudioUnitUtilities.h>
 
+#include "DafPluginAUBufferList.hpp"
+
 #include <map>
 #include <vector>
 
@@ -265,7 +267,7 @@ struct AUInputBus {
     AudioUnitConnection connection;
     AURenderCallbackStruct renderCallback;
     Float64 sampleRate;
-    AudioBufferList* bufferList;
+    AUBufferList bufferList;
 
     AUInputBus() noexcept
         : groupId(kPortGroupNone),
@@ -276,7 +278,7 @@ struct AUInputBus {
           connection(),
           renderCallback(),
           sampleRate(0.0),
-          bufferList(nullptr)
+          bufferList()
     {
         std::memset(&connection, 0, sizeof(connection));
         std::memset(&renderCallback, 0, sizeof(renderCallback));
@@ -356,7 +358,7 @@ public:
          #endif
         #endif
          #if DAF_PLUGIN_NUM_INPUTS + DAF_PLUGIN_NUM_OUTPUTS != 0
-          fAudioBufferList(nullptr),
+          fAudioBufferList(),
          #endif
           fChannelInfoCount(0),
           fUsingRenderListeners(false),
@@ -698,6 +700,7 @@ public:
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
             DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
            #if DAF_PLUGIN_NUM_INPUTS != 0 && DAF_PLUGIN_NUM_OUTPUTS != 0
+            // constant for this unit, which never processes in place; see the getter
             outDataSize = sizeof(UInt32);
             outWritable = false;
             return noErr;
@@ -1081,15 +1084,16 @@ public:
 
        #if DAF_PLUGIN_NUM_INPUTS != 0 && DAF_PLUGIN_NUM_OUTPUTS != 0
         case kAudioUnitProperty_InPlaceProcessing:
-            // Auxiliary input buses have their own buffer lists, so only the
-            // main input and output bus widths determine in-place support.
-           #ifdef DAF_PLUGIN_EXTRA_IO
-            *static_cast<UInt32*>(outData) =
-                fInputBuses[0].channels == fNumOutputs ? 1 : 0;
-           #else
-            *static_cast<UInt32*>(outData) =
-                fInputBuses[0].channels == DAF_PLUGIN_NUM_OUTPUTS ? 1 : 0;
-           #endif
+            /* This unit does not process in place. Every input bus, the main one included, is
+             * pulled into a buffer list of its own in auRender, so the buffers the plugin reads
+             * are not the buffers the host handed us to write into. Claiming otherwise was what
+             * had auval reporting that the unit says it processes in place while its input and
+             * output buffers differ.
+             *
+             * Reporting 0 costs the host one buffer copy it could otherwise have skipped and is
+             * always safe; matching the claim instead would mean pulling the main bus straight
+             * into ioData, which changes what run() is handed and is not a property change. */
+            *static_cast<UInt32*>(outData) = 0;
             return noErr;
        #endif
 
@@ -1452,6 +1456,13 @@ public:
 
                     if (fNumOutputs != desc->mChannelsPerFrame)
                     {
+                        /* The shared buffer list is sized from the output count in auInitialize
+                         * and is not resized again while the unit is initialized, so a wider
+                         * output element would have auRender index past it. Uninitialize first,
+                         * as the API requires for a channel-count change. */
+                        if (fPlugin.isActive())
+                            return kAudioUnitErr_Initialized;
+
                         changed = true;
                         fNumOutputs = desc->mChannelsPerFrame;
                         updatePluginAudioPortIO();
@@ -1488,6 +1499,14 @@ public:
             DAF_SAFE_ASSERT_UINT_RETURN(inDataSize == sizeof(UInt32), inDataSize, kAudioUnitErr_InvalidPropertyValue);
             {
                 const UInt32 bufferSize = *static_cast<const UInt32*>(inData);
+
+               #if DAF_PLUGIN_NUM_INPUTS + DAF_PLUGIN_NUM_OUTPUTS != 0
+                /* The buffer lists are sized from this in auInitialize and are not resized again
+                 * while the unit is initialized, so accepting a bigger value here would leave the
+                 * render path writing past them. Uninitialize first, as the API requires. */
+                if (fPlugin.isActive() && bufferSize != fPlugin.getBufferSize())
+                    return kAudioUnitErr_Initialized;
+               #endif
 
                 if (fPlugin.setBufferSize(bufferSize, true))
                     notifyPropertyListeners(inProp, inScope, inElement);
@@ -1561,7 +1580,11 @@ public:
            #endif
 
         case kAudioUnitProperty_InPlaceProcessing:
-            // nothing to do
+            DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
+            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
+            DAF_SAFE_ASSERT_UINT_RETURN(inDataSize == sizeof(UInt32), inDataSize, kAudioUnitErr_InvalidPropertyValue);
+            /* Accepted and ignored: the unit never processes in place, so whichever way the host
+             * sets this it still gets its output buffers written and nothing else touched. */
             return noErr;
 
         case kAudioUnitProperty_PresentPreset:
@@ -1984,7 +2007,8 @@ public:
                                             ioData->mNumberBuffers, kAudio_ParamError);
            #endif
            #elif DAF_PLUGIN_NUM_INPUTS != 0
-            DAF_SAFE_ASSERT_UINT_RETURN(ioData->mNumberBuffers == fAudioBufferList->mNumberBuffers,
+            DAF_SAFE_ASSERT_UINT_RETURN(ioData->mNumberBuffers
+                                            == static_cast<UInt32>(fAudioBufferList.getNumBuffers()),
                                             ioData->mNumberBuffers, kAudio_ParamError);
            #else
             DAF_SAFE_ASSERT_UINT_RETURN(ioData->mNumberBuffers == 0, ioData->mNumberBuffers, kAudio_ParamError);
@@ -2030,7 +2054,14 @@ public:
         {
             if (ioData->mBuffers[i].mData == nullptr)
             {
-                ioData->mBuffers[i].mData = fAudioBufferList->mBuffers[i].mData;
+                ioData->mBuffers[i].mData = fAudioBufferList.getChannelBuffer(i);
+
+                if (ioData->mBuffers[i].mData == nullptr)
+                {
+                    setLastRenderError(kAudio_ParamError);
+                    return kAudio_ParamError;
+                }
+
                 std::memset(ioData->mBuffers[i].mData, 0, sizeof(float) * inFramesToProcess);
             }
             outputs[i] = static_cast<float*>(ioData->mBuffers[i].mData);
@@ -2041,10 +2072,17 @@ public:
         for (uint16_t busIndex = 0; busIndex < fInputBusCount; ++busIndex)
         {
             AUInputBus& bus(fInputBuses[busIndex]);
-            AudioBufferList* const busData = bus.bufferList;
-            busData->mNumberBuffers = bus.channels;
-            for (uint16_t channel = 0; channel < bus.channels; ++channel)
-                busData->mBuffers[channel].mDataByteSize = sizeof(float) * inFramesToProcess;
+
+            /* Point the list back at our own buffers before every pull. The unit or callback we
+             * pulled from last time is allowed to have swapped in buffers of its own, and those are
+             * neither ours to write into nor guaranteed to still exist. */
+            AudioBufferList* const busData = bus.bufferList.prepare(bus.channels, inFramesToProcess);
+
+            if (busData == nullptr)
+            {
+                setLastRenderError(kAudio_ParamError);
+                return kAudio_ParamError;
+            }
 
             OSStatus err = noErr;
             if (bus.channels != 0 && bus.connection.sourceAudioUnit != nullptr)
@@ -2255,7 +2293,7 @@ private:
    #endif
   #endif
    #if DAF_PLUGIN_NUM_INPUTS + DAF_PLUGIN_NUM_OUTPUTS != 0
-    AudioBufferList* fAudioBufferList;
+    AUBufferList fAudioBufferList;
    #endif
     AUChannelInfo fChannelInfo[ARRAY_SIZE(kChannelInfo)];
     uint16_t fChannelInfoCount;
@@ -2604,47 +2642,23 @@ private:
     // ----------------------------------------------------------------------------------------------------------------
 
    #if DAF_PLUGIN_NUM_INPUTS + DAF_PLUGIN_NUM_OUTPUTS != 0
-    static void freeAudioBufferList(AudioBufferList*& list, const uint16_t numBuffers)
-    {
-        if (list == nullptr)
-            return;
-
-        for (uint16_t i = 0; i < numBuffers; ++i)
-            delete[] static_cast<float*>(list->mBuffers[i].mData);
-        std::free(list);
-        list = nullptr;
-    }
-
-    static bool allocateAudioBufferList(AudioBufferList*& list,
-                                        const uint16_t numBuffers,
-                                        const uint32_t bufferSize)
-    {
-        list = static_cast<AudioBufferList*>(
-            std::malloc(offsetof(AudioBufferList, mBuffers) + sizeof(AudioBuffer) * numBuffers));
-        if (list == nullptr)
-            return false;
-
-        list->mNumberBuffers = numBuffers;
-        for (uint16_t i = 0; i < numBuffers; ++i)
-        {
-            list->mBuffers[i].mNumberChannels = 1;
-            list->mBuffers[i].mData = new float[bufferSize];
-            list->mBuffers[i].mDataByteSize = sizeof(float) * bufferSize;
-        }
-        return true;
-    }
-
+    /* Release, and optionally allocate again, every buffer list this unit owns.
+     *
+     * Each AUBufferList frees itself by the shape it was allocated with, so this stays correct
+     * across a bus reconfiguration that happened while the lists existed, and across a render that
+     * left a bus list pointing at buffers the connected unit owns.
+     */
     bool reallocAudioBufferList(const bool alloc)
     {
-        const uint16_t oldNumBuffers = fAudioBufferList != nullptr
-                                     ? fAudioBufferList->mNumberBuffers : 0;
-        freeAudioBufferList(fAudioBufferList, oldNumBuffers);
+        fAudioBufferList.deallocate();
 
        #if DAF_PLUGIN_NUM_INPUTS != 0
         for (uint16_t busIndex = 0; busIndex < fInputBusCount; ++busIndex)
-            freeAudioBufferList(fInputBuses[busIndex].bufferList,
-                                fInputBuses[busIndex].declaredChannels);
+            fInputBuses[busIndex].bufferList.deallocate();
        #endif
+
+        if (! alloc)
+            return true;
 
        #if DAF_PLUGIN_NUM_OUTPUTS != 0
         #ifdef DAF_PLUGIN_EXTRA_IO
@@ -2657,17 +2671,14 @@ private:
        #endif
         const uint32_t bufferSize = fPlugin.getBufferSize();
 
-        if (! alloc)
-            return true;
-
-        if (! allocateAudioBufferList(fAudioBufferList, numBuffers, bufferSize))
+        if (! fAudioBufferList.allocate(numBuffers, bufferSize))
             return false;
 
        #if DAF_PLUGIN_NUM_INPUTS != 0
         for (uint16_t busIndex = 0; busIndex < fInputBusCount; ++busIndex)
         {
             AUInputBus& bus(fInputBuses[busIndex]);
-            if (! allocateAudioBufferList(bus.bufferList, bus.declaredChannels, bufferSize))
+            if (! bus.bufferList.allocate(bus.declaredChannels, bufferSize))
             {
                 reallocAudioBufferList(false);
                 return false;
