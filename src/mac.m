@@ -1271,6 +1271,7 @@ puglRealize(PuglView* view)
 
   // Add draw view to wrapper view
   [impl->wrapperView addSubview:impl->drawView];
+  [impl->drawView setFrame:[impl->wrapperView bounds]];
   [impl->wrapperView setHidden:NO];
   [impl->drawView setHidden:NO];
 
@@ -1315,10 +1316,9 @@ puglRealize(PuglView* view)
     [impl->window setFrame:winFrame display:NO];
 
     // Resize views and move them to (0, 0)
-    const NSRect sizePx = {{0, 0}, {framePx.size.width, framePx.size.height}};
-    const NSRect sizePt = [impl->drawView convertRectFromBacking:sizePx];
+    const NSRect sizePt = {{0, 0}, {framePt.size.width, framePt.size.height}};
     [impl->wrapperView setFrame:sizePt];
-    [impl->drawView setFrame:sizePt];
+    [impl->drawView setFrame:[impl->wrapperView bounds]];
 
     puglSetTransientParent(view, view->transientParent);
     puglUpdateSizeHints(view);
@@ -1771,10 +1771,10 @@ puglSetWindowSize(PuglView* const view,
   const CGSize frameSizePt = {width / scaleFactor, height / scaleFactor};
   [impl->wrapperView setFrameSize:frameSizePt];
 
-  // Set draw view size
-  const NSRect drawPx = NSMakeRect(0, 0, width, height);
-  const NSRect drawPt = [impl->drawView convertRectFromBacking:drawPx];
-  [impl->drawView setFrameSize:drawPt.size];
+  // The draw view is in the wrapper's point-space coordinate system. Deriving
+  // its size independently from backing pixels can choose a different screen
+  // scale while the embedded view is not attached to a window.
+  [impl->drawView setFrame:[impl->wrapperView bounds]];
 
   if (impl->window) {
     const NSRect framePx =
