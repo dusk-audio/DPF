@@ -487,6 +487,13 @@ public:
 
    /**
       Set geometry constraints for the Window when resized by the user, and optionally scale contents automatically.
+
+      The minimum size is given unscaled: with @a automaticallyScale the constraint handed to the
+      windowing system is the minimum multiplied by the window scale factor.
+
+      @a resizeNowIfAutoScaling additionally resizes the window to that scaled minimum as
+      auto-scaling is switched on. It is ignored once the Window is already auto-scaling, so a
+      later call cannot pull a user-resized window back down to its minimum.
     */
     void setGeometryConstraints(uint minimumWidth,
                                 uint minimumHeight,
