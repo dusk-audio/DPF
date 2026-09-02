@@ -949,14 +949,18 @@ void Window::PrivateData::createContextIfNeeded()
 #  pragma GCC diagnostic ignored "-Wcast-function-type"
 # endif
     static bool needsInit = true;
+    // A pre-OpenGL-3 Windows implementation legitimately has none of these
+    // entry points. Leave the context's program at zero so the caller can
+    // refuse that renderer without reporting a framework assertion. Keep
+    // needsInit set until a complete load succeeds so a later context can retry.
 # define DGL_EXT(PROC, func) \
       if (needsInit) func = (PROC) wglGetProcAddress ( #func ); \
-      DAF_SAFE_ASSERT_RETURN(func != nullptr,);
+      if (func == nullptr) return;
 # define DGL_EXT2(PROC, func, fallback) \
       if (needsInit) { \
         func = (PROC) wglGetProcAddress ( #func ); \
         if (func == nullptr) func = (PROC) wglGetProcAddress ( #fallback ); \
-      } DAF_SAFE_ASSERT_RETURN(func != nullptr,);
+      } if (func == nullptr) return;
 DGL_EXT(PFNGLACTIVETEXTUREPROC,            glActiveTexture)
 DGL_EXT(PFNGLATTACHSHADERPROC,             glAttachShader)
 DGL_EXT(PFNGLBINDBUFFERPROC,               glBindBuffer)
