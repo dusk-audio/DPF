@@ -22,6 +22,8 @@
 #include "dgl/src/Application.cpp"
 #include "dgl/src/ApplicationPrivateData.cpp"
 #include "dgl/src/Geometry.cpp"
+#include "dgl/src/Widget.cpp"
+#include "dgl/src/WidgetPrivateData.cpp"
 #include "dgl/src/Window.cpp"
 #include "dgl/src/WindowPrivateData.cpp"
 
@@ -54,6 +56,33 @@ int main()
         Window win(app);
         win.show();
         app.exec();
+    }
+
+    // auto-scaling must apply the scale factor exactly once, whatever size the window starts at
+    {
+        Application app(true);
+
+        // as a plugin UI does it: the window is created at the already-scaled size, then
+        // auto-scaling is switched on with the unscaled design size as the minimum
+        Window win(app, 0, 360, 360, 1.8, true);
+        win.setGeometryConstraints(200, 200, true, true, true);
+        DAF_ASSERT_EQUAL(win.getWidth(), 360u, "pre-scaled window keeps its size");
+        DAF_ASSERT_EQUAL(win.getHeight(), 360u, "pre-scaled window keeps its size");
+
+        // and a second call leaves it alone rather than scaling again
+        win.setGeometryConstraints(200, 200, true, true, true);
+        DAF_ASSERT_EQUAL(win.getWidth(), 360u, "repeated call does not scale again");
+        DAF_ASSERT_EQUAL(win.getHeight(), 360u, "repeated call does not scale again");
+    }
+
+    // a window still at its unscaled design size grows to the scaled minimum instead
+    {
+        Application app(true);
+
+        Window win(app, 0, 200, 200, 1.8, true);
+        win.setGeometryConstraints(200, 200, true, true, true);
+        DAF_ASSERT_EQUAL(win.getWidth(), 360u, "unscaled window grows to the scaled minimum");
+        DAF_ASSERT_EQUAL(win.getHeight(), 360u, "unscaled window grows to the scaled minimum");
     }
 
     // TODO

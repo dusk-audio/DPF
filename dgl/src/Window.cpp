@@ -532,7 +532,9 @@ void Window::setGeometryConstraints(uint minimumWidth,
     DAF_SAFE_ASSERT_RETURN(minimumWidth > 0,);
     DAF_SAFE_ASSERT_RETURN(minimumHeight > 0,);
 
-    // prevent auto-scaling up 2x
+    /* Only the transition into auto-scaling mode sizes the window from the constraints. A window
+       that is already auto-scaling keeps whatever size it has, so a second call cannot pull a
+       user-resized window back to its minimum. */
     if (resizeNowIfAutoScaling && automaticallyScale && pData->autoScaling == automaticallyScale)
         resizeNowIfAutoScaling = false;
 
@@ -556,10 +558,14 @@ void Window::setGeometryConstraints(uint minimumWidth,
 
     if (scaleFactor != 1.0 && automaticallyScale && resizeNowIfAutoScaling)
     {
-        const Size<uint> size(getSize());
-
-        setSize(d_roundToUnsignedInt(size.getWidth() * scaleFactor),
-                d_roundToUnsignedInt(size.getHeight() * scaleFactor));
+        /* Size the window from the already-scaled minimum rather than from its current size times
+           the factor. Plugin UIs create their window at the scaled size before this runs -- see
+           UI::PrivateData::createNextWindow, which scales the requested size while building the
+           window -- so multiplying the current size applied the factor a second time and every
+           auto-scaling UI opened at scale-squared size. Taking the target from the constraints is
+           the same result for a window still at its unscaled design size, and idempotent for one
+           that is already scaled. */
+        setSize(minimumWidth, minimumHeight);
     }
 }
 
