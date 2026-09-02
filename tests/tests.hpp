@@ -16,9 +16,7 @@
 
 #pragma once
 
-#include "dgl/Application.hpp"
-
-#include "daf/extra/Thread.hpp"
+#include "daf/DafUtils.hpp"
 
 #define DAF_ASSERT_EQUAL(v1, v2, msg) \
     if (v1 != v2) { d_stderr2("Test condition failed: %s; file:%s line:%i", msg, __FILE__, __LINE__); return 1; }
@@ -28,6 +26,14 @@
 
 #define DAF_ASSERT_SAFE_EQUAL(v1, v2, msg) \
     if (d_isNotEqual(v1, v2)) { d_stderr2("Test condition failed: %s; file:%s line:%i", msg, __FILE__, __LINE__); return 1; }
+
+/* Tests that exercise the framework rather than the widget toolkit define DAF_TEST_NO_DGL and get
+   only the assertion macros, so they do not have to satisfy the DGL build-config sentinels. */
+#ifndef DAF_TEST_NO_DGL
+
+#include "dgl/Application.hpp"
+
+#include "daf/extra/Thread.hpp"
 
 START_NAMESPACE_DGL
 
@@ -59,3 +65,5 @@ private:
 // --------------------------------------------------------------------------------------------------------------------
 
 END_NAMESPACE_DGL
+
+#endif // DAF_TEST_NO_DGL
