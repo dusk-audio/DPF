@@ -1475,6 +1475,7 @@ static const TCHAR* const cursor_ids[] = {
   IDC_SIZENWSE, // UP_LEFT_DOWN_RIGHT
   IDC_SIZENESW, // UP_RIGHT_DOWN_LEFT
   IDC_SIZEALL,  // ALL_SCROLL
+  NULL,         // NONE, a null cursor is how Windows hides the pointer
 };
 
 PuglStatus
@@ -1488,8 +1489,9 @@ puglSetCursor(PuglView* view, PuglCursor cursor)
     return PUGL_BAD_PARAMETER;
   }
 
-  const HCURSOR cur = LoadCursor(NULL, cursor_ids[index]);
-  if (!cur) {
+  const TCHAR* const id  = cursor_ids[index];
+  const HCURSOR      cur = id ? LoadCursor(NULL, id) : NULL;
+  if (id && !cur) {
     return PUGL_FAILURE;
   }
 

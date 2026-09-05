@@ -95,6 +95,7 @@ static const char* const cursorNames[PUGL_NUM_CURSORS] = {
   "size_fdiag",        // UP_LEFT_DOWN_RIGHT
   "size_bdiag",        // UP_RIGHT_DOWN_LEFT
   "all-scroll",        // ALL_SCROLL
+  NULL,                // NONE, drawn from an empty pixmap instead of a theme
 };
 #endif
 
@@ -502,6 +503,32 @@ defineCursorName(PuglView* const view, const char* const name)
   }
 
   // Set the view's cursor to the new loaded one
+  XDefineCursor(display, impl->win, cur);
+  XFreeCursor(display, cur);
+  return PUGL_SUCCESS;
+}
+
+static PuglStatus
+defineEmptyCursor(PuglView* const view)
+{
+  PuglInternals* const impl    = view->impl;
+  Display* const       display = view->world->impl->display;
+
+  // A cursor made from a blank 1x1 bitmap, which is how X11 hides the pointer
+  char         bits[1] = {0};
+  const Pixmap pixmap = XCreateBitmapFromData(display, impl->win, bits, 1U, 1U);
+  if (!pixmap) {
+    return PUGL_UNKNOWN_ERROR;
+  }
+
+  XColor       black = PUGL_INIT_STRUCT;
+  const Cursor cur =
+    XCreatePixmapCursor(display, pixmap, pixmap, &black, &black, 0U, 0U);
+  XFreePixmap(display, pixmap);
+  if (!cur) {
+    return PUGL_UNKNOWN_ERROR;
+  }
+
   XDefineCursor(display, impl->win, cur);
   XFreeCursor(display, cur);
   return PUGL_SUCCESS;
@@ -1768,16 +1795,18 @@ dispatchX11Events(PuglWorld* const world)
       mergeExposeEvents(&view->impl->pendingExpose.expose, &event.expose);
       break;
     case PUGL_FOCUS_IN:
-      // Set the input context focus
+      // Set the input context focus, then let the application know as well
       if (view->impl->xic) {
         XSetICFocus(view->impl->xic);
       }
+      st = puglDispatchEvent(view, &event);
       break;
     case PUGL_FOCUS_OUT:
-      // Unset the input context focus
+      // Unset the input context focus, then let the application know as well
       if (view->impl->xic) {
         XUnsetICFocus(view->impl->xic);
       }
+      st = puglDispatchEvent(view, &event);
       break;
     default:
       // Dispatch event to application immediately
@@ -2082,9 +2111,9 @@ puglSetCursor(PuglView* const view, const PuglCursor cursor)
     return PUGL_SUCCESS;
   }
 
-  impl->cursorName = cursorNames[index];
+  impl->cursorName = name;
 
-  return defineCursorName(view, impl->cursorName);
+  return name ? defineCursorName(view, name) : defineEmptyCursor(view);
 #else
   (void)view;
   (void)cursor;
