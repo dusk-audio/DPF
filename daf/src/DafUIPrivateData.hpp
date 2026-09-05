@@ -127,7 +127,6 @@ class PluginWindow : public DGL_NAMESPACE::Window
 {
     UI* const ui;
     bool initializing;
-    bool receivedReshapeDuringInit;
 
 public:
     explicit PluginWindow(UI* const uiPtr,
@@ -142,8 +141,7 @@ public:
                  DAF_UI_USES_SIZE_REQUEST,
                  false),
           ui(uiPtr),
-          initializing(true),
-          receivedReshapeDuringInit(false)
+          initializing(true)
     {
         if (pData->view == nullptr)
             return;
@@ -170,13 +168,6 @@ public:
 
         initializing = false;
         puglBackendLeave(pData->view);
-
-        if (receivedReshapeDuringInit)
-        {
-            puglBackendEnter(pData->view);
-            ui->uiReshape(getWidth(), getHeight());
-            puglBackendLeave(pData->view);
-        }
     }
 
     /* Called once the UI is fully constructed and no longer initializing, to hand the widget
@@ -288,12 +279,13 @@ protected:
     {
         DAF_SAFE_ASSERT_RETURN(ui != nullptr,);
 
-        if (initializing)
-        {
-            receivedReshapeDuringInit = true;
-            return;
-        }
-
+        /* No initializing guard here, unlike the handlers below. Those are reachable from a
+         * configure event, which a window realized inside the UI constructor can receive while
+         * that constructor is still running, with no override in place to dispatch to yet. This
+         * one is dispatched from the expose handler instead, and an expose needs a realized,
+         * mapped window and a running event loop: the size a configure recorded during
+         * construction is delivered here afterwards, once the UI is whole.
+         */
         ui->uiReshape(width, height);
     }
 

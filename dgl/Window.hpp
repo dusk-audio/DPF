@@ -560,7 +560,9 @@ protected:
 
    /**
       A function called when the window is resized.
-      If there is a top-level widget associated with this window, its size will be set right after this function.
+      Called from the drawing path, with the graphics context current, before the first draw that
+      follows the resize. If there is a top-level widget associated with this window, its size has
+      already been set by the time this runs.
       The default implementation sets up drawing context where necessary.
     */
     virtual void onReshape(uint width, uint height);
