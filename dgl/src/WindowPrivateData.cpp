@@ -119,6 +119,9 @@ Window::PrivateData::PrivateData(Application& a, Window* const s)
       scaleFactor(DGL_NAMESPACE::getScaleFactor(view)),
       autoScaling(false),
       autoScaleFactor(1.0),
+      reshapePending(false),
+      reshapeWidth(0),
+      reshapeHeight(0),
       minWidth(0),
       minHeight(0),
       keepAspectRatio(false),
@@ -153,6 +156,9 @@ Window::PrivateData::PrivateData(Application& a, Window* const s, PrivateData* c
       scaleFactor(ppData->scaleFactor),
       autoScaling(false),
       autoScaleFactor(1.0),
+      reshapePending(false),
+      reshapeWidth(0),
+      reshapeHeight(0),
       minWidth(0),
       minHeight(0),
       keepAspectRatio(false),
@@ -189,6 +195,9 @@ Window::PrivateData::PrivateData(Application& a, Window* const s,
       scaleFactor(scale != 0.0 ? scale : DGL_NAMESPACE::getScaleFactor(view)),
       autoScaling(false),
       autoScaleFactor(1.0),
+      reshapePending(false),
+      reshapeWidth(0),
+      reshapeHeight(0),
       minWidth(0),
       minHeight(0),
       keepAspectRatio(false),
@@ -228,6 +237,9 @@ Window::PrivateData::PrivateData(Application& a, Window* const s,
       scaleFactor(scale != 0.0 ? scale : DGL_NAMESPACE::getScaleFactor(view)),
       autoScaling(false),
       autoScaleFactor(1.0),
+      reshapePending(false),
+      reshapeWidth(0),
+      reshapeHeight(0),
       minWidth(0),
       minHeight(0),
       keepAspectRatio(false),
@@ -689,7 +701,14 @@ void Window::PrivateData::onPuglConfigure(const uint width, const uint height)
                       autoScaling ? autoScaleFactor : scaleFactor);
    #endif
 
-    self->onReshape(uwidth, uheight);
+    /* Hand the size to onReshape from the expose handler rather than from here. The default
+     * onReshape sets up the drawing state, which needs the graphics context to be current, and
+     * pugl dispatches configure events outside of it: nothing set up here would land. Overrides
+     * that do their own graphics setup have the same requirement, so they move with it.
+     */
+    reshapePending = true;
+    reshapeWidth = uwidth;
+    reshapeHeight = uheight;
 
 #ifndef DAF_TEST_WINDOW_CPP
     FOR_EACH_TOP_LEVEL_WIDGET(it)
@@ -715,6 +734,17 @@ void Window::PrivateData::onPuglConfigure(const uint width, const uint height)
 void Window::PrivateData::onPuglExpose()
 {
     // DGL_DBG("PUGL: onPuglExpose\n");
+
+    /* The graphics context is current here, and this is the only event where pugl promises that,
+     * so the drawing state a resize invalidates is set up now, before anything is drawn with it.
+     * Once per configure event: the state persists across exposes, exactly as it did when this
+     * ran from the configure handler.
+     */
+    if (reshapePending)
+    {
+        reshapePending = false;
+        self->onReshape(reshapeWidth, reshapeHeight);
+    }
 
     puglOnDisplayPrepare(view);
 

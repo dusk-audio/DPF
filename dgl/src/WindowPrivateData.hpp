@@ -90,6 +90,13 @@ struct Window::PrivateData : IdleCallback {
     bool autoScaling;
     double autoScaleFactor;
 
+    /** Widget-space size a configure event left for onReshape, and whether one is waiting.
+        onReshape sets up the drawing state (viewport, blend mode, matrices), which needs the
+        graphics context to be current. Pugl dispatches configure events outside that context,
+        so the call is deferred to the next expose, which is inside it. */
+    bool reshapePending;
+    uint reshapeWidth, reshapeHeight;
+
     /** Pugl geometry constraints access. */
     uint minWidth, minHeight;
     bool keepAspectRatio;

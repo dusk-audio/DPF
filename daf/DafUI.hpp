@@ -295,7 +295,8 @@ protected:
       Window reshape function, called when the window is resized.
       This function is for plugin UIs to be able to override Window::onReshape(uint, uint).
 
-      The plugin UI size will be set right after this function.
+      Called from the drawing path, with the graphics context current, before the first draw that
+      follows the resize. The plugin UI size has already been set by the time this runs.
       The default implementation sets up the drawing context where necessary.
 
       You should almost never need to override this function.
