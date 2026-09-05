@@ -456,14 +456,10 @@ puglWaylandSetSize(PuglView* const view, const PuglArea logicalRequest)
 // --------------------------------------------------------------------------------------------
 // Size hints
 
-PuglStatus
-puglApplySizeHint(PuglView* const view, const PuglSizeHint PUGL_UNUSED(hint))
-{
-  // No fine-grained updates, hints are always recalculated together
-  return puglUpdateSizeHints(view);
-}
-
-PuglStatus
+/* Pugl 703a018 dropped puglUpdateSizeHints from the platform interface, leaving puglApplySizeHint
+   as the only entry point, so this is a file-local helper now. Defined ahead of its callers, the
+   way x11.c does it, rather than forward declared. */
+static PuglStatus
 puglUpdateSizeHints(PuglView* const view)
 {
   PuglInternals* const impl = view->impl;
@@ -509,6 +505,13 @@ puglUpdateSizeHints(PuglView* const view)
      DAF keeps the aspect itself by resizing the view from its own configure handler. */
 
   return PUGL_SUCCESS;
+}
+
+PuglStatus
+puglApplySizeHint(PuglView* const view, const PuglSizeHint PUGL_UNUSED(hint))
+{
+  // No fine-grained updates, hints are always recalculated together
+  return puglUpdateSizeHints(view);
 }
 
 // --------------------------------------------------------------------------------------------
@@ -3622,34 +3625,35 @@ puglWaylandFlushExposures(PuglWorld* const world)
       expose.type          = PUGL_NOTHING;
     }
 
-    if (!expose.type && !configure.type) {
+    /* Configure first, and outside the graphics context.  Pugl c125c44 stopped entering the
+       context for configure events and deleted puglConfigure along with the idea; puglDispatchEvent
+       is what records lastConfigure and advances the view stage now.  Wayland still coalesces its
+       own configures into pendingConfigure, unlike x11.c which dispatches them as they arrive: an
+       xdg_surface configure is only meaningful once per ack_configure and commit, so the batching
+       stays. */
+    if (configure.type) {
+      st0 = puglDispatchEvent(view, &configure);
+    }
+
+    if (!expose.type) {
       continue;
     }
 
-    const PuglExposeEvent* const exposeEvent =
-      expose.type ? &expose.expose : NULL;
+    if (!(st1 = view->backend->enter(view, &expose.expose))) {
+      st1 = view->eventFunc(view, &expose);
 
-    if (!(st0 = view->backend->enter(view, exposeEvent))) {
-      if (configure.type) {
-        st0 = puglConfigure(view, &configure);
-      }
+      /* Ask for the next frame before leaving the context: the backend's leave() is what commits
+         the surface, and the frame request has to ride along with that same commit. */
+      puglWaylandRequestFrame(view);
 
-      if (expose.type) {
-        st1 = view->eventFunc(view, &expose);
-
-        /* Ask for the next frame before leaving the context: the backend's leave() is what commits
-           the surface, and the frame request has to ride along with that same commit. */
-        puglWaylandRequestFrame(view);
-      }
-    } else if (expose.type) {
+      st2 = view->backend->leave(view, &expose.expose);
+    } else {
       /* The backend could not give us anything to draw into (both shm buffers still held by the
          compositor, a context that would not go current, ...).  The expose has already been taken
          off pendingExpose, so hand it to needsRedisplay or it is lost; the retry at the top of this
-         loop picks it up again next pass. */
+         loop picks it up again next pass.  No leave() to match a failed enter(). */
       impl->needsRedisplay = true;
     }
-
-    st2 = view->backend->leave(view, exposeEvent);
   }
 
   wl_display_flush(world->impl->display);
@@ -3765,16 +3769,20 @@ puglSendEvent(PuglView* const view, const PuglEvent* const event)
 // --------------------------------------------------------------------------------------------
 // View properties
 
+/* Const on the view since pugl acafe87, along with the removal of the PuglHandle typedefs.  In C++,
+   where DGL compiles this file, the old spelling is a different overload and goes silently
+   undefined at link time rather than failing to compile. */
 PuglNativeView
-puglGetNativeView(PuglView* const view)
+puglGetNativeView(const PuglView* const view)
 {
   return (PuglNativeView)(uintptr_t)view->impl->wlSurface;
 }
 
+/* Named puglViewStringChanged until pugl 3ecf2df renamed the platform hook. */
 PuglStatus
-puglViewStringChanged(PuglView* const      view,
-                      const PuglStringHint key,
-                      const char* const    value)
+puglApplyViewString(PuglView* const      view,
+                    const PuglStringHint key,
+                    const char* const    value)
 {
   PuglInternals* const impl = view->impl;
 
@@ -3783,6 +3791,12 @@ puglViewStringChanged(PuglView* const      view,
   }
 
   switch (key) {
+  case PUGL_APPLICATION_NAME:
+    /* Added by pugl 3ecf2df, and nothing to do with it here.  Xdg-shell has exactly one identifier
+       for a toplevel, the app id, and PUGL_CLASS_NAME below is already mapped to it; that is the
+       one DGL sets (Application::setClassName).  x11.c ignores this hint in the same place. */
+    break;
+
   case PUGL_CLASS_NAME:
     xdg_toplevel_set_app_id(impl->xdgToplevel, value);
     break;
