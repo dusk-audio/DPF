@@ -61,6 +61,14 @@
   self.layer.frame = self.bounds;
 }
 
+// AppKit sends this to the view hitTest returns for the event, and that is this
+// draw view, which fills the wrapper, so the wrapper's own override never runs.
+- (BOOL)acceptsFirstMouse:(NSEvent*)event
+{
+  (void)event;
+  return YES;
+}
+
 - (void)displayLayer:(CALayer*)layer
 {
   (void)layer;

@@ -25,6 +25,14 @@
   [wrapper setReshaped];
 }
 
+// AppKit sends this to the view hitTest returns for the event, and that is this
+// draw view, which fills the wrapper, so the wrapper's own override never runs.
+- (BOOL)acceptsFirstMouse:(NSEvent*)event
+{
+  (void)event;
+  return YES;
+}
+
 - (void)drawRect:(NSRect)rect
 {
   PuglWrapperView* wrapper = (PuglWrapperView*)[self superview];
