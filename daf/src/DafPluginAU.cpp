@@ -632,6 +632,18 @@ public:
            #endif
             return kAudioUnitErr_InvalidProperty;
 
+        case kAudioUnitProperty_TailTime:
+            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
+           #if DAF_PLUGIN_WANT_TAIL
+            if (inScope == kAudioUnitScope_Global)
+            {
+                outDataSize = sizeof(Float64);
+                outWritable = false;
+                return noErr;
+            }
+           #endif
+            return kAudioUnitErr_InvalidProperty;
+
         case kAudioUnitProperty_SupportedNumChannels:
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
             DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
@@ -839,7 +851,6 @@ public:
         case kAudioUnitProperty_CPULoad:
         case kAudioUnitProperty_RenderContextObserver:
         case kAudioUnitProperty_AudioChannelLayout:
-        case kAudioUnitProperty_TailTime:
         case kAudioUnitProperty_SupportedChannelLayoutTags:
         case kMusicDeviceProperty_DualSchedulingMode:
             DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
@@ -1036,6 +1047,20 @@ public:
         case kAudioUnitProperty_Latency:
             *static_cast<Float64*>(outData) = static_cast<double>(fPlugin.getLatency()) / fPlugin.getSampleRate();
             return noErr;
+       #endif
+
+       #if DAF_PLUGIN_WANT_TAIL
+        case kAudioUnitProperty_TailTime:
+        {
+            // Seconds. AU has no "infinite" sentinel, so an endless tail is reported
+            // as one hour: long enough that no bounce stops early, finite enough
+            // that a host doing arithmetic on it stays sane.
+            const uint32_t tail = fPlugin.getTail();
+            *static_cast<Float64*>(outData) = tail == Plugin::kTailInfinite
+                                            ? 3600.0
+                                            : static_cast<double>(tail) / fPlugin.getSampleRate();
+            return noErr;
+        }
        #endif
 
         case kAudioUnitProperty_SupportedNumChannels:

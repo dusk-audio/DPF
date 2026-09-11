@@ -65,6 +65,10 @@
 # define DAF_PLUGIN_WANT_LATENCY 0
 #endif
 
+#ifndef DAF_PLUGIN_WANT_TAIL
+# define DAF_PLUGIN_WANT_TAIL 0
+#endif
+
 #ifndef DAF_PLUGIN_WANT_MIDI_AS_MPE
 # define DAF_PLUGIN_WANT_MIDI_AS_MPE 0
 #endif

@@ -554,6 +554,13 @@ START_NAMESPACE_DAF
 #define DAF_PLUGIN_WANT_LATENCY 1
 
 /**
+   Whether the plugin keeps producing output after its input goes silent (reverbs,
+   delays, anything with a decay). The tail is reported to VST3, AU and CLAP hosts.
+   @see Plugin::setTail(uint32_t)
+ */
+#define DAF_PLUGIN_WANT_TAIL 1
+
+/**
    Whether the plugin wants MPE for MIDI input and/or output.
    @note Only AU and CLAP formats implement this at the moment
 */

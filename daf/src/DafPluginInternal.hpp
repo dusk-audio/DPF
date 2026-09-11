@@ -171,6 +171,10 @@ struct Plugin::PrivateData {
     uint32_t latency;
 #endif
 
+#if DAF_PLUGIN_WANT_TAIL
+    uint32_t tail;
+#endif
+
 #if DAF_PLUGIN_WANT_TIMEPOS
     TimePosition timePosition;
 #endif
@@ -208,6 +212,9 @@ struct Plugin::PrivateData {
 #endif
 #if DAF_PLUGIN_WANT_LATENCY
           latency(0),
+#endif
+#if DAF_PLUGIN_WANT_TAIL
+          tail(0),
 #endif
           callbacksPtr(nullptr),
           writeMidiCallbackFunc(nullptr),
@@ -565,6 +572,15 @@ public:
         DAF_SAFE_ASSERT_RETURN(fData != nullptr, 0);
 
         return fData->latency;
+    }
+#endif
+
+#if DAF_PLUGIN_WANT_TAIL
+    uint32_t getTail() const noexcept
+    {
+        DAF_SAFE_ASSERT_RETURN(fData != nullptr, 0);
+
+        return fData->tail;
     }
 #endif
 

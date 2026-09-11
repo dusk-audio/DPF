@@ -131,6 +131,13 @@ void Plugin::setLatency(const uint32_t frames) noexcept
 }
 #endif
 
+#if DAF_PLUGIN_WANT_TAIL
+void Plugin::setTail(const uint32_t frames) noexcept
+{
+    pData->tail = frames;
+}
+#endif
+
 #if DAF_PLUGIN_WANT_MIDI_OUTPUT
 bool Plugin::writeMidiEvent(const MidiEvent& midiEvent) noexcept
 {
