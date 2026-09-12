@@ -58,9 +58,6 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:24.04
     steps:
-    # Installed before checkout on purpose: actions/checkout only clones submodules when git is already
-    # available, otherwise it silently falls back to the tarball API and dgl/src/pugl-upstream stays empty.
-    #
     # Package list matches exactly what Makefile.base.mk probes for the Wayland arm:
     #   wayland-client, wayland-egl, wayland-cursor -> libwayland-dev  (all three .pc files live there)
     #   xkbcommon                                   -> libxkbcommon-dev
@@ -81,7 +78,6 @@ jobs:
           libegl-dev libgl-dev libwayland-dev libxkbcommon-dev
     - uses: actions/checkout@v4
       with:
-        submodules: recursive
         persist-credentials: false
     # libgl-dev depends on libglx-dev which depends on libx11-dev, and libegl-dev depends on libx11-dev
     # directly, so there is no apt line that installs GL/EGL development files without dragging X11
@@ -123,6 +119,8 @@ jobs:
     - name: Build DGL
       run: |
         make -C dgl -j$(nproc)
+    - name: Build widget gallery
+      run: make -C widgets/tests -j$(nproc)
     - name: Run Wayland backend unit tests
       run: |
         make -C tests ../build/tests/Wayland -j$(nproc)
@@ -189,7 +187,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: recursive
         persist-credentials: false
     - name: Set up dependencies
       env:
@@ -271,7 +268,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: recursive
         persist-credentials: false
     - name: Set up dependencies
       env:
@@ -444,7 +440,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: recursive
         persist-credentials: false
     # X11 build set, then the validation tools:
     #   xvfb              headless X server, so pluginval's editor tests can open a real DGL window

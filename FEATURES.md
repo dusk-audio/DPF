@@ -143,3 +143,13 @@ Two known limitations of the Wayland backend, both inherent to the protocol rath
 ## Work in progress
 
 Feature is possible, just not implemented yet in DPF.
+
+## Widgets
+
+The in-tree [widget kit](widgets/README.md) provides the Dear ImGui DGL bridge
+(`widgets/imgui`), the ImGui-only Dusk console kit (`widgets/dusk`), and the generic
+ResizeHandle. CMake consumers use `daf__add_widgets_dusk()` and
+`daf__add_widgets_imgui(dgl-opengl3)` after creating the DGL target. The resulting
+`daf-widgets-dusk` target has no DGL dependency; `daf-widgets-imgui` supplies ImGui
+and its renderer. `DAF_WIDGETS_GALLERY` builds the standalone gallery in CMake;
+`make -C widgets/tests` builds the gallery and ImGui demo without launching them.
