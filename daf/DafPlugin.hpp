@@ -135,6 +135,26 @@ public:
     void setLatency(uint32_t frames) noexcept;
 #endif
 
+#if DAF_PLUGIN_WANT_TAIL
+   /**
+      Tail length value meaning "the tail never ends" (a freeze, a feedback loop at unity).
+    */
+    static constexpr uint32_t kTailInfinite = 0xffffffffU;
+
+   /**
+      Change the plugin audio tail length to @a frames.@n
+      The tail is how long the output keeps carrying signal after the input goes silent
+      (a reverb decay, a delay feedback path); hosts use it to decide when a bounce may
+      stop and when an idle plugin may be suspended. Pass @ref kTailInfinite for a tail
+      that never ends. 0 means no tail.@n
+      This function should only be called in the constructor, activate() and run().
+      Report it in frames at the sample rate passed to activate().
+      @note This function is only available if DAF_PLUGIN_WANT_TAIL is enabled.
+      @note VST3, AU and CLAP report the tail to the host; LV2 has no tail concept.
+    */
+    void setTail(uint32_t frames) noexcept;
+#endif
+
 #if DAF_PLUGIN_WANT_MIDI_OUTPUT
    /**
       Write a MIDI output event.@n

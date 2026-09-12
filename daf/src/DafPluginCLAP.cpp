@@ -51,6 +51,7 @@
 #include "clap/factory/plugin-factory.h"
 #include "clap/ext/audio-ports.h"
 #include "clap/ext/latency.h"
+#include "clap/ext/tail.h"
 #include "clap/ext/gui.h"
 #include "clap/ext/note-ports.h"
 #include "clap/ext/params.h"
@@ -988,6 +989,9 @@ public:
           fLatencyRestartRequests(0),
           fReportedLatency(fPlugin.getLatency()),
          #endif
+         #if DAF_PLUGIN_WANT_TAIL
+          fLastKnownTail(fPlugin.getTail()),
+         #endif
          #if DAF_PLUGIN_WANT_MIDI_INPUT
           fMidiEventCount(0),
          #endif
@@ -1416,6 +1420,17 @@ public:
         checkForLatencyChanges(true);
        #endif
 
+       #if DAF_PLUGIN_WANT_TAIL
+        // clap_host_tail::changed is [audio-thread], so unlike latency the tail can be
+        // announced from right here, once per block, whenever run() moved it.
+        if (const uint32_t tail = fPlugin.getTail(); tail != fLastKnownTail)
+        {
+            fLastKnownTail = tail;
+            if (fHostExtensions.tail != nullptr && fHostExtensions.tail->changed != nullptr)
+                fHostExtensions.tail->changed(fHost);
+        }
+       #endif
+
         return true;
     }
 
@@ -1769,7 +1784,18 @@ public:
     {
         return fReportedLatency;
     }
+   #endif
 
+   #if DAF_PLUGIN_WANT_TAIL
+    // clap_plugin_tail::get is [main-thread, audio-thread] and the tail may move at
+    // any time, so serve the live value; no activation snapshot is required.
+    uint32_t getTail() const noexcept
+    {
+        return fPlugin.getTail();
+    }
+   #endif
+
+   #if DAF_PLUGIN_WANT_LATENCY
     // how many process cycles to wait before re-asking a host that dropped a
     // request_restart. The check runs once per block, so at 128 frames and 48 kHz this
     // is 512 * 128 / 48000 ~= 1.4 seconds. The exact value is not critical, it only has
@@ -2288,6 +2314,12 @@ private:
     // main-thread only, see getLatency
     uint32_t fReportedLatency;
    #endif
+   #if DAF_PLUGIN_WANT_TAIL
+    // last value announced through clap_host_tail::changed; seeded from the plugin in
+    // the constructor (after fPlugin, see the member order above) so a construction-time
+    // tail is not mistaken for a change on the first block.
+    uint32_t fLastKnownTail;
+   #endif
   #if DAF_PLUGIN_WANT_MIDI_INPUT
     uint32_t fMidiEventCount;
     MidiEvent fMidiEvents[kMaxMidiEvents];
@@ -2305,12 +2337,18 @@ private:
        #if DAF_PLUGIN_WANT_LATENCY
         const clap_host_latency_t* latency;
        #endif
+       #if DAF_PLUGIN_WANT_TAIL
+        const clap_host_tail_t* tail;
+       #endif
 
         HostExtensions(const clap_host_t* const host)
             : host(host),
               params(nullptr)
            #if DAF_PLUGIN_WANT_LATENCY
             , latency(nullptr)
+           #endif
+           #if DAF_PLUGIN_WANT_TAIL
+            , tail(nullptr)
            #endif
         {}
 
@@ -2320,6 +2358,9 @@ private:
            #if DAF_PLUGIN_WANT_LATENCY
             DAF_SAFE_ASSERT_RETURN(host->request_restart != nullptr, false);
             latency = static_cast<const clap_host_latency_t*>(host->get_extension(host, CLAP_EXT_LATENCY));
+           #endif
+           #if DAF_PLUGIN_WANT_TAIL
+            tail = static_cast<const clap_host_tail_t*>(host->get_extension(host, CLAP_EXT_TAIL));
            #endif
             return true;
         }
@@ -2895,6 +2936,21 @@ static const clap_plugin_latency_t clap_plugin_latency = {
 };
 #endif
 
+#if DAF_PLUGIN_WANT_TAIL
+// --------------------------------------------------------------------------------------------------------------------
+// plugin tail
+
+static uint32_t CLAP_ABI clap_plugin_tail_get(const clap_plugin_t* const plugin)
+{
+    PluginCLAP* const instance = static_cast<PluginCLAP*>(plugin->plugin_data);
+    return instance->getTail();
+}
+
+static const clap_plugin_tail_t clap_plugin_tail = {
+    clap_plugin_tail_get
+};
+#endif
+
 // --------------------------------------------------------------------------------------------------------------------
 // plugin state
 
@@ -2989,6 +3045,10 @@ static const void* CLAP_ABI clap_plugin_get_extension(const clap_plugin_t*, cons
    #if DAF_PLUGIN_WANT_LATENCY
     if (std::strcmp(id, CLAP_EXT_LATENCY) == 0)
         return &clap_plugin_latency;
+   #endif
+   #if DAF_PLUGIN_WANT_TAIL
+    if (std::strcmp(id, CLAP_EXT_TAIL) == 0)
+        return &clap_plugin_tail;
    #endif
   #if DAF_PLUGIN_HAS_UI
     if (std::strcmp(id, CLAP_EXT_GUI) == 0)

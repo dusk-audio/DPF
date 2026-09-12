@@ -1666,9 +1666,15 @@ public:
         return V3_OK;
     }
 
+    // v3_audio_processor::get_tail_samples: 0 is "no tail", UINT32_MAX (kInfiniteTail in
+    // the VST3 SDK) is "never ends", which is exactly Plugin::kTailInfinite.
     uint32_t getTailSamples() const noexcept
     {
+       #if DAF_PLUGIN_WANT_TAIL
+        return fPlugin.getTail();
+       #else
         return 0;
+       #endif
     }
 
     // ----------------------------------------------------------------------------------------------------------------
