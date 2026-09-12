@@ -1383,17 +1383,19 @@ public:
         return V3_OK;
     }
 
+    // IAudioProcessor::setProcessing marks a pause, not a release: the host stops
+    // calling process() and expects the plugin's state to survive until it calls
+    // setProcessing(true) again, which is how a reverb or delay tail resumes after
+    // a transport stop. Releasing is setActive(false). JUCE's wrapper maps
+    // setProcessing(false) to AudioProcessor::reset() and nothing else; mapping it
+    // to deactivate() here had every Dusk plugin drop its tail on a REAPER stop and
+    // re-run prepare on the next play, a discontinuity the JUCE builds never had.
+    // deactivate() still runs from setActive(false), setupProcessing() and the
+    // destructor, so nothing leaks.
     v3_result setProcessing(const bool processing)
     {
-        if (processing)
-        {
-            if (! fPlugin.isActive())
-                fPlugin.activate();
-        }
-        else
-        {
-            fPlugin.deactivateIfNeeded();
-        }
+        if (processing && ! fPlugin.isActive())
+            fPlugin.activate();
 
         return V3_OK;
     }
