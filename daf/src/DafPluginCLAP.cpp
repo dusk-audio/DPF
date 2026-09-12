@@ -3405,6 +3405,11 @@ static clap_process_status CLAP_ABI clap_plugin_process(const clap_plugin_t* con
 
 static const void* CLAP_ABI clap_plugin_get_extension(const clap_plugin_t* const plugin, const char* const id)
 {
+   #if ! DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+    // unused
+    (void)plugin;
+   #endif
+
     if (std::strcmp(id, CLAP_EXT_PARAMS) == 0)
         return &clap_plugin_params;
     if (std::strcmp(id, CLAP_EXT_STATE) == 0)
