@@ -6,7 +6,7 @@
 
 include Makefile.base.mk
 
-all: dgl examples gen
+all: dgl widgets examples gen
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -23,6 +23,11 @@ endif
 dgl:
 ifeq ($(HAVE_DGL),true)
 	$(MAKE) -C dgl
+endif
+
+widgets: dgl
+ifeq ($(HAVE_OPENGL),true)
+	$(MAKE) -C widgets/tests
 endif
 
 examples: dgl
@@ -60,6 +65,7 @@ tests: dgl
 # ---------------------------------------------------------------------------------------------------------------------
 
 clean:
+	$(MAKE) clean -C widgets/tests
 	$(MAKE) clean -C dgl
 	$(MAKE) clean -C examples/CVPort
 	$(MAKE) clean -C examples/CairoUI
@@ -79,4 +85,4 @@ clean:
 
 # ---------------------------------------------------------------------------------------------------------------------
 
-.PHONY: dgl examples tests
+.PHONY: all clean dgl widgets examples tests

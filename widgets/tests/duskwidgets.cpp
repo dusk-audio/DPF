@@ -21,7 +21,11 @@
 #define IMGUI_SKIP_IMPLEMENTATION
 
 #include "Application.hpp"
+#ifdef DAF_WIDGETS_GALLERY_LINKED
+#include "../imgui/DearImGui.hpp"
+#else
 #include "../imgui/DearImGui.cpp"
+#endif
 #include "../dusk/DuskWidgets.hpp"
 #include "src/Resources.hpp"
 

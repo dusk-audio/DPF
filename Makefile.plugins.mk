@@ -133,6 +133,7 @@ DGL_BUILD_DIR = $(DAF_PATH)/build$(BUILD_DIR_SUFFIX)
 
 BUILD_C_FLAGS   += -I.
 BUILD_CXX_FLAGS += -I. -I$(DAF_PATH)/daf -I$(DAF_PATH)/dgl -I$(DAF_PATH)/dgl/src/pugl-upstream/include
+BUILD_CXX_FLAGS += -I$(DAF_PATH)/widgets/imgui -I$(DAF_PATH)/widgets/dusk
 
 ifeq ($(HAVE_ALSA),true)
 BASE_FLAGS += -DHAVE_ALSA

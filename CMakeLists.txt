@@ -50,6 +50,7 @@ else()
 endif()
 
 option(DAF_LIBRARIES "Build the libraries" "${DAF_BUILD_FROM_HERE}")
+option(DAF_WIDGETS_GALLERY "Build the widget gallery" "${DAF_BUILD_FROM_HERE}")
 option(DAF_EXAMPLES "Build the examples" "${DAF_BUILD_FROM_HERE}")
 
 set(DAF_ROOT_DIR "${PROJECT_SOURCE_DIR}" CACHE INTERNAL
@@ -68,6 +69,9 @@ if(DAF_LIBRARIES)
   endif()
   daf__add_dgl_external(TRUE TRUE)
   daf__add_dgl_opengl(TRUE TRUE TRUE)
+  daf__add_dgl_opengl3(TRUE TRUE TRUE)
+  daf__add_widgets_dusk()
+  daf__add_widgets_imgui(dgl-opengl3)
 endif()
 
 if(DAF_EXAMPLES)
@@ -87,4 +91,8 @@ if(DAF_EXAMPLES)
   add_subdirectory("examples/Parameters")
   add_subdirectory("examples/States")
   add_subdirectory("examples/WebMeters")
+endif()
+
+if(DAF_WIDGETS_GALLERY)
+  add_subdirectory(widgets/tests)
 endif()

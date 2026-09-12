@@ -1592,6 +1592,48 @@ function(daf__add_plugin_specific_ui_sources NAME USE_WEB_VIEW)
   endif()
 endfunction()
 
+# Widget libraries
+# ------------------------------------------------------------------------------
+
+function(daf__add_widgets_dusk)
+  if(TARGET daf-widgets-dusk)
+    return()
+  endif()
+  daf__add_static_library(daf-widgets-dusk STATIC
+    "${DAF_ROOT_DIR}/widgets/dusk/DuskWidgets.cpp")
+  target_include_directories(daf-widgets-dusk PUBLIC
+    "${DAF_ROOT_DIR}/widgets/dusk"
+    "${DAF_ROOT_DIR}/widgets/imgui")
+  target_compile_features(daf-widgets-dusk PUBLIC cxx_std_11)
+endfunction()
+
+function(daf__add_widgets_imgui DGL_TARGET)
+  if(TARGET daf-widgets-imgui)
+    return()
+  endif()
+  if(NOT TARGET ${DGL_TARGET} OR
+     NOT (DGL_TARGET STREQUAL "dgl-opengl3" OR DGL_TARGET STREQUAL "dgl-opengl"))
+    message(FATAL_ERROR "Widget bridge requires an existing dgl-opengl3 or dgl-opengl target")
+  endif()
+  daf__add_widgets_dusk()
+  # DearImGui.cpp includes ImGui, the renderer, knobs and toggles as one translation unit.
+  daf__add_static_library(daf-widgets-imgui STATIC
+    "${DAF_ROOT_DIR}/widgets/imgui/DearImGui.cpp")
+  target_include_directories(daf-widgets-imgui PUBLIC "${DAF_ROOT_DIR}/widgets/imgui")
+  target_link_libraries(daf-widgets-imgui PUBLIC
+    ${DGL_TARGET} ${DGL_TARGET}-definitions dgl-system-libs-definitions daf-widgets-dusk)
+  target_compile_features(daf-widgets-imgui PUBLIC cxx_std_11)
+  target_compile_options(daf-widgets-imgui PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-Wno-cpp;-Wno-stringop-overflow>
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-cpp>)
+  if(MSVC AND DGL_TARGET STREQUAL "dgl-opengl3")
+    target_sources(daf-widgets-imgui PRIVATE "${DAF_ROOT_DIR}/widgets/imgui/Win32GlLoader.cpp")
+    # A basename keeps /FI working when the checkout path contains spaces.
+    set_source_files_properties("${DAF_ROOT_DIR}/widgets/imgui/DearImGui.cpp"
+      PROPERTIES COMPILE_OPTIONS "/FIWin32GlLoader.h")
+  endif()
+endfunction()
+
 # daf__add_dgl_system_libs
 # ------------------------------------------------------------------------------
 #
