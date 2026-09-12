@@ -100,6 +100,22 @@ protected:
     */
     virtual void onImGuiDisplay() = 0;
 
+   /**
+      Called once per frame right before the ImGui frame begins, with the GL
+      context current and no frame open. This is the one safe point to rebuild
+      the font atlas at a new size (io.Fonts->Clear() / AddFont... / Build(),
+      then rebuildFontTexture()): inside onImGuiDisplay the draw lists and the
+      font stack already hold ImFont pointers into the old atlas.
+      The default implementation does nothing.
+    */
+    virtual void onImGuiPrepareFrame() {}
+
+   /**
+      Re-upload the font atlas to the GL backend after io.Fonts was rebuilt.
+      Only valid from onImGuiPrepareFrame().
+    */
+    void rebuildFontTexture();
+
     void idleCallback() override;
     void onDisplay() override;
     bool onKeyboard(const Widget::KeyboardEvent& event) override;

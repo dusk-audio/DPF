@@ -210,6 +210,20 @@ void ImGuiWidget<BaseWidget>::setFontSize(const float fontSize)
 }
 
 template <class BaseWidget>
+void ImGuiWidget<BaseWidget>::rebuildFontTexture()
+{
+    ImGui::SetCurrentContext(imData->context);
+
+   #if defined(DGL_USE_GLES2) || defined(DGL_USE_GLES3) || defined(DGL_USE_OPENGL3)
+    ImGui_ImplOpenGL3_DestroyFontsTexture();
+    ImGui_ImplOpenGL3_CreateFontsTexture();
+   #else
+    ImGui_ImplOpenGL2_DestroyFontsTexture();
+    ImGui_ImplOpenGL2_CreateFontsTexture();
+   #endif
+}
+
+template <class BaseWidget>
 void ImGuiWidget<BaseWidget>::idleCallback()
 {
     BaseWidget::repaint();
@@ -229,6 +243,11 @@ void ImGuiWidget<BaseWidget>::onDisplay()
     ImGuiIO& io(ImGui::GetIO());
 
     io.DeltaTime = imData->getTimeDelta();
+
+    // Before the backend's NewFrame: the backend only (re)creates its font
+    // texture when it has none, so a subclass that rebuilt io.Fonts here and
+    // called rebuildFontTexture() gets the new atlas uploaded for this frame.
+    onImGuiPrepareFrame();
 
    #if defined(DGL_USE_GLES2) || defined(DGL_USE_GLES3) || defined(DGL_USE_OPENGL3)
     ImGui_ImplOpenGL3_NewFrame();
