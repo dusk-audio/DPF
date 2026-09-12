@@ -46,11 +46,11 @@ affected `bin/` bundles, otherwise objects and binaries from the other backend a
 
 ## Differences from DISTRHO/DPF
 
-- **One framework checkout.** pugl is vendored at `dgl/src/pugl-upstream` and the widget kit
-  at `widgets/`, as history-preserving subtrees from `dusk-audio/pugl` and
-  `dusk-audio/DAF-Widgets` (to be archived after consolidation merges). The kit contains
-  `imgui/`, `dusk/`, and `generic/ResizeHandle.hpp`. `.gitmodules` no longer exists.
-
+- **One framework checkout.** DAF includes pugl and the widget kit as history-preserving
+  git subtrees. Their former repositories, `dusk-audio/pugl` and `dusk-audio/DAF-Widgets`,
+  are archived and retained for history; development and bug reports belong here. See the
+  [repository layout](#repository-layout). No submodule initialization or separate
+  widget checkout is needed.
 - **Native Wayland windowing.** A pugl Wayland backend for DGL (`dgl/src/pugl-extra/wayland*`),
   selected when the X11 development files are absent. X11 remains the backend on any machine that
   has it; there is no runtime switch.
@@ -86,6 +86,34 @@ affected `bin/` bundles, otherwise objects and binaries from the other backend a
   built: no 32-bit anything, no Intel-only macOS legs, no MinGW, no Cairo or GLES UI legs. macOS
   builds universal, so the x86_64 slice is still compiled and shipped alongside arm64; what was
   dropped is the separate Intel-only CI targets, not Intel support.
+
+
+## Repository layout
+
+| Path | Contents |
+|------|----------|
+| `daf/` | Plugin API and format wrappers |
+| `dgl/` | Windowing and graphics |
+| `dgl/src/pugl-upstream/` | Vendored pugl windowing code |
+| `widgets/imgui/` | Dear ImGui, its DGL bridge, knobs and toggles |
+| `widgets/dusk/` | Dusk console widget kit, depending only on Dear ImGui |
+| `widgets/generic/ResizeHandle.hpp` | Generic resize handle |
+| `widgets/tests/` | Widget gallery and ImGui demo |
+
+Pugl and widgets are ordinary tracked directories, not submodules; `.gitmodules`
+no longer exists. Their earlier commit histories remain reachable through the
+subtree imports. Consumers pin one DAF revision for the whole framework.
+
+CMake consumers can create `daf-widgets-dusk` with `daf__add_widgets_dusk()`.
+For the DGL bridge, create a DGL OpenGL target first, then call
+`daf__add_widgets_imgui(dgl-opengl3)` (or pass `dgl-opengl` for legacy OpenGL).
+The bridge target includes Dear ImGui and links the Dusk kit; the Dusk kit target
+has no DGL dependency.
+
+`make -C widgets/tests` builds the gallery and ImGui demo. A top-level CMake build
+includes `daf-widgets-gallery` by default; control it with `DAF_WIDGETS_GALLERY`.
+These builds do not launch the gallery, which needs a display. See the
+[widget documentation](widgets/README.md) and [license notices](LICENSING.md#widgets).
 
 
 ## Licensing
