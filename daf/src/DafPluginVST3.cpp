@@ -1931,7 +1931,13 @@ public:
 
         const ScopedUTF8String input8(input);
 
-        float value;
+        // Parse and normalise in double. Doing it in float rounds twice (the
+        // parsed value, then the division by the range) and can land one ulp
+        // away from the plain value the text names once the host hands the
+        // normalised value back: "1.13125" s typed into DuskVerb 2 reached the
+        // DSP one ulp high, -76 dB against the same text in the JUCE build,
+        // while the same value set as a normalised number was bit-identical.
+        double value;
         if (fPlugin.getParameterHints(index) & kParameterIsInteger)
             value = std::atoi(input8);
         else
