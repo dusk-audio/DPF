@@ -990,7 +990,9 @@ public:
                 if (!fPlugin.getParameterValueText(request->inParamID, value, text, sizeof(text)))
                     return kAudioUnitErr_InvalidPropertyValue;
                 request->outString = CFStringCreateWithCString(nullptr, text, kCFStringEncodingUTF8);
-                return request->outString != nullptr ? noErr : kAudio_ParamError;
+                if (request->outString == nullptr)
+                    return kAudio_ParamError;
+                return noErr;
             }
 
         case kAudioUnitProperty_ParameterValueFromString:
