@@ -46,6 +46,11 @@ affected `bin/` bundles, otherwise objects and binaries from the other backend a
 
 ## Differences from DISTRHO/DPF
 
+- **One framework checkout.** pugl is vendored at `dgl/src/pugl-upstream` and the widget kit
+  at `widgets/`, as history-preserving subtrees from `dusk-audio/pugl` and
+  `dusk-audio/DAF-Widgets` (to be archived after consolidation merges). The kit contains
+  `imgui/`, `dusk/`, and `generic/ResizeHandle.hpp`. `.gitmodules` no longer exists.
+
 - **Native Wayland windowing.** A pugl Wayland backend for DGL (`dgl/src/pugl-extra/wayland*`),
   selected when the X11 development files are absent. X11 remains the backend on any machine that
   has it; there is no runtime switch.

@@ -82,3 +82,10 @@ C++11 and C++20, the default UI type plus one explicit opengl3 leg), `cmake.yml`
 incl. a native ARM Linux runner and a single MSVC x64 leg) and `wayland.yml` (Wayland-only
 container build, X11 regression, clap-validator, pluginval + LV2 validation). Anything relying on
 external package repositories is deliberately kept out of them.
+
+## Vendored framework components
+
+`dgl/src/pugl-upstream` and `widgets/` are history-preserving git subtrees, never
+submodules. `.gitmodules` no longer exists. Their former repositories,
+`dusk-audio/pugl` and `dusk-audio/DAF-Widgets`, will be archived after this
+consolidation merges; ongoing development belongs here.
