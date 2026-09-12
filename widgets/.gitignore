@@ -1,0 +1,10 @@
+*.d
+*.exe
+*.js
+*.html
+*.o
+*.wasm
+/tests/duskwidgets
+/tests/imgui
+/tests/opengl
+/tests/textedit
