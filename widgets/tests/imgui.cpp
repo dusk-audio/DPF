@@ -18,7 +18,7 @@
 #define IMGUI_SKIP_IMPLEMENTATION
 
 #include "Application.hpp"
-#include "../opengl/DearImGui.cpp"
+#include "../imgui/DearImGui.cpp"
 
 START_NAMESPACE_DGL
 

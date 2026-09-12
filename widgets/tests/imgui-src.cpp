@@ -16,12 +16,11 @@
 
 // ImGui is quite large, build it separately
 #define IMGUI_DAF_BACKEND
-#include "../opengl/DearImGui/imgui.cpp"
-#include "../opengl/DearImGui/imgui_demo.cpp"
-#include "../opengl/DearImGui/imgui_draw.cpp"
-#include "../opengl/DearImGui/imgui_tables.cpp"
-#include "../opengl/DearImGui/imgui_widgets.cpp"
-#include "../opengl/DearImGuiColorTextEditor/TextEditor.cpp"
+#include "../imgui/DearImGui/imgui.cpp"
+#include "../imgui/DearImGui/imgui_demo.cpp"
+#include "../imgui/DearImGui/imgui_draw.cpp"
+#include "../imgui/DearImGui/imgui_tables.cpp"
+#include "../imgui/DearImGui/imgui_widgets.cpp"
 
 #if defined(DGL_USE_GLES2)
 # define IMGUI_IMPL_OPENGL_ES2
@@ -30,7 +29,7 @@
 #endif
 
 # if defined(DGL_USE_GLES2) || defined(DGL_USE_GLES3) || defined(DGL_USE_OPENGL3)
-# include "../opengl/DearImGui/imgui_impl_opengl3.cpp"
+# include "../imgui/DearImGui/imgui_impl_opengl3.cpp"
 #else
-# include "../opengl/DearImGui/imgui_impl_opengl2.cpp"
+# include "../imgui/DearImGui/imgui_impl_opengl2.cpp"
 #endif

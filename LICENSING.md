@@ -43,3 +43,25 @@ Contrary to most plugins, DPF does not use the official VST3 SDK.
 Instead, the API definitions are provided by the [travesty](daf/src/travesty/) sub-project, licensed in the same way as DPF.
 This allows us to freely build plugins without being encumbered by restrictive licensing deals.  
 It makes the internal implementation much harder for DPF, but this is not an issue for external developers.
+
+## widgets/
+
+The widget bridge and kit use the ISC terms below; individual source copyright
+notices are retained. Dear ImGui is MIT-licensed: see
+[LICENSE.txt](widgets/imgui/DearImGui/LICENSE.txt). DearImGuiKnobs is MIT-licensed
+([notice](widgets/imgui/DearImGuiKnobs/LICENSE)); DearImGuiToggle uses the permissive
+ISC-style terms in its [notice](widgets/imgui/DearImGuiToggle/LICENSE).
+
+DISTRHO Plugin Framework (DPF)
+Copyright (C) 2012-2021 Filipe Coelho <falktx@falktx.com>
+
+Permission to use, copy, modify, and/or distribute this software for any purpose with
+or without fee is hereby granted, provided that the above copyright notice and this
+permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD
+TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN
+NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER
+IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

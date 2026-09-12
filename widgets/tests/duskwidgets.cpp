@@ -21,8 +21,8 @@
 #define IMGUI_SKIP_IMPLEMENTATION
 
 #include "Application.hpp"
-#include "../opengl/DearImGui.cpp"
-#include "../opengl/DuskWidgets.hpp"
+#include "../imgui/DearImGui.cpp"
+#include "../dusk/DuskWidgets.hpp"
 #include "src/Resources.hpp"
 
 #include <cmath>
