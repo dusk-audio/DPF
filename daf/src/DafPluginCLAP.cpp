@@ -122,7 +122,6 @@ static constexpr clap_id getClapChannelConfigId(const uint32_t sourceIndex) noex
 {
     return kClapChannelConfigIdBase + sourceIndex;
 }
-#endif
 
 static const char* getClapChannelType(const uint32_t channels) noexcept
 {
@@ -132,6 +131,7 @@ static const char* getClapChannelType(const uint32_t channels) noexcept
         return CLAP_PORT_STEREO;
     return nullptr;
 }
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 

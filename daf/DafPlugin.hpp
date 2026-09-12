@@ -352,14 +352,14 @@ protected:
       When true, a callback returning false reports invalid conversion; adapters must not
       fall back to generic numeric parsing or formatting.
     */
-    virtual bool hasCustomParameterText(uint32_t index) const { return false; }
+    virtual bool hasCustomParameterText(uint32_t) const { return false; }
 
    /**
       Format a parameter-domain value into @a text without allocating.
       Null text or zero capacity must be handled safely by the override. Returns false
       when conversion is unavailable or the buffer is insufficient.
     */
-    virtual bool getParameterValueText(uint32_t index, float value, char* text, uint32_t capacity) const
+    virtual bool getParameterValueText(uint32_t, float, char*, uint32_t) const
     {
         return false;
     }
@@ -369,7 +369,7 @@ protected:
       Null text must be handled safely by the override. Returns false when conversion is
       unavailable or invalid.
     */
-    virtual bool getParameterValueFromText(uint32_t index, const char* text, float& value) const
+    virtual bool getParameterValueFromText(uint32_t, const char*, float&) const
     {
         return false;
     }

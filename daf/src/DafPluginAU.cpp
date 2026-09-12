@@ -979,13 +979,15 @@ public:
         case kAudioUnitProperty_ParameterStringFromValue:
             {
                 AudioUnitParameterStringFromValue* const request = static_cast<AudioUnitParameterStringFromValue*>(outData);
-                if (request == nullptr || request->inParamID >= fParameterCount || request->inValue == nullptr)
+                if (request == nullptr || request->inParamID >= fParameterCount)
                     return kAudio_ParamError;
                 if (!fPlugin.hasCustomParameterText(request->inParamID))
                     return kAudioUnitErr_InvalidPropertyValue;
 
                 char text[256];
-                if (!fPlugin.getParameterValueText(request->inParamID, *request->inValue, text, sizeof(text)))
+                const float value = request->inValue != nullptr
+                                  ? *request->inValue : fPlugin.getParameterValue(request->inParamID);
+                if (!fPlugin.getParameterValueText(request->inParamID, value, text, sizeof(text)))
                     return kAudioUnitErr_InvalidPropertyValue;
                 request->outString = CFStringCreateWithCString(nullptr, text, kCFStringEncodingUTF8);
                 return request->outString != nullptr ? noErr : kAudio_ParamError;

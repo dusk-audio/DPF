@@ -379,6 +379,8 @@ public:
                 if (obj->body.otype != fURIDs.timePosition)
                     continue;
 
+                fTimePosition.bpmValid = false;
+
                 LV2_Atom* bar = nullptr;
                 LV2_Atom* barBeat = nullptr;
                 LV2_Atom* beatUnit = nullptr;
@@ -508,6 +510,7 @@ public:
 
                 if (beatsPerMinute != nullptr)
                 {
+                    bool knownType = true;
                     /**/ if (beatsPerMinute->type == fURIDs.atomDouble)
                         fLastPositionData.beatsPerMinute = ((LV2_Atom_Double*)beatsPerMinute)->body;
                     else if (beatsPerMinute->type == fURIDs.atomFloat)
@@ -517,7 +520,12 @@ public:
                     else if (beatsPerMinute->type == fURIDs.atomLong)
                         fLastPositionData.beatsPerMinute = ((LV2_Atom_Long*)beatsPerMinute)->body;
                     else
+                    {
+                        knownType = false;
                         d_stderr("Unknown lv2 beatsPerMinute value type");
+                    }
+
+                    fTimePosition.bpmValid = knownType && fLastPositionData.beatsPerMinute > 0.0;
 
                     if (fLastPositionData.beatsPerMinute > 0.0f)
                     {
@@ -552,7 +560,6 @@ public:
                 fTimePosition.bbt.valid = (fLastPositionData.beatsPerMinute > 0.0 &&
                                            fLastPositionData.beatUnit > 0 &&
                                            fLastPositionData.beatsPerBar > 0.0f);
-                fTimePosition.bpmValid = fLastPositionData.beatsPerMinute > 0.0;
 
                 fPlugin.setTimePosition(fTimePosition);
 

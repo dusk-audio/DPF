@@ -1066,9 +1066,8 @@ public:
             fTimePosition.bbt.barStartTick = fTimePosition.bbt.ticksPerBeat*
                                              fTimePosition.bbt.beatsPerBar*
                                              (fTimePosition.bbt.bar-1);
-
-            fPlugin.setTimePosition(fTimePosition);
         }
+        fPlugin.setTimePosition(fTimePosition);
        #endif
 
       #if DAF_PLUGIN_WANT_MIDI_INPUT
