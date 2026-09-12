@@ -87,5 +87,5 @@ external package repositories is deliberately kept out of them.
 
 `dgl/src/pugl-upstream` and `widgets/` are history-preserving git subtrees, never
 submodules. `.gitmodules` no longer exists. Their former repositories,
-`dusk-audio/pugl` and `dusk-audio/DAF-Widgets`, will be archived after this
-consolidation merges; ongoing development belongs here.
+`dusk-audio/pugl` and `dusk-audio/DAF-Widgets`, are archived with README redirects
+to DAF. Their histories remain available; ongoing development belongs here.
