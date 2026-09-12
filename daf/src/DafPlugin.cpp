@@ -134,7 +134,7 @@ void Plugin::setLatency(const uint32_t frames) noexcept
 #if DAF_PLUGIN_WANT_TAIL
 void Plugin::setTail(const uint32_t frames) noexcept
 {
-    pData->tail = frames;
+    pData->tail.store(frames, std::memory_order_relaxed);
 }
 #endif
 

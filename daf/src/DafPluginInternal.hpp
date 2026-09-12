@@ -23,6 +23,7 @@
 # include "DafPluginVST.hpp"
 #endif
 
+#include <atomic>
 #include <set>
 
 START_NAMESPACE_DAF
@@ -172,7 +173,11 @@ struct Plugin::PrivateData {
 #endif
 
 #if DAF_PLUGIN_WANT_TAIL
-    uint32_t tail;
+    // Written by setTail() from wherever the plugin calls it (run() included) and
+    // read by wrappers on the main thread as well as the audio thread
+    // (clap_plugin_tail::get is [main-thread, audio-thread]); relaxed atomics keep
+    // that a defined, tear-free exchange of one value.
+    std::atomic<uint32_t> tail;
 #endif
 
 #if DAF_PLUGIN_WANT_TIMEPOS
@@ -580,7 +585,7 @@ public:
     {
         DAF_SAFE_ASSERT_RETURN(fData != nullptr, 0);
 
-        return fData->tail;
+        return fData->tail.load(std::memory_order_relaxed);
     }
 #endif
 
