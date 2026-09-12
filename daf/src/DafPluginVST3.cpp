@@ -319,9 +319,11 @@ class PluginVst3
             cvPorts(0) {}
     } inputBuses, outputBuses;
 
+   #if DAF_PLUGIN_NUM_INPUTS+DAF_PLUGIN_NUM_OUTPUTS > 0
     bool fVariableAudioIO = false;
     uint32_t fActiveInputCount = DAF_PLUGIN_NUM_INPUTS;
     uint32_t fActiveOutputCount = DAF_PLUGIN_NUM_OUTPUTS;
+   #endif
 
    #if defined(DAF_PLUGIN_EXTRA_IO) && DAF_PLUGIN_NUM_INPUTS > 0 && DAF_PLUGIN_NUM_OUTPUTS > 0
     bool canUseVariableAudioIO() const noexcept
