@@ -58,8 +58,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
       # Somebody else's action, so its owner and its input names keep their own
       # spelling, and it is pinned to a commit rather than to the moving v1 tag:
       # an upstream rebase must not change what this CI runs.
@@ -112,7 +111,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           persist-credentials: false
       - name: Setup dependencies (native arm64)
         # ports.ubuntu.com (the arm64 archive) is under-resourced and regularly
@@ -165,8 +163,6 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - uses: distrho/dpf-cmake-action@c5786bfc026771e312cf0b3ce02d13a5a1cc0a0c # v1
         with:
           dpf_path: .
@@ -179,8 +175,6 @@ jobs:
     runs-on: windows-2022
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
     - name: Configure CMake
       run: |
        cmake -S . -B build -G"Visual Studio 17 2022" -A"x64" -DCMAKE_BUILD_TYPE="Release"

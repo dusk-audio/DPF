@@ -47,8 +47,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
     - name: Set up dependencies
       if: ${{ runner.os == 'Linux' }}
       env:
@@ -69,6 +67,8 @@ jobs:
       run: |
         make clean >/dev/null
         make -j ${{ env.JOBS }}
+    - name: Build widget gallery
+      run: make -C widgets/tests -j ${{ env.JOBS }}
     - name: Run tests
       if: ${{ runner.os == 'Linux' }}
       run: |
