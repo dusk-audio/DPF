@@ -39,6 +39,8 @@
 #endif
 
 #include <map>
+#include <mutex>
+#include <string>
 
 #ifndef DAF_PLUGIN_URI
 # error DAF_PLUGIN_URI undefined!
@@ -85,7 +87,7 @@ public:
           fLastControlValues(nullptr),
           fSampleRate(sampleRate),
           fURIDs(uridMap),
-#if DAF_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
+#if DAF_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST || DAF_PLUGIN_WANT_STATE
           fCtrlInPortChangeReq(ctrlInPortChangeReq),
 #endif
           fUridMap(uridMap),
@@ -130,13 +132,14 @@ public:
 #endif
 
 #if DAF_PLUGIN_WANT_STATE
+        fParameterSnapshotPending.store(false, std::memory_order_relaxed);
         std::memset(&fAtomForge, 0, sizeof(fAtomForge));
         lv2_atom_forge_init(&fAtomForge, uridMap);
 
         if (const uint32_t count = fPlugin.getStateCount())
         {
             fUrids = new LV2_URID[count];
-            fNeededUiSends = new bool[count];
+            fNeededUiSends = new std::atomic<bool>[count];
 
             for (uint32_t i=0; i < count; ++i)
             {
@@ -326,6 +329,10 @@ public:
 
     void lv2_run(const uint32_t sampleCount)
     {
+#if DAF_PLUGIN_WANT_STATE
+        const bool parameterSnapshotPending = fParameterSnapshotPending.exchange(false, std::memory_order_acquire);
+#endif
+
         // cache midi input and time position first
 #if DAF_PLUGIN_WANT_MIDI_INPUT
         uint32_t midiEventCount = 0;
@@ -545,6 +552,7 @@ public:
                 fTimePosition.bbt.valid = (fLastPositionData.beatsPerMinute > 0.0 &&
                                            fLastPositionData.beatUnit > 0 &&
                                            fLastPositionData.beatsPerBar > 0.0f);
+                fTimePosition.bpmValid = fLastPositionData.beatsPerMinute > 0.0;
 
                 fPlugin.setTimePosition(fTimePosition);
 
@@ -616,6 +624,16 @@ public:
                 fPlugin.setParameterValue(i, curValue);
             }
         }
+
+       #if DAF_PLUGIN_WANT_STATE
+        // Reconcile actual host automation before requesting recalled values.
+        // Unchanged input buffers retain their last observed values; a new host
+        // value in this cycle must still reach the plugin.
+        if (parameterSnapshotPending)
+            for (uint32_t i=0, count=fPlugin.getParameterCount(); i<count; ++i)
+                if (!fPlugin.isParameterOutputOrTrigger(i))
+                    requestParameterValueChange(i, fPlugin.getParameterValue(i));
+       #endif
 
         // Run plugin
         if (sampleCount != 0)
@@ -702,7 +720,10 @@ public:
         LV2_Atom_Event* aev;
         const uint32_t capacity = fEventsOutData.capacity;
 
-        for (uint32_t i=0, count=fPlugin.getStateCount(); i < count; ++i)
+        // Worker/save callbacks may replace map strings. Notification is
+        // optional this cycle: never wait for the writer on the audio thread.
+        std::unique_lock<std::mutex> stateReadLock(fStateMapMutex, std::try_to_lock);
+        for (uint32_t i=0, count=fPlugin.getStateCount(); stateReadLock.owns_lock() && i < count; ++i)
         {
             if (! fNeededUiSends[i])
                 continue;
@@ -896,11 +917,13 @@ public:
         }
 
        #if DAF_PLUGIN_WANT_FULL_STATE
-        // Update state
-        for (StringToStringMap::const_iterator cit=fStateMap.begin(), cite=fStateMap.end(); cit != cite; ++cit)
+        // Program selection can run in realtime. Serializing full state takes
+        // locks and allocates, so refresh the UI cache in the worker instead.
+        // State save independently reads the live plugin, even before this job.
+        if (fWorker != nullptr)
         {
-            const String& key = cit->first;
-            fStateMap[key] = fPlugin.getStateValue(key);
+            const LV2_Atom refresh = { 0, 0 }; // private worker message, no URID
+            fWorker->schedule_work(fWorker->handle, sizeof(refresh), &refresh);
         }
        #endif
     }
@@ -913,6 +936,7 @@ public:
                               const LV2_State_Handle handle,
                               const LV2_Feature* const* const features)
     {
+        const std::lock_guard<std::mutex> stateLock(fStateMapMutex);
        #if DAF_PLUGIN_WANT_FULL_STATE
         // Update current state
         for (StringToStringMap::const_iterator cit=fStateMap.begin(), cite=fStateMap.end(); cit != cite; ++cit)
@@ -1020,6 +1044,7 @@ public:
 
         String lv2key;
         LV2_URID urid;
+        StringToStringMap staged;
 
         for (uint32_t i=0, count=fPlugin.getStateCount(); i < count; ++i)
         {
@@ -1052,11 +1077,16 @@ public:
             if (data == nullptr || size == 0)
                 continue;
 
-            DAF_SAFE_ASSERT_CONTINUE(type == urid);
+            if (type != urid)
+                return LV2_STATE_ERR_BAD_TYPE;
 
-            const char* const value  = (const char*)data;
-            const std::size_t length = std::strlen(value);
-            DAF_SAFE_ASSERT_CONTINUE(length == size || length+1 == size);
+            // Hosts may include or omit the final NUL. Never read beyond size.
+            const char* const bytes = static_cast<const char*>(data);
+            const void* const terminator = std::memchr(bytes, 0, size);
+            if (terminator != nullptr && terminator != bytes + size - 1)
+                return LV2_STATE_ERR_UNKNOWN;
+            const std::string text(bytes, size - (terminator != nullptr ? 1 : 0));
+            const char* const value = text.c_str();
 
             if (urid == fURIDs.atomPath)
             {
@@ -1074,7 +1104,7 @@ public:
                                              ? mapPath->absolute_path(mapPath->handle, value)
                                              : nullptr)
                 {
-                    setState(key, absolutePath);
+                    staged[key] = absolutePath;
 
                     if (freePath != nullptr)
                         freePath->free_path(freePath->handle, absolutePath);
@@ -1083,19 +1113,27 @@ public:
                         std::free(absolutePath);
                    #endif
 
-                    // signal msg needed for UI
-                    fNeededUiSends[i] = true;
                     continue;
                 }
             }
 
-            setState(key, value);
+            staged[key] = value;
+        }
 
-           #if DAF_PLUGIN_WANT_STATE
+        // Validate every property before applying any of them.
+        for (const auto& entry : staged)
+            if (!fPlugin.validateStateValue(entry.first, entry.second))
+                return LV2_STATE_ERR_UNKNOWN;
+
+        for (const auto& entry : staged)
+            setState(entry.first, entry.second);
+
+        for (uint32_t i=0, count=fPlugin.getStateCount(); i < count; ++i)
+        {
             // signal msg needed for UI
-            if ((hints & kStateIsOnlyForDSP) == 0x0)
+            if (staged.find(fPlugin.getStateKey(i)) != staged.end() &&
+                (fPlugin.getStateHints(i) & kStateIsOnlyForDSP) == 0x0)
                 fNeededUiSends[i] = true;
-           #endif
         }
 
         return LV2_STATE_SUCCESS;
@@ -1107,13 +1145,27 @@ public:
     {
         const LV2_Atom* const eventBody = (const LV2_Atom*)data;
 
+       #if DAF_PLUGIN_WANT_FULL_STATE
+        if (eventBody->type == 0 && eventBody->size == 0)
+        {
+            const std::lock_guard<std::mutex> stateLock(fStateMapMutex);
+            for (uint32_t i=0, count=fPlugin.getStateCount(); i<count; ++i)
+            {
+                const String& key = fPlugin.getStateKey(i);
+                fStateMap[key] = fPlugin.getStateValue(key);
+                if ((fPlugin.getStateHints(i) & kStateIsOnlyForDSP) == 0)
+                    fNeededUiSends[i] = true;
+            }
+            return LV2_WORKER_SUCCESS;
+        }
+       #endif
+
         if (eventBody->type == fURIDs.dpfKeyValue)
         {
             const char* const key   = (const char*)(eventBody + 1);
             const char* const value = key + (std::strlen(key) + 1U);
 
-            setState(key, value);
-            return LV2_WORKER_SUCCESS;
+            return setState(key, value) ? LV2_WORKER_SUCCESS : LV2_WORKER_ERR_UNKNOWN;
         }
 
         if (eventBody->type == fURIDs.atomObject)
@@ -1138,7 +1190,8 @@ public:
                 key = fUridStateMap[urid];
             } DAF_SAFE_EXCEPTION_RETURN("lv2_work fUridStateMap[urid]", LV2_WORKER_ERR_UNKNOWN);
 
-            setState(key, filename);
+            if (!setState(key, filename))
+                return LV2_WORKER_ERR_UNKNOWN;
 
             /* FIXME host should be responsible for updating UI side, not us
             for (uint32_t i=0, count=fPlugin.getStateCount(); i < count; ++i)
@@ -1334,7 +1387,7 @@ private:
     } fURIDs;
 
     // LV2 features
-   #if DAF_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
+   #if DAF_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST || DAF_PLUGIN_WANT_STATE
     const LV2_ControlInputPort_Change_Request* const fCtrlInPortChangeReq;
    #endif
     const LV2_URID_Map* const fUridMap;
@@ -1343,24 +1396,34 @@ private:
    #if DAF_PLUGIN_WANT_STATE
     LV2_Atom_Forge fAtomForge;
     StringToStringMap fStateMap;
+    std::mutex fStateMapMutex;
     UridToStringMap fUridStateMap;
     LV2_URID* fUrids;
-    bool* fNeededUiSends;
+    std::atomic<bool>* fNeededUiSends;
+    std::atomic<bool> fParameterSnapshotPending;
 
-    void setState(const char* const key, const char* const newValue)
+    bool setState(const char* const key, const char* const newValue)
     {
+        if (!fPlugin.validateStateValue(key, newValue))
+            return false;
         fPlugin.setState(key, newValue);
 
         // save this key if necessary
         if (fPlugin.wantStateKey(key))
         {
+            const std::lock_guard<std::mutex> stateLock(fStateMapMutex);
             const String dkey(key);
             fStateMap[dkey] = newValue;
         }
+        if (fPlugin.isParameterSnapshotState(key))
+            fParameterSnapshotPending.store(true, std::memory_order_release);
+        return true;
     }
 
     bool updateState(const char* const key, const char* const newValue)
     {
+        if (!fPlugin.validateStateValue(key, newValue))
+            return false;
         fPlugin.setState(key, newValue);
 
         // key must already exist
@@ -1368,6 +1431,7 @@ private:
         {
             if (fPlugin.getStateKey(i) == key)
             {
+                const std::lock_guard<std::mutex> stateLock(fStateMapMutex);
                 const String dkey(key);
                 fStateMap[dkey] = newValue;
 
@@ -1407,19 +1471,23 @@ private:
        #endif
     }
 
-   #if DAF_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
-    bool requestParameterValueChange(const uint32_t index, const float value)
+   #if DAF_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST || DAF_PLUGIN_WANT_STATE
+    bool requestParameterValueChange(const uint32_t index, float value)
     {
-        if (fCtrlInPortChangeReq == nullptr)
+        if (fCtrlInPortChangeReq == nullptr || index >= fPlugin.getParameterCount())
             return false;
+        if (fPlugin.getParameterDesignation(index) == kParameterDesignationBypass)
+            value = 1.0f - value;
         return fCtrlInPortChangeReq->request_change(fCtrlInPortChangeReq->handle,
                                                     index + fPlugin.getParameterOffset(),
-                                                    value);
+                                                    value) == LV2_CONTROL_INPUT_PORT_CHANGE_SUCCESS;
     }
+   #endif
 
+   #if DAF_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
     static bool requestParameterValueChangeCallback(void* const ptr, const uint32_t index, const float value)
     {
-        return (((PluginLv2*)ptr)->requestParameterValueChange(index, value) == 0);
+        return ((PluginLv2*)ptr)->requestParameterValueChange(index, value);
     }
    #endif
 

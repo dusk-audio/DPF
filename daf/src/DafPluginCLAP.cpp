@@ -50,6 +50,7 @@
 #include "clap/entry.h"
 #include "clap/factory/plugin-factory.h"
 #include "clap/ext/audio-ports.h"
+#include "clap/ext/audio-ports-config.h"
 #include "clap/ext/latency.h"
 #include "clap/ext/tail.h"
 #include "clap/ext/gui.h"
@@ -57,6 +58,13 @@
 #include "clap/ext/params.h"
 #include "clap/ext/state.h"
 #include "clap/ext/timer-support.h"
+
+#if defined(DAF_PLUGIN_EXTRA_IO) && ! DAF_PLUGIN_IS_SYNTH \
+ && DAF_PLUGIN_NUM_INPUTS != 0 && DAF_PLUGIN_NUM_OUTPUTS != 0
+# define DAF_CLAP_HAS_AUDIO_PORTS_CONFIG 1
+#else
+# define DAF_CLAP_HAS_AUDIO_PORTS_CONFIG 0
+#endif
 
 #if defined(DAF_OS_MAC) || defined(DAF_OS_WINDOWS)
 # define DAF_CLAP_USING_HOST_TIMER 0
@@ -94,6 +102,36 @@
 #endif
 
 START_NAMESPACE_DAF
+
+// --------------------------------------------------------------------------------------------------------------------
+
+#if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+struct ClapChannelConfig {
+    int32_t inputs;
+    int32_t outputs;
+};
+
+static constexpr const ClapChannelConfig kClapChannelConfigs[] = {
+    { DAF_PLUGIN_NUM_INPUTS, DAF_PLUGIN_NUM_OUTPUTS },
+    DAF_PLUGIN_EXTRA_IO
+};
+
+static constexpr clap_id kClapChannelConfigIdBase = 0xDAF00000u;
+
+static constexpr clap_id getClapChannelConfigId(const uint32_t sourceIndex) noexcept
+{
+    return kClapChannelConfigIdBase + sourceIndex;
+}
+#endif
+
+static const char* getClapChannelType(const uint32_t channels) noexcept
+{
+    if (channels == 1)
+        return CLAP_PORT_MONO;
+    if (channels == 2)
+        return CLAP_PORT_STEREO;
+    return nullptr;
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -161,6 +199,24 @@ struct ClapEventQueue
 
             std::memcpy(&events[used++], &event, sizeof(Event));
         }
+
+        void discardParameterValuesFromUI()
+        {
+            const RecursiveMutexLocker crml(lock);
+            uint retained = 0;
+            uint applied = 0;
+            for (uint i = 0; i < used; ++i)
+            {
+                if (events[i].type == kEventParamSet)
+                    continue;
+                events[retained++] = events[i];
+                if (i < appliedFromUI)
+                    ++applied;
+            }
+            // A begin may already have reached the host: preserve its queued end.
+            used = retained;
+            appliedFromUI = applied;
+        }
     } fEventQueue;
 
    #if DAF_PLUGIN_WANT_MIDI_INPUT
@@ -181,8 +237,8 @@ struct ClapEventQueue
 
     struct CachedParameters {
         uint numParams;
-        bool* changed;
-        float* values;
+        std::atomic<bool>* changed;
+        std::atomic<float>* values;
 
         CachedParameters()
             : numParams(0),
@@ -201,11 +257,13 @@ struct ClapEventQueue
                 return;
 
             numParams = numParameters;
-            changed = new bool[numParameters];
-            values = new float[numParameters];
-
-            std::memset(changed, 0, sizeof(bool)*numParameters);
-            std::memset(values, 0, sizeof(float)*numParameters);
+            changed = new std::atomic<bool>[numParameters];
+            values = new std::atomic<float>[numParameters];
+            for (uint i = 0; i < numParameters; ++i)
+            {
+                changed[i].store(false, std::memory_order_relaxed);
+                values[i].store(0.0f, std::memory_order_relaxed);
+            }
         }
     } fCachedParameters;
 
@@ -562,10 +620,9 @@ public:
 
         for (uint i=0; i<fCachedParameters.numParams; ++i)
         {
-            if (fCachedParameters.changed[i])
+            if (fCachedParameters.changed[i].exchange(false, std::memory_order_acquire))
             {
-                fCachedParameters.changed[i] = false;
-                ui->parameterChanged(i, fCachedParameters.values[i]);
+                ui->parameterChanged(i, fCachedParameters.values[i].load(std::memory_order_relaxed));
             }
         }
 
@@ -978,6 +1035,11 @@ public:
           fHost(host),
           fOutputEvents(nullptr),
           fResetParameterIndex(UINT32_MAX),
+         #if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+          fSelectedInputChannels(DAF_PLUGIN_NUM_INPUTS),
+          fSelectedOutputChannels(DAF_PLUGIN_NUM_OUTPUTS),
+          fSupportsAudioPortsConfig(false),
+         #endif
          #if DAF_PLUGIN_NUM_INPUTS+DAF_PLUGIN_NUM_OUTPUTS != 0
           fUsingCV(false),
          #endif
@@ -1031,6 +1093,9 @@ public:
        #endif
        #if DAF_PLUGIN_NUM_INPUTS != 0 && DAF_PLUGIN_NUM_OUTPUTS != 0
         fillInBusInfoPairs();
+       #endif
+       #if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+        fSupportsAudioPortsConfig = canUseAudioPortsConfig();
        #endif
     }
 
@@ -1208,7 +1273,8 @@ public:
 
             fTimePosition.frame = process->steady_time >= 0 ? process->steady_time : 0;
 
-            if (transport->flags & CLAP_TRANSPORT_HAS_TEMPO)
+            fTimePosition.bpmValid = (transport->flags & CLAP_TRANSPORT_HAS_TEMPO) != 0 && transport->tempo > 0.0;
+            if (fTimePosition.bpmValid)
                 fTimePosition.bbt.beatsPerMinute = transport->tempo;
             else
                 fTimePosition.bbt.beatsPerMinute = 120.0;
@@ -1258,6 +1324,7 @@ public:
             fTimePosition.playing = false;
             fTimePosition.frame = 0;
             fTimePosition.bbt.valid          = false;
+            fTimePosition.bpmValid           = false;
             fTimePosition.bbt.beatsPerMinute = 120.0;
             fTimePosition.bbt.bar            = 1;
             fTimePosition.bbt.beat           = 1;
@@ -1355,6 +1422,10 @@ public:
                 const clap_audio_buffer_t& inputs(process->audio_inputs[i]);
                 DAF_SAFE_ASSERT_CONTINUE(inputs.channel_count != 0);
 
+                DAF_SAFE_ASSERT_RETURN(in <= DAF_PLUGIN_NUM_INPUTS
+                                       && inputs.channel_count <= DAF_PLUGIN_NUM_INPUTS - in,
+                                       false);
+
                 for (uint32_t j=0; j<inputs.channel_count; ++j, ++in)
                     audioInputs[in] = const_cast<const float*>(inputs.data32[j]);
             }
@@ -1366,8 +1437,16 @@ public:
             }
             else
             {
-                DAF_SAFE_ASSERT_UINT2_RETURN(in == DAF_PLUGIN_NUM_INPUTS,
-                                                 in, process->audio_inputs_count, false);
+               #if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+                const uint32_t expectedInputs = fSupportsAudioPortsConfig
+                                              ? fSelectedInputChannels
+                                              : DAF_PLUGIN_NUM_INPUTS;
+               #else
+                constexpr uint32_t expectedInputs = DAF_PLUGIN_NUM_INPUTS;
+               #endif
+                DAF_SAFE_ASSERT_UINT2_RETURN(in == expectedInputs, in, expectedInputs, false);
+                for (; in<DAF_PLUGIN_NUM_INPUTS; ++in)
+                    audioInputs[in] = nullptr;
             }
            #else
             constexpr const float** const audioInputs = nullptr;
@@ -1382,6 +1461,10 @@ public:
                 const clap_audio_buffer_t& outputs(process->audio_outputs[i]);
                 DAF_SAFE_ASSERT_CONTINUE(outputs.channel_count != 0);
 
+                DAF_SAFE_ASSERT_RETURN(out <= DAF_PLUGIN_NUM_OUTPUTS
+                                       && outputs.channel_count <= DAF_PLUGIN_NUM_OUTPUTS - out,
+                                       false);
+
                 for (uint32_t j=0; j<outputs.channel_count; ++j, ++out)
                     audioOutputs[out] = outputs.data32[j];
             }
@@ -1393,8 +1476,16 @@ public:
             }
             else
             {
-                DAF_SAFE_ASSERT_UINT2_RETURN(out == DAF_PLUGIN_NUM_OUTPUTS,
-                                                 out, DAF_PLUGIN_NUM_OUTPUTS, false);
+               #if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+                const uint32_t expectedOutputs = fSupportsAudioPortsConfig
+                                               ? fSelectedOutputChannels
+                                               : DAF_PLUGIN_NUM_OUTPUTS;
+               #else
+                constexpr uint32_t expectedOutputs = DAF_PLUGIN_NUM_OUTPUTS;
+               #endif
+                DAF_SAFE_ASSERT_UINT2_RETURN(out == expectedOutputs, out, expectedOutputs, false);
+                for (; out<DAF_PLUGIN_NUM_OUTPUTS; ++out)
+                    audioOutputs[out] = nullptr;
             }
            #else
             constexpr float** const audioOutputs = nullptr;
@@ -1518,6 +1609,9 @@ public:
         const ParameterRanges& ranges(fPlugin.getParameterRanges(param_id));
         const uint32_t hints = fPlugin.getParameterHints(param_id);
 
+        if (fPlugin.hasCustomParameterText(param_id))
+            return fPlugin.getParameterValueText(param_id, static_cast<float>(value), display, size);
+
         if (hints & kParameterIsBoolean)
         {
             const float midRange = ranges.min + (ranges.max - ranges.min) * 0.5f;
@@ -1548,6 +1642,14 @@ public:
     bool getParameterValueForString(const clap_id param_id, const char* const display, double* const value) const
     {
         const ParameterEnumerationValues& enumValues(fPlugin.getParameterEnumValues(param_id));
+        if (fPlugin.hasCustomParameterText(param_id))
+        {
+            float parsed;
+            if (!fPlugin.getParameterValueFromText(param_id, display, parsed))
+                return false;
+            *value = parsed;
+            return true;
+        }
         const bool isInteger = fPlugin.isParameterInteger(param_id);
 
         for (uint32_t i=0; i < enumValues.count; ++i)
@@ -1604,7 +1706,7 @@ public:
 
             value = fPlugin.getParameterValue(i);
 
-            if (d_isEqual(fCachedParameters.values[i], value))
+            if (d_isEqual(fCachedParameters.values[i].load(std::memory_order_relaxed), value))
                 continue;
 
             // The two kinds treat a missing output list differently, and the asymmetry is the point.
@@ -1619,8 +1721,7 @@ public:
             // swallow it there, pinning the host's value at "pressed" forever, the same loss that
             // sendUIEventsToHost's watermark exists to avoid.
             //
-            // Neither read nor write of values[]/changed[] is synchronised against idleCallback.
-            // Pre-existing and unchanged here.
+            // The cache is atomic: the UI consumes updates without blocking the audio thread.
             if (out == nullptr && ! fPlugin.isParameterOutput(i))
                 continue;
 
@@ -1718,9 +1819,11 @@ public:
 
     void setParameterValueFromEvent(const clap_event_param_value_t* const event)
     {
-        fCachedParameters.values[event->param_id] = event->value;
-        fCachedParameters.changed[event->param_id] = true;
+        if (event->param_id >= fCachedParameters.numParams || fPlugin.isParameterOutput(event->param_id))
+            return;
         fPlugin.setParameterValue(event->param_id, event->value);
+        fCachedParameters.values[event->param_id] = fPlugin.getParameterValue(event->param_id);
+        fCachedParameters.changed[event->param_id] = true;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -1747,20 +1850,123 @@ public:
         info->flags = busInfo.isMain ? CLAP_AUDIO_PORT_IS_MAIN : 0x0;
         info->channel_count = busInfo.numChannels;
 
-        switch (busInfo.groupId)
+       #if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+        if (fSupportsAudioPortsConfig)
+            info->port_type = getClapChannelType(busInfo.numChannels);
+        else
+       #endif
         {
-        case kPortGroupMono:
-            info->port_type = CLAP_PORT_MONO;
-            break;
-        case kPortGroupStereo:
-            info->port_type = CLAP_PORT_STEREO;
-            break;
-        default:
-            info->port_type = nullptr;
-            break;
+            switch (busInfo.groupId)
+            {
+            case kPortGroupMono: info->port_type = CLAP_PORT_MONO; break;
+            case kPortGroupStereo: info->port_type = CLAP_PORT_STEREO; break;
+            default: info->port_type = nullptr; break;
+            }
         }
 
         info->in_place_pair = busInfo.hasPair ? busInfo.groupId : CLAP_INVALID_ID;
+        return true;
+    }
+   #endif
+
+   #if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+    bool supportsAudioPortsConfig() const noexcept
+    {
+        return fSupportsAudioPortsConfig;
+    }
+
+    uint32_t getAudioPortsConfigCount() const noexcept
+    {
+        if (! fSupportsAudioPortsConfig)
+            return 0;
+
+        uint32_t count = 0;
+        for (uint32_t i=0; i<ARRAY_SIZE(kClapChannelConfigs); ++i)
+        {
+            bool duplicate = false;
+            for (uint32_t j=0; j<i; ++j)
+            {
+                if (kClapChannelConfigs[i].inputs == kClapChannelConfigs[j].inputs
+                    && kClapChannelConfigs[i].outputs == kClapChannelConfigs[j].outputs)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (! duplicate)
+                ++count;
+        }
+        return count;
+    }
+
+    bool getAudioPortsConfig(const uint32_t index, clap_audio_ports_config_t* const config) const noexcept
+    {
+        DAF_SAFE_ASSERT_RETURN(config != nullptr, false);
+        if (! fSupportsAudioPortsConfig)
+            return false;
+
+        uint32_t logicalIndex = 0;
+        for (uint32_t i=0; i<ARRAY_SIZE(kClapChannelConfigs); ++i)
+        {
+            const ClapChannelConfig& candidate(kClapChannelConfigs[i]);
+            bool duplicate = false;
+            for (uint32_t j=0; j<i; ++j)
+            {
+                if (candidate.inputs == kClapChannelConfigs[j].inputs
+                    && candidate.outputs == kClapChannelConfigs[j].outputs)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (duplicate)
+                continue;
+            if (logicalIndex++ != index)
+                continue;
+
+            config->id = getClapChannelConfigId(i);
+            std::snprintf(config->name, CLAP_NAME_SIZE, "%u input / %u output",
+                          static_cast<uint32_t>(candidate.inputs),
+                          static_cast<uint32_t>(candidate.outputs));
+            config->input_port_count = 1;
+            config->output_port_count = 1;
+            config->has_main_input = true;
+            config->main_input_channel_count = candidate.inputs;
+            config->main_input_port_type = getClapChannelType(candidate.inputs);
+            config->has_main_output = true;
+            config->main_output_channel_count = candidate.outputs;
+            config->main_output_port_type = getClapChannelType(candidate.outputs);
+            return true;
+        }
+        return false;
+    }
+
+    bool selectAudioPortsConfig(const clap_id configId)
+    {
+        if (! fSupportsAudioPortsConfig || fPlugin.isActive())
+            return false;
+
+        uint32_t sourceIndex = 0;
+        if (configId < kClapChannelConfigIdBase)
+            return false;
+        sourceIndex = configId - kClapChannelConfigIdBase;
+        if (sourceIndex >= ARRAY_SIZE(kClapChannelConfigs))
+            return false;
+
+        const ClapChannelConfig& selected(kClapChannelConfigs[sourceIndex]);
+        for (uint32_t i=0; i<sourceIndex; ++i)
+        {
+            if (selected.inputs == kClapChannelConfigs[i].inputs
+                && selected.outputs == kClapChannelConfigs[i].outputs)
+                return false;
+        }
+
+        const uint16_t inputs = static_cast<uint16_t>(selected.inputs);
+        const uint16_t outputs = static_cast<uint16_t>(selected.outputs);
+        fPlugin.setAudioPortIO(inputs, outputs);
+        fSelectedInputChannels = inputs;
+        fSelectedOutputChannels = outputs;
+        rebuildSimpleAudioBuses(inputs, outputs);
         return true;
     }
    #endif
@@ -2004,6 +2210,8 @@ public:
        #if DAF_PLUGIN_HAS_UI
         ClapUI* const ui = fUI.get();
        #endif
+        struct PendingState { char type; String key, value; };
+        std::vector<PendingState> pending;
         String key, value;
         bool hasValue = false;
         bool fillingKey = true; // if filling key or value
@@ -2061,6 +2269,20 @@ public:
                         || ! key.isEmpty()
                         || ! value.isEmpty())
                         return false;
+                    // The writer may append one NUL after the terminator.
+                    // Reject all other trailing bytes, including later chunks,
+                    // before committing any staged state.
+                    const int32_t remaining = read - i - 1;
+                    if (remaining > 1 || (remaining == 1 && buffer[i + 1] != '\0'))
+                        return false;
+                    char tail[2];
+                    const int64_t tailRead = stream->read(stream, tail, sizeof(tail));
+                    if (tailRead != 0)
+                    {
+                        if (remaining != 0 || tailRead != 1 || tail[0] != '\0'
+                            || stream->read(stream, tail, 1) != 0)
+                            return false;
+                    }
                     terminated = 1;
                     break;
                 }
@@ -2135,6 +2357,44 @@ public:
                     if (key == "__daf_program__")
                     {
                         DAF_SAFE_ASSERT_INT_RETURN(queryingType == 'i', queryingType, false);
+                        pending.push_back({queryingType, key, value});
+                        queryingType = 'n';
+                    }
+                    else
+                    {
+                        pending.push_back({queryingType, key, value});
+                    }
+
+                    key.clear();
+                    value.clear();
+                    hasValue = false;
+                }
+            }
+        }
+
+        // Parse and validate the entire stream before touching live sound. A complete
+        // parameter snapshot is authoritative over the redundant legacy program/parameter sections.
+        bool parameterSnapshot = false;
+       #if DAF_PLUGIN_WANT_STATE
+        for (const auto& item : pending)
+        {
+            if (item.type != 's' || !fPlugin.wantStateKey(item.key))
+                continue;
+            if (!fPlugin.validateStateValue(item.key, item.value))
+                return false;
+            parameterSnapshot = parameterSnapshot || fPlugin.isParameterSnapshotState(item.key);
+        }
+       #endif
+        for (const auto& item : pending)
+        {
+            key = item.key;
+            value = item.value;
+            queryingType = item.type;
+            if (parameterSnapshot && (queryingType == 'p' || key == "__daf_program__"))
+                continue;
+                    if (key == "__daf_program__")
+                    {
+                        DAF_SAFE_ASSERT_INT_RETURN(queryingType == 'i', queryingType, false);
                         queryingType = 'n';
 
                         d_debug("found program '%s'", value.buffer());
@@ -2205,10 +2465,19 @@ public:
                         }
                     }
 
-                    key.clear();
-                    value.clear();
-                    hasValue = false;
-                }
+        }
+        if (parameterSnapshot)
+        {
+           #if DAF_PLUGIN_WANT_PROGRAMS
+            const int32_t program = fPlugin.getCurrentProgram();
+            if (program >= 0 && static_cast<uint32_t>(program) < fPlugin.getProgramCount())
+                fCurrentProgram = static_cast<uint32_t>(program);
+           #endif
+            for (uint i = 0; i < fCachedParameters.numParams; ++i)
+            {
+                if (fPlugin.isParameterOutputOrTrigger(i)) continue;
+                fCachedParameters.values[i] = fPlugin.getParameterValue(i);
+                fCachedParameters.changed[i] = true;
             }
         }
 
@@ -2272,12 +2541,39 @@ public:
    #if DAF_PLUGIN_HAS_UI && DAF_PLUGIN_WANT_STATE
     void setStateFromUI(const char* const key, const char* const value) override
     {
+        if (!fPlugin.validateStateValue(key, value)) return;
+        const bool snapshot = fPlugin.isParameterSnapshotState(key);
+        if (snapshot)
+            fEventQueue.discardParameterValuesFromUI();
+
         fPlugin.setState(key, value);
 
         if (fPlugin.wantStateKey(key))
         {
             const String dkey(key);
             fStateMap[dkey] = value;
+        }
+
+        if (snapshot)
+        {
+           #if DAF_PLUGIN_WANT_PROGRAMS
+            const int32_t program = fPlugin.getCurrentProgram();
+            if (program >= 0 && static_cast<uint32_t>(program) < fPlugin.getProgramCount())
+                fCurrentProgram = static_cast<uint32_t>(program);
+           #endif
+            for (uint i=0; i<fCachedParameters.numParams; ++i)
+            {
+                if (fPlugin.isParameterOutputOrTrigger(i))
+                    continue;
+                fCachedParameters.values[i] = fPlugin.getParameterValue(i);
+                // Deliver on idle, after the editor has completed its state transaction.
+                fCachedParameters.changed[i] = true;
+            }
+
+            if (fHostExtensions.params != nullptr)
+                fHostExtensions.params->rescan(fHost, CLAP_PARAM_RESCAN_VALUES|CLAP_PARAM_RESCAN_TEXT);
+            if (fHostExtensions.state != nullptr && fHostExtensions.state->mark_dirty != nullptr)
+                fHostExtensions.state->mark_dirty(fHost);
         }
     }
    #endif
@@ -2296,6 +2592,11 @@ private:
     const clap_output_events_t* fOutputEvents;
 
     uint32_t fResetParameterIndex;
+   #if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+    uint16_t fSelectedInputChannels;
+    uint16_t fSelectedOutputChannels;
+    bool fSupportsAudioPortsConfig;
+   #endif
    #if DAF_PLUGIN_NUM_INPUTS != 0
     const float* fAudioInputs[DAF_PLUGIN_NUM_INPUTS];
    #endif
@@ -2334,6 +2635,9 @@ private:
     struct HostExtensions {
         const clap_host_t* const host;
         const clap_host_params_t* params;
+       #if DAF_PLUGIN_WANT_STATE
+        const clap_host_state_t* state;
+       #endif
        #if DAF_PLUGIN_WANT_LATENCY
         const clap_host_latency_t* latency;
        #endif
@@ -2344,6 +2648,9 @@ private:
         HostExtensions(const clap_host_t* const host)
             : host(host),
               params(nullptr)
+           #if DAF_PLUGIN_WANT_STATE
+            , state(nullptr)
+           #endif
            #if DAF_PLUGIN_WANT_LATENCY
             , latency(nullptr)
            #endif
@@ -2355,6 +2662,9 @@ private:
         bool init()
         {
             params = static_cast<const clap_host_params_t*>(host->get_extension(host, CLAP_EXT_PARAMS));
+           #if DAF_PLUGIN_WANT_STATE
+            state = static_cast<const clap_host_state_t*>(host->get_extension(host, CLAP_EXT_STATE));
+           #endif
            #if DAF_PLUGIN_WANT_LATENCY
             DAF_SAFE_ASSERT_RETURN(host->request_restart != nullptr, false);
             latency = static_cast<const clap_host_latency_t*>(host->get_extension(host, CLAP_EXT_LATENCY));
@@ -2379,6 +2689,42 @@ private:
         uint32_t groupId;
     };
     std::vector<BusInfo> fAudioInputBuses, fAudioOutputBuses;
+
+   #if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+    bool canUseAudioPortsConfig() const noexcept
+    {
+        if (fUsingCV || fAudioInputBuses.size() != 1 || fAudioOutputBuses.size() != 1)
+            return false;
+        if (! fAudioInputBuses[0].isMain || ! fAudioOutputBuses[0].isMain)
+            return false;
+        if (fAudioInputBuses[0].isCV || fAudioOutputBuses[0].isCV)
+            return false;
+        if (fAudioInputBuses[0].numChannels != DAF_PLUGIN_NUM_INPUTS
+            || fAudioOutputBuses[0].numChannels != DAF_PLUGIN_NUM_OUTPUTS)
+            return false;
+
+        for (uint32_t i=0; i<ARRAY_SIZE(kClapChannelConfigs); ++i)
+        {
+            const ClapChannelConfig& config(kClapChannelConfigs[i]);
+            if (config.inputs <= 0 || config.outputs <= 0
+                || config.inputs > DAF_PLUGIN_NUM_INPUTS
+                || config.outputs > DAF_PLUGIN_NUM_OUTPUTS)
+                return false;
+        }
+        return true;
+    }
+
+    void rebuildSimpleAudioBuses(const uint16_t inputs, const uint16_t outputs)
+    {
+        fAudioInputBuses.clear();
+        fAudioOutputBuses.clear();
+        fillInBusInfoDetails<true>();
+        fillInBusInfoDetails<false>();
+        fAudioInputBuses[0].numChannels = inputs;
+        fAudioOutputBuses[0].numChannels = outputs;
+        fillInBusInfoPairs();
+    }
+   #endif
 
     template<bool isInput>
     void fillInBusInfoDetails()
@@ -2821,6 +3167,35 @@ static const clap_plugin_audio_ports_t clap_plugin_audio_ports = {
 };
 #endif
 
+#if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+static uint32_t CLAP_ABI clap_plugin_audio_ports_config_count(const clap_plugin_t* const plugin)
+{
+    const PluginCLAP* const instance = static_cast<const PluginCLAP*>(plugin->plugin_data);
+    return instance->getAudioPortsConfigCount();
+}
+
+static bool CLAP_ABI clap_plugin_audio_ports_config_get(const clap_plugin_t* const plugin,
+                                                        const uint32_t index,
+                                                        clap_audio_ports_config_t* const config)
+{
+    const PluginCLAP* const instance = static_cast<const PluginCLAP*>(plugin->plugin_data);
+    return instance->getAudioPortsConfig(index, config);
+}
+
+static bool CLAP_ABI clap_plugin_audio_ports_config_select(const clap_plugin_t* const plugin,
+                                                           const clap_id configId)
+{
+    PluginCLAP* const instance = static_cast<PluginCLAP*>(plugin->plugin_data);
+    return instance->selectAudioPortsConfig(configId);
+}
+
+static const clap_plugin_audio_ports_config_t clap_plugin_audio_ports_config = {
+    clap_plugin_audio_ports_config_count,
+    clap_plugin_audio_ports_config_get,
+    clap_plugin_audio_ports_config_select
+};
+#endif
+
 // --------------------------------------------------------------------------------------------------------------------
 // plugin note ports
 
@@ -3028,7 +3403,7 @@ static clap_process_status CLAP_ABI clap_plugin_process(const clap_plugin_t* con
     return instance->process(process) ? CLAP_PROCESS_CONTINUE : CLAP_PROCESS_ERROR;
 }
 
-static const void* CLAP_ABI clap_plugin_get_extension(const clap_plugin_t*, const char* const id)
+static const void* CLAP_ABI clap_plugin_get_extension(const clap_plugin_t* const plugin, const char* const id)
 {
     if (std::strcmp(id, CLAP_EXT_PARAMS) == 0)
         return &clap_plugin_params;
@@ -3037,6 +3412,13 @@ static const void* CLAP_ABI clap_plugin_get_extension(const clap_plugin_t*, cons
    #if DAF_PLUGIN_NUM_INPUTS+DAF_PLUGIN_NUM_OUTPUTS != 0
     if (std::strcmp(id, CLAP_EXT_AUDIO_PORTS) == 0)
         return &clap_plugin_audio_ports;
+   #endif
+   #if DAF_CLAP_HAS_AUDIO_PORTS_CONFIG
+    if (std::strcmp(id, CLAP_EXT_AUDIO_PORTS_CONFIG) == 0)
+    {
+        const PluginCLAP* const instance = static_cast<const PluginCLAP*>(plugin->plugin_data);
+        return instance->supportsAudioPortsConfig() ? &clap_plugin_audio_ports_config : nullptr;
+    }
    #endif
    #if DAF_PLUGIN_WANT_MIDI_INPUT+DAF_PLUGIN_WANT_MIDI_OUTPUT != 0
     if (std::strcmp(id, CLAP_EXT_NOTE_PORTS) == 0)

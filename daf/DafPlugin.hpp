@@ -347,6 +347,34 @@ protected:
     virtual float getParameterValue(uint32_t index) const;
 
    /**
+      Whether this parameter supplies custom text conversion callbacks.
+      Custom conversion callbacks must be nonallocating and safe to call concurrently.
+      When true, a callback returning false reports invalid conversion; adapters must not
+      fall back to generic numeric parsing or formatting.
+    */
+    virtual bool hasCustomParameterText(uint32_t index) const { return false; }
+
+   /**
+      Format a parameter-domain value into @a text without allocating.
+      Null text or zero capacity must be handled safely by the override. Returns false
+      when conversion is unavailable or the buffer is insufficient.
+    */
+    virtual bool getParameterValueText(uint32_t index, float value, char* text, uint32_t capacity) const
+    {
+        return false;
+    }
+
+   /**
+      Parse @a text into a parameter-domain value without allocating.
+      Null text must be handled safely by the override. Returns false when conversion is
+      unavailable or invalid.
+    */
+    virtual bool getParameterValueFromText(uint32_t index, const char* text, float& value) const
+    {
+        return false;
+    }
+
+   /**
       Change a parameter value.@n
       The host may call this function from any context, including realtime processing.@n
       When a parameter is marked as automatable, you must ensure no non-realtime operations are performed.
@@ -361,6 +389,13 @@ protected:
       Must be implemented by your plugin class only if DAF_PLUGIN_WANT_PROGRAMS is enabled.
     */
     virtual void loadProgram(uint32_t index);
+
+   /**
+      Optional identity readback after a complete state recall.@n
+      Return the current factory program, or -1 when no program is known.
+      This getter must be safe to call concurrently with processing.
+    */
+    virtual int32_t getCurrentProgram() const { return -1; }
 #endif
 
 #if DAF_PLUGIN_WANT_FULL_STATE
@@ -379,6 +414,11 @@ protected:
       Must be implemented by your plugin class only if DAF_PLUGIN_WANT_STATE is enabled.
     */
     virtual void setState(const char* key, const char* value);
+
+   /** Validate a state value without changing the plugin. Called outside the audio callback.
+       Override for complete sound snapshots so wrappers can reject a malformed recall before
+       applying its program or parameters. The default preserves existing plugin behavior. */
+    virtual bool validateStateValue(const char*, const char*) const { return true; }
 #endif
 
    /* --------------------------------------------------------------------------------------------------------
@@ -431,7 +471,8 @@ protected:
    /**
       Optional callback to inform the plugin about audio port IO changes.@n
       This function will only be called when the plugin is deactivated.@n
-      Only used in AU (AudioUnit) format when DAF_PLUGIN_EXTRA_IO is defined.
+      Used by AU, and by CLAP/VST3 for supported main-bus configurations
+      declared with DAF_PLUGIN_EXTRA_IO.
       @see DAF_PLUGIN_EXTRA_IO
     */
     virtual void ioChanged(uint16_t numInputs, uint16_t numOutputs);

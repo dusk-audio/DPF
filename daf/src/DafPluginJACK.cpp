@@ -407,13 +407,18 @@ protected:
 
                 fTimePosition.bbt.ticksPerBeat   = pos.ticks_per_beat;
                 fTimePosition.bbt.beatsPerMinute = pos.beats_per_minute;
+                fTimePosition.bpmValid = pos.beats_per_minute > 0.0;
             }
             else
+            {
                 fTimePosition.bbt.valid = false;
+                fTimePosition.bpmValid = false;
+            }
         }
         else
         {
             fTimePosition.bbt.valid = false;
+            fTimePosition.bpmValid = false;
             fTimePosition.frame = 0;
         }
 

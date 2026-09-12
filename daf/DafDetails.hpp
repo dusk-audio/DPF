@@ -190,6 +190,15 @@ static constexpr const uint32_t kStateIsOnlyForDSP = 0x10;
  */
 static constexpr const uint32_t kStateIsOnlyForUI = 0x20;
 
+/**
+   State value is an immutable complete parameter snapshot.
+
+   Applying this state is a non-realtime operation at the plugin boundary. Adapters
+   must refresh their parameter caches and host/UI mirrors as one complete update;
+   they must not replay it as individual UI parameter edits.
+ */
+static constexpr const uint32_t kStateIsParameterSnapshot = 0x40;
+
 /** @} */
 
 /* --------------------------------------------------------------------------------------------------------------------
@@ -968,6 +977,12 @@ struct TimePosition {
     uint64_t frame;
 
    /**
+      Wherever the host supplied a valid tempo value.
+      This is independent of @a bbt.valid, which requires a complete BBT position.
+    */
+    bool bpmValid;
+
+   /**
       Bar-Beat-Tick time position.
     */
     struct BarBeatTick {
@@ -1062,6 +1077,7 @@ struct TimePosition {
     TimePosition() noexcept
         : playing(false),
           frame(0),
+          bpmValid(false),
           bbt() {}
 
    /**
@@ -1071,6 +1087,7 @@ struct TimePosition {
     {
         playing  = false;
         frame = 0;
+        bpmValid = false;
         bbt.clear();
     }
 };

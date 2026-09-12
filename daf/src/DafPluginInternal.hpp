@@ -667,6 +667,24 @@ public:
         return fData->parameters[index].hints;
     }
 
+    bool hasCustomParameterText(const uint32_t index) const
+    {
+        DAF_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, false);
+        return fPlugin->hasCustomParameterText(index);
+    }
+
+    bool getParameterValueText(const uint32_t index, const float value, char* const text, const uint32_t capacity) const
+    {
+        DAF_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount && text != nullptr && capacity > 0, false);
+        return fPlugin->getParameterValueText(index, value, text, capacity);
+    }
+
+    bool getParameterValueFromText(const uint32_t index, const char* const text, float& value) const
+    {
+        DAF_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount && text != nullptr, false);
+        return fPlugin->getParameterValueFromText(index, text, value);
+    }
+
     ParameterDesignation getParameterDesignation(const uint32_t index) const noexcept
     {
         DAF_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->parameterCount, kParameterDesignationNull);
@@ -855,6 +873,11 @@ public:
         return fData->programCount;
     }
 
+    int32_t getCurrentProgram() const noexcept
+    {
+        return fPlugin->getCurrentProgram();
+    }
+
     const String& getProgramName(const uint32_t index) const noexcept
     {
         DAF_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->programCount, sFallbackString);
@@ -884,6 +907,28 @@ public:
         DAF_SAFE_ASSERT_RETURN(fData != nullptr && index < fData->stateCount, 0x0);
 
         return fData->states[index].hints;
+    }
+
+    bool getStateHints(const char* const key, uint32_t& hints) const noexcept
+    {
+        DAF_SAFE_ASSERT_RETURN(fData != nullptr && key != nullptr, false);
+
+        for (uint32_t i=0; i<fData->stateCount; ++i)
+        {
+            if (fData->states[i].key == key)
+            {
+                hints = fData->states[i].hints;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool isParameterSnapshotState(const char* const key) const noexcept
+    {
+        uint32_t hints;
+        return getStateHints(key, hints) && (hints & kStateIsParameterSnapshot) != 0;
     }
 
     const String& getStateKey(const uint32_t index) const noexcept
@@ -932,6 +977,12 @@ public:
         return fPlugin->getState(key);
     }
    #endif
+
+    bool validateStateValue(const char* const key, const char* const value) const
+    {
+        DAF_SAFE_ASSERT_RETURN(key != nullptr && value != nullptr, false);
+        return fPlugin->validateStateValue(key, value);
+    }
 
     void setState(const char* const key, const char* const value)
     {
@@ -1039,7 +1090,7 @@ public:
 
     // -------------------------------------------------------------------
 
-   #ifdef DAF_PLUGIN_TARGET_AU
+   #if defined(DAF_PLUGIN_TARGET_AU) || defined(DAF_PLUGIN_TARGET_CLAP) || defined(DAF_PLUGIN_TARGET_VST3)
     void setAudioPortIO(const uint16_t numInputs, const uint16_t numOutputs)
     {
         DAF_SAFE_ASSERT_RETURN(fData != nullptr,);

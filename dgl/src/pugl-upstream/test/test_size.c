@@ -14,6 +14,22 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifdef _WIN32
+#  include <windows.h>
+
+static WNDPROC originalWindowProc = NULL;
+static unsigned nativeSizeEvents = 0;
+
+static LRESULT CALLBACK
+observeWindowSize(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+{
+  if (message == WM_SIZE) {
+    ++nativeSizeEvents;
+  }
+  return CallWindowProc(originalWindowProc, window, message, wParam, lParam);
+}
+#endif
+
 typedef enum {
   START,
   REALIZED,
@@ -115,6 +131,34 @@ main(int argc, char** argv)
   assert(size.height >= minSize);
   assert(size.width <= maxSize);
   assert(size.height <= maxSize);
+#endif
+
+#ifdef _WIN32
+  // A configure callback alone is insufficient: suppressing default processing
+  // of WM_WINDOWPOSCHANGED also suppresses WM_SIZE, leaving the WGL drawable at
+  // its old dimensions even though GetClientRect and Pugl report the new size.
+  const HWND window = (HWND)puglGetNativeView(test.view);
+  originalWindowProc = (WNDPROC)SetWindowLongPtr(
+    window, GWLP_WNDPROC, (LONG_PTR)observeWindowSize);
+  assert(originalWindowProc);
+  for (unsigned i = 0; i < 2; ++i) {
+    const unsigned before = nativeSizeEvents;
+    assert(SetWindowPos(window, NULL, 0, 0, i ? 256 : 384, i ? 256 : 384,
+                        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE));
+    if (nativeSizeEvents == before) {
+      fprintf(stderr, "FAIL: resize %u suppressed native WM_SIZE\n", i);
+      SetWindowLongPtr(window, GWLP_WNDPROC, (LONG_PTR)originalWindowProc);
+      puglFreeView(test.view);
+      puglFreeWorld(test.world);
+      return 1;
+    }
+    RECT client;
+    assert(GetClientRect(window, &client));
+    assert(test.configuredSize.width == (PuglSpan)(client.right - client.left));
+    assert(test.configuredSize.height == (PuglSpan)(client.bottom - client.top));
+  }
+  SetWindowLongPtr(window, GWLP_WNDPROC, (LONG_PTR)originalWindowProc);
+  fprintf(stdout, "PASS: native WM_SIZE delivered for growth and shrink\n");
 #endif
 
   // Tear down

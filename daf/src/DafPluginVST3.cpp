@@ -55,10 +55,26 @@
 #include "travesty/host.h"
 
 #include <map>
+#include <atomic>
+#include <memory>
+#include <new>
 #include <string>
 #include <vector>
 
 START_NAMESPACE_DAF
+
+// Optional block-control policy for ports preserving JUCE-style automation.
+// The default retains the existing frame-zero/next-block behavior.
+#ifndef DAF_PLUGIN_VST3_LAST_PARAMETER_POINT
+# define DAF_PLUGIN_VST3_LAST_PARAMETER_POINT 0
+#endif
+
+#if defined(DAF_PLUGIN_EXTRA_IO) && DAF_PLUGIN_NUM_INPUTS > 0 && DAF_PLUGIN_NUM_OUTPUTS > 0
+struct Vst3ChannelConfig { uint32_t inputs, outputs; };
+static constexpr Vst3ChannelConfig kVst3ChannelConfigs[] = {
+    { DAF_PLUGIN_NUM_INPUTS, DAF_PLUGIN_NUM_OUTPUTS }, DAF_PLUGIN_EXTRA_IO
+};
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -302,6 +318,30 @@ class PluginVst3
             groupPorts(0),
             cvPorts(0) {}
     } inputBuses, outputBuses;
+
+    bool fVariableAudioIO = false;
+    uint32_t fActiveInputCount = DAF_PLUGIN_NUM_INPUTS;
+    uint32_t fActiveOutputCount = DAF_PLUGIN_NUM_OUTPUTS;
+
+   #if defined(DAF_PLUGIN_EXTRA_IO) && DAF_PLUGIN_NUM_INPUTS > 0 && DAF_PLUGIN_NUM_OUTPUTS > 0
+    bool canUseVariableAudioIO() const noexcept
+    {
+        // Alternate main-bus layouts are additive. Preserve the established
+        // grouping/sidechain/CV behavior of complex plugins.
+        if (inputBuses.audio + inputBuses.groups != 1 || outputBuses.audio + outputBuses.groups != 1
+            || inputBuses.sidechain || outputBuses.sidechain || inputBuses.cvPorts || outputBuses.cvPorts)
+            return false;
+        for (uint32_t i=0; i<DAF_PLUGIN_NUM_INPUTS; ++i)
+            if (fPlugin.getAudioPort(true, i).busId != 0) return false;
+        for (uint32_t i=0; i<DAF_PLUGIN_NUM_OUTPUTS; ++i)
+            if (fPlugin.getAudioPort(false, i).busId != 0) return false;
+        for (const Vst3ChannelConfig& config : kVst3ChannelConfigs)
+            if (config.inputs == 0 || config.outputs == 0 || config.inputs > DAF_PLUGIN_NUM_INPUTS
+                || config.outputs > DAF_PLUGIN_NUM_OUTPUTS || config.inputs > UINT16_MAX || config.outputs > UINT16_MAX)
+                return false;
+        return true;
+    }
+   #endif
 
    #if DAF_PLUGIN_WANT_MIDI_INPUT
     /* Handy class for storing and sorting VST3 events and MIDI CC parameters.
@@ -602,6 +642,7 @@ public:
           fVst3ParameterCount(fParameterCount + kVst3InternalParameterCount),
           fCachedParameterValues(nullptr),
           fDummyAudioBuffer(nullptr),
+          fDummyOutputBuffer(nullptr),
           fParameterValuesChangedDuringProcessing(nullptr)
        #if DAF_VST3_USES_SEPARATE_CONTROLLER
         , fIsComponent(isComponent)
@@ -634,9 +675,13 @@ public:
         fillInBusInfoDetails<false>();
        #endif
 
+       #if defined(DAF_PLUGIN_EXTRA_IO) && DAF_PLUGIN_NUM_INPUTS > 0 && DAF_PLUGIN_NUM_OUTPUTS > 0
+        fVariableAudioIO = canUseVariableAudioIO();
+       #endif
+
         if (const uint32_t extraParameterCount = fParameterCount + kVst3InternalParameterBaseCount)
         {
-            fCachedParameterValues = new float[extraParameterCount];
+            fCachedParameterValues = new std::atomic<float>[extraParameterCount];
 
            #if DAF_VST3_USES_SEPARATE_CONTROLLER
             fCachedParameterValues[kVst3InternalParameterBufferSize] = fPlugin.getBufferSize();
@@ -652,12 +697,12 @@ public:
             for (uint32_t i=0; i < fParameterCount; ++i)
                 fCachedParameterValues[kVst3InternalParameterBaseCount + i] = fPlugin.getParameterDefault(i);
 
-            fParameterValuesChangedDuringProcessing = new bool[extraParameterCount];
-            std::memset(fParameterValuesChangedDuringProcessing, 0, sizeof(bool)*extraParameterCount);
+            fParameterValuesChangedDuringProcessing = new std::atomic<bool>[extraParameterCount];
+            for (uint32_t i=0; i<extraParameterCount; ++i) fParameterValuesChangedDuringProcessing[i] = false;
 
            #if DAF_PLUGIN_HAS_UI
-            fParameterValueChangesForUI = new bool[extraParameterCount];
-            std::memset(fParameterValueChangesForUI, 0, sizeof(bool)*extraParameterCount);
+            fParameterValueChangesForUI = new std::atomic<bool>[extraParameterCount];
+            for (uint32_t i=0; i<extraParameterCount; ++i) fParameterValueChangesForUI[i] = false;
            #endif
         }
 
@@ -688,6 +733,7 @@ public:
             delete[] fDummyAudioBuffer;
             fDummyAudioBuffer = nullptr;
         }
+        delete[] fDummyOutputBuffer;
 
         if (fParameterValuesChangedDuringProcessing != nullptr)
         {
@@ -954,6 +1000,8 @@ public:
         const bool connectedToUI = fConnectionFromCtrlToView != nullptr && fConnectedToUI;
        #endif
         bool componentValuesChanged = false;
+        struct PendingState { char type; String key, value; };
+        std::vector<PendingState> pending;
         String key, value;
         bool empty = true;
         bool hasValue = false;
@@ -980,6 +1028,9 @@ public:
                 // found terminator, stop here
                 if (buffer[i] == '\xfe')
                 {
+                    if ((queryingType != 'i' && queryingType != 'n' && queryingType != 'x')
+                        || !fillingKey || hasValue || !key.isEmpty() || !value.isEmpty())
+                        return V3_INVALID_ARG;
                     terminated = 1;
                     break;
                 }
@@ -1063,6 +1114,36 @@ public:
                     if (key == "__daf_program__")
                     {
                         DAF_SAFE_ASSERT_INT_RETURN(queryingType == 'i', queryingType, V3_INTERNAL_ERR);
+                        pending.push_back({queryingType, key, value});
+                        queryingType = 'n';
+                    }
+                    else pending.push_back({queryingType, key, value});
+
+                    key.clear();
+                    value.clear();
+                    hasValue = false;
+                }
+            }
+        }
+
+        bool parameterSnapshot = false;
+       #if DAF_PLUGIN_WANT_STATE
+        for (const auto& item : pending)
+        {
+            if (item.type != 's' || !fPlugin.wantStateKey(item.key)) continue;
+            if (!fPlugin.validateStateValue(item.key, item.value)) return V3_INVALID_ARG;
+            parameterSnapshot = parameterSnapshot || fPlugin.isParameterSnapshotState(item.key);
+        }
+       #endif
+        for (const auto& item : pending)
+        {
+            key = item.key;
+            value = item.value;
+            queryingType = item.type;
+            if (parameterSnapshot && (queryingType == 'p' || key == "__daf_program__")) continue;
+                    if (key == "__daf_program__")
+                    {
+                        DAF_SAFE_ASSERT_INT_RETURN(queryingType == 'i', queryingType, V3_INTERNAL_ERR);
                         queryingType = 'n';
 
                         d_debug("found program '%s'", value.buffer());
@@ -1072,7 +1153,7 @@ public:
                         DAF_SAFE_ASSERT_CONTINUE(program >= 0);
 
                         fCurrentProgram = static_cast<uint32_t>(program);
-                        fPlugin.loadProgram(fCurrentProgram);
+                        fPlugin.loadProgram(static_cast<uint32_t>(program));
 
                        #if DAF_PLUGIN_HAS_UI
                         if (connectedToUI)
@@ -1148,11 +1229,22 @@ public:
                         }
                     }
 
-                    key.clear();
-                    value.clear();
-                    hasValue = false;
-                }
+        }
+        if (parameterSnapshot)
+        {
+            for (uint32_t i = 0; i < fParameterCount; ++i)
+            {
+                if (fPlugin.isParameterOutputOrTrigger(i)) continue;
+                fCachedParameterValues[kVst3InternalParameterBaseCount + i] = fPlugin.getParameterValue(i);
+               #if DAF_VST3_USES_SEPARATE_CONTROLLER
+                if (fIsComponent)
+                fParameterValuesChangedDuringProcessing[kVst3InternalParameterBaseCount + i] = true;
+               #endif
             }
+           #if DAF_PLUGIN_WANT_PROGRAMS
+            syncCurrentProgram();
+           #endif
+            componentValuesChanged = true;
         }
 
         if (fComponentHandler != nullptr && componentValuesChanged)
@@ -1165,9 +1257,7 @@ public:
             {
                 if (fPlugin.isParameterOutputOrTrigger(i))
                     continue;
-                fParameterValueChangesForUI[kVst3InternalParameterBaseCount + i] = false;
-                sendParameterSetToUI(kVst3InternalParameterCount + i,
-                                     fCachedParameterValues[kVst3InternalParameterBaseCount + i]);
+                fParameterValueChangesForUI[kVst3InternalParameterBaseCount + i] = true;
             }
         }
        #endif
@@ -1289,6 +1379,29 @@ public:
     v3_result setBusArrangements(v3_speaker_arrangement* const inputs, const int32_t numInputs,
                                  v3_speaker_arrangement* const outputs, const int32_t numOutputs)
     {
+       #if defined(DAF_PLUGIN_EXTRA_IO) && DAF_PLUGIN_NUM_INPUTS > 0 && DAF_PLUGIN_NUM_OUTPUTS > 0
+        if (fVariableAudioIO)
+        {
+            if (numInputs != 1 || numOutputs != 1 || inputs == nullptr || outputs == nullptr)
+                return V3_INVALID_ARG;
+            for (const Vst3ChannelConfig& config : kVst3ChannelConfigs)
+            {
+                if (inputs[0] != portCountToSpeaker(config.inputs) || outputs[0] != portCountToSpeaker(config.outputs))
+                    continue;
+                if (config.inputs != fActiveInputCount || config.outputs != fActiveOutputCount)
+                {
+                    if (fPlugin.isActive()) return V3_FALSE;
+                    fPlugin.setAudioPortIO(static_cast<uint16_t>(config.inputs), static_cast<uint16_t>(config.outputs));
+                    fActiveInputCount = config.inputs;
+                    fActiveOutputCount = config.outputs;
+                }
+                for (uint32_t i=0; i<DAF_PLUGIN_NUM_INPUTS; ++i) fEnabledInputs[i] = i < config.inputs;
+                for (uint32_t i=0; i<DAF_PLUGIN_NUM_OUTPUTS; ++i) fEnabledOutputs[i] = i < config.outputs;
+                return V3_OK;
+            }
+            return V3_FALSE;
+        }
+       #endif
        #if DAF_PLUGIN_NUM_INPUTS > 0
         DAF_SAFE_ASSERT_RETURN(numInputs >= 0, V3_INVALID_ARG);
         if (!setAudioBusArrangement<true>(inputs, static_cast<uint32_t>(numInputs)))
@@ -1353,7 +1466,15 @@ public:
 
     v3_result setupProcessing(v3_process_setup* const setup)
     {
+        DAF_SAFE_ASSERT_RETURN(setup != nullptr && setup->max_block_size > 0, V3_INVALID_ARG);
         DAF_SAFE_ASSERT_RETURN(setup->symbolic_sample_size == V3_SAMPLE_32, V3_INVALID_ARG);
+
+        // Stage both buffers before changing the running configuration. Failed
+        // allocation must leave the old buffers owned and usable.
+        std::unique_ptr<float[]> inputBuffer(new (std::nothrow) float[setup->max_block_size]);
+        std::unique_ptr<float[]> outputBuffer(new (std::nothrow) float[setup->max_block_size]);
+        if (!inputBuffer || !outputBuffer)
+            return V3_NOMEM;
 
         const bool active = fPlugin.isActive();
         fPlugin.deactivateIfNeeded();
@@ -1378,7 +1499,9 @@ public:
             fPlugin.activate();
 
         delete[] fDummyAudioBuffer;
-        fDummyAudioBuffer = new float[setup->max_block_size];
+        fDummyAudioBuffer = inputBuffer.release();
+        delete[] fDummyOutputBuffer;
+        fDummyOutputBuffer = outputBuffer.release();
 
         return V3_OK;
     }
@@ -1410,6 +1533,7 @@ public:
             fPlugin.activate();
 
        #if DAF_PLUGIN_WANT_TIMEPOS
+        fTimePosition.bpmValid = false;
         if (v3_process_context* const ctx = data->ctx)
         {
             fTimePosition.playing = ctx->state & V3_PROCESS_CTX_PLAYING;
@@ -1423,7 +1547,10 @@ public:
                 fTimePosition.frame = ctx->continuous_time_in_samples;
 
             if (ctx->state & V3_PROCESS_CTX_TEMPO_VALID)
+            {
                 fTimePosition.bbt.beatsPerMinute = ctx->bpm;
+                fTimePosition.bpmValid = ctx->bpm > 0.0;
+            }
             else
                 fTimePosition.bbt.beatsPerMinute = 120.0;
 
@@ -1466,8 +1593,66 @@ public:
         }
        #endif
 
+       #if DAF_PLUGIN_WANT_PROGRAMS
+        // Program selection precedes ordinary parameter edits for this block.
+        // loadProgram is a realtime-capable plugin API; controller callbacks
+        // and host restart notifications must not run from this path.
+        if (v3_param_changes** const changes = data->input_params)
+        {
+            for (int32_t i=0, count=v3_cpp_obj(changes)->get_param_count(changes); i<count; ++i)
+            {
+                v3_param_value_queue** const queue = v3_cpp_obj(changes)->get_param_data(changes, i);
+                if (queue == nullptr || v3_cpp_obj(queue)->get_param_id(queue) != kVst3InternalParameterProgram)
+                    continue;
+                const int32_t points = v3_cpp_obj(queue)->get_point_count(queue);
+                int32_t offset;
+                double normalized;
+                if (points <= 0 || v3_cpp_obj(queue)->get_point(queue, points - 1, &offset, &normalized) != V3_OK
+                    || !std::isfinite(normalized) || normalized < 0.0 || normalized > 1.0)
+                    continue;
+                const uint32_t program = d_roundToIntPositive(normalized * fProgramCountMinusOne);
+                fPlugin.loadProgram(program);
+                fCurrentProgram.store(program, std::memory_order_relaxed);
+                fCachedParameterValues[kVst3InternalParameterProgram] = static_cast<float>(program);
+               #if DAF_PLUGIN_HAS_UI
+                fParameterValueChangesForUI[kVst3InternalParameterProgram] = true;
+               #endif
+                for (uint32_t p=0; p<fParameterCount; ++p)
+                {
+                    if (fPlugin.isParameterOutputOrTrigger(p)) continue;
+                    fCachedParameterValues[kVst3InternalParameterBaseCount + p] = fPlugin.getParameterValue(p);
+                   #if DAF_PLUGIN_HAS_UI
+                    fParameterValueChangesForUI[kVst3InternalParameterBaseCount + p] = true;
+                   #endif
+                }
+            }
+        }
+       #endif
+
         if (data->nframes <= 0)
         {
+            // A zero-frame call may flush parameter changes without audio
+            // buffers. Consume each queue's final value before returning.
+            if (v3_param_changes** const changes = data->input_params)
+            {
+                for (int32_t i=0, count=v3_cpp_obj(changes)->get_param_count(changes); i<count; ++i)
+                {
+                    v3_param_value_queue** const queue = v3_cpp_obj(changes)->get_param_data(changes, i);
+                    if (queue == nullptr) continue;
+                    const v3_param_id id = v3_cpp_obj(queue)->get_param_id(queue);
+                   #if DAF_VST3_HAS_INTERNAL_PARAMETERS
+                    if (id < kVst3InternalParameterCount) continue;
+                   #endif
+                    if (id >= fVst3ParameterCount) continue;
+                    const int32_t points = v3_cpp_obj(queue)->get_point_count(queue);
+                    int32_t offset;
+                    double normalized;
+                    if (points <= 0 || v3_cpp_obj(queue)->get_point(queue, points - 1, &offset, &normalized) != V3_OK)
+                        continue;
+                    if (!std::isfinite(normalized) || normalized < 0.0 || normalized > 1.0) continue;
+                    _setNormalizedPluginParameterValue(id - kVst3InternalParameterCount, normalized);
+                }
+            }
             updateParametersFromProcessing(data->output_params, 0);
             return V3_OK;
         }
@@ -1476,6 +1661,7 @@ public:
         /* */ float* outputs[DAF_PLUGIN_NUM_OUTPUTS != 0 ? DAF_PLUGIN_NUM_OUTPUTS : 1];
 
         std::memset(fDummyAudioBuffer, 0, sizeof(float)*data->nframes);
+        std::memset(fDummyOutputBuffer, 0, sizeof(float)*data->nframes);
 
         {
             int32_t i = 0;
@@ -1510,7 +1696,7 @@ public:
                     {
                         DAF_SAFE_ASSERT_INT_BREAK(i < DAF_PLUGIN_NUM_OUTPUTS, i);
                         if (!fEnabledOutputs[i] && i < DAF_PLUGIN_NUM_OUTPUTS) {
-                            outputs[i++] = fDummyAudioBuffer;
+                            outputs[i++] = fDummyOutputBuffer;
                             continue;
                         }
 
@@ -1520,7 +1706,7 @@ public:
             }
            #endif
             for (; i < std::max(1, DAF_PLUGIN_NUM_OUTPUTS); ++i)
-                outputs[i] = fDummyAudioBuffer;
+                outputs[i] = fDummyOutputBuffer;
         }
 
        #if DAF_PLUGIN_WANT_MIDI_OUTPUT
@@ -1606,11 +1792,14 @@ public:
                 if (v3_cpp_obj(queue)->get_point_count(queue) <= 0)
                     continue;
 
-                // if there are any parameter changes at frame 0, handle them here
-                if (v3_cpp_obj(queue)->get_point(queue, 0, &offset, &normalized) != V3_OK)
+                // Some ports require the final block value before processing,
+                // independent of the queue's sample offset (JUCE semantics).
+                const int32_t point = DAF_PLUGIN_VST3_LAST_PARAMETER_POINT
+                                    ? v3_cpp_obj(queue)->get_point_count(queue) - 1 : 0;
+                if (v3_cpp_obj(queue)->get_point(queue, point, &offset, &normalized) != V3_OK)
                     break;
 
-                if (offset != 0)
+                if (!DAF_PLUGIN_VST3_LAST_PARAMETER_POINT && offset != 0)
                     continue;
 
                 const uint32_t index = rindex - kVst3InternalParameterCount;
@@ -1629,6 +1818,7 @@ public:
         fHostEventOutputHandle = nullptr;
        #endif
 
+       #if !DAF_PLUGIN_VST3_LAST_PARAMETER_POINT
         // if there are any parameter changes after frame 0, set them here
         if (v3_param_changes** const inparamsptr = data->input_params)
         {
@@ -1664,6 +1854,7 @@ public:
             }
         }
 
+       #endif
         updateParametersFromProcessing(data->output_params, data->nframes - 1);
         return V3_OK;
     }
@@ -1846,6 +2037,15 @@ public:
         const uint32_t hints = fPlugin.getParameterHints(index);
         float value = ranges.getUnnormalizedValue(normalized);
 
+        if (fPlugin.hasCustomParameterText(index))
+        {
+            char text[128];
+            if (!fPlugin.getParameterValueText(index, value, text, sizeof(text)))
+                return V3_INVALID_ARG;
+            strncpy_utf16(output, text, 128);
+            return V3_OK;
+        }
+
         if (hints & kParameterIsBoolean)
         {
             const float midRange = ranges.min + (ranges.max - ranges.min) * 0.5f;
@@ -1920,6 +2120,16 @@ public:
         const ParameterEnumerationValues& enumValues(fPlugin.getParameterEnumValues(index));
         const ParameterRanges& ranges(fPlugin.getParameterRanges(index));
 
+        const ScopedUTF8String input8(input);
+        if (fPlugin.hasCustomParameterText(index))
+        {
+            float value;
+            if (!fPlugin.getParameterValueFromText(index, input8, value))
+                return V3_INVALID_ARG;
+            *output = ranges.getNormalizedValue(static_cast<double>(value));
+            return V3_OK;
+        }
+
         for (uint32_t i=0; i < enumValues.count; ++i)
         {
             if (strcmp_utf16(input, enumValues.values[i].label))
@@ -1928,8 +2138,6 @@ public:
                 return V3_OK;
             }
         }
-
-        const ScopedUTF8String input8(input);
 
         // Parse and normalise in double. Doing it in float rounds twice (the
         // parsed value, then the division by the range) and can land one ulp
@@ -2101,9 +2309,11 @@ public:
            #endif
            #if DAF_PLUGIN_WANT_PROGRAMS
             case kVst3InternalParameterProgram:
+            {
                 flags = V3_RESTART_PARAM_VALUES_CHANGED;
-                fCurrentProgram = fCachedParameterValues[rindex];
-                fPlugin.loadProgram(fCurrentProgram);
+                const uint32_t program = d_roundToIntPositive(normalized * fProgramCountMinusOne);
+                fCurrentProgram = program;
+                fPlugin.loadProgram(program);
 
                 for (uint32_t i=0; i<fParameterCount; ++i)
                 {
@@ -2116,6 +2326,7 @@ public:
                 fParameterValueChangesForUI[kVst3InternalParameterProgram] = true;
                #endif
                 break;
+            }
            #endif
             }
 
@@ -2264,28 +2475,25 @@ public:
         if (std::strcmp(msgid, "idle") == 0)
         {
            #if DAF_VST3_USES_SEPARATE_CONTROLLER
-            if (fParameterValueChangesForUI[kVst3InternalParameterSampleRate])
+            if (fParameterValueChangesForUI[kVst3InternalParameterSampleRate].exchange(false))
             {
-                fParameterValueChangesForUI[kVst3InternalParameterSampleRate] = false;
                 sendParameterSetToUI(kVst3InternalParameterSampleRate,
                                      fCachedParameterValues[kVst3InternalParameterSampleRate]);
             }
            #endif
 
            #if DAF_PLUGIN_WANT_PROGRAMS
-            if (fParameterValueChangesForUI[kVst3InternalParameterProgram])
+            if (fParameterValueChangesForUI[kVst3InternalParameterProgram].exchange(false))
             {
-                fParameterValueChangesForUI[kVst3InternalParameterProgram] = false;
                 sendParameterSetToUI(kVst3InternalParameterProgram, fCurrentProgram);
             }
            #endif
 
             for (uint32_t i=0; i<fParameterCount; ++i)
             {
-                if (! fParameterValueChangesForUI[kVst3InternalParameterBaseCount + i])
+                if (! fParameterValueChangesForUI[kVst3InternalParameterBaseCount + i].exchange(false))
                     continue;
 
-                fParameterValueChangesForUI[kVst3InternalParameterBaseCount + i] = false;
                 sendParameterSetToUI(kVst3InternalParameterCount + i,
                                      fCachedParameterValues[kVst3InternalParameterBaseCount + i]);
             }
@@ -2387,7 +2595,49 @@ public:
         return V3_NOT_IMPLEMENTED;
     }
 
+   #if DAF_PLUGIN_WANT_PROGRAMS
+    void syncCurrentProgram()
+    {
+        const int32_t program = fPlugin.getCurrentProgram();
+        if (program < 0 || static_cast<uint32_t>(program) >= fPlugin.getProgramCount()) return;
+        fCurrentProgram = static_cast<uint32_t>(program);
+        fCachedParameterValues[kVst3InternalParameterProgram] = static_cast<float>(program);
+       #if DAF_PLUGIN_HAS_UI
+        fParameterValueChangesForUI[kVst3InternalParameterProgram] = true;
+       #endif
+    }
+   #endif
+
    #if DAF_PLUGIN_WANT_STATE
+    void syncParameterSnapshot()
+    {
+       #if DAF_PLUGIN_WANT_PROGRAMS
+        syncCurrentProgram();
+       #endif
+        bool changed = false;
+
+        for (uint32_t i=0; i<fParameterCount; ++i)
+        {
+            if (fPlugin.isParameterOutputOrTrigger(i))
+                continue;
+
+            const float value = fPlugin.getParameterValue(i);
+            fCachedParameterValues[kVst3InternalParameterBaseCount + i] = value;
+           #if DAF_VST3_USES_SEPARATE_CONTROLLER
+            if (fIsComponent)
+            fParameterValuesChangedDuringProcessing[kVst3InternalParameterBaseCount + i] = true;
+           #endif
+            changed = true;
+
+           #if DAF_PLUGIN_HAS_UI
+            fParameterValueChangesForUI[kVst3InternalParameterBaseCount + i] = true;
+           #endif
+        }
+
+        if (changed && fComponentHandler != nullptr)
+            v3_cpp_obj(fComponentHandler)->restart_component(fComponentHandler, V3_RESTART_PARAM_VALUES_CHANGED);
+    }
+
     v3_result notify_state(v3_attribute_list** const attrs)
     {
         int64_t keyLength = -1;
@@ -2429,7 +2679,16 @@ public:
         key[keyLength] = '\0';
         value[valueLength] = '\0';
 
+        if (!fPlugin.validateStateValue(key, value))
+        {
+            std::free(key16);
+            std::free(value16);
+            return V3_INVALID_ARG;
+        }
         fPlugin.setState(key, value);
+
+        if (fPlugin.isParameterSnapshotState(key))
+            syncParameterSnapshot();
 
         // save this key as needed
         if (fPlugin.wantStateKey(key))
@@ -2481,9 +2740,10 @@ private:
     // Temporary data
     const uint32_t fParameterCount;
     const uint32_t fVst3ParameterCount; // full offset + real
-    float* fCachedParameterValues; // basic offset + real
+    std::atomic<float>* fCachedParameterValues; // basic offset + real
     float* fDummyAudioBuffer;
-    bool* fParameterValuesChangedDuringProcessing; // basic offset + real
+    float* fDummyOutputBuffer;
+    std::atomic<bool>* fParameterValuesChangedDuringProcessing; // basic offset + real
    #if DAF_PLUGIN_NUM_INPUTS > 0
     bool fEnabledInputs[DAF_PLUGIN_NUM_INPUTS];
    #endif
@@ -2494,7 +2754,7 @@ private:
     const bool fIsComponent;
    #endif
    #if DAF_PLUGIN_HAS_UI
-    bool* fParameterValueChangesForUI; // basic offset + real
+    std::atomic<bool>* fParameterValueChangesForUI; // basic offset + real
     bool fConnectedToUI;
    #endif
    #if DAF_PLUGIN_WANT_LATENCY
@@ -2510,7 +2770,7 @@ private:
     v3_event_list** fHostEventOutputHandle;
    #endif
    #if DAF_PLUGIN_WANT_PROGRAMS
-    uint32_t fCurrentProgram;
+    std::atomic<uint32_t> fCurrentProgram;
     const uint32_t fProgramCountMinusOne;
    #endif
    #if DAF_PLUGIN_WANT_STATE
@@ -2728,7 +2988,7 @@ private:
         std::memset(info, 0, sizeof(v3_bus_info));
         info->media_type = V3_AUDIO;
         info->direction = isInput ? V3_INPUT : V3_OUTPUT;
-        info->channel_count = numChannels;
+        info->channel_count = fVariableAudioIO ? (isInput ? fActiveInputCount : fActiveOutputCount) : numChannels;
         std::memcpy(info->bus_name, busName, sizeof(busName));
         info->bus_type = busType;
         info->flags = flags;
@@ -2806,6 +3066,12 @@ private:
     template<bool isInput>
     bool getAudioBusArrangement(uint32_t busId, v3_speaker_arrangement* const speaker) const
     {
+        if (fVariableAudioIO)
+        {
+            if (busId != 0) return false;
+            *speaker = portCountToSpeaker(isInput ? fActiveInputCount : fActiveOutputCount);
+            return true;
+        }
         constexpr const uint32_t numPorts = isInput ? DAF_PLUGIN_NUM_INPUTS : DAF_PLUGIN_NUM_OUTPUTS;
         const BusInfo& busInfo(isInput ? inputBuses : outputBuses);
 
@@ -2911,11 +3177,10 @@ private:
        #if DAF_VST3_USES_SEPARATE_CONTROLLER
         for (v3_param_id i=kVst3InternalParameterBufferSize; i<=kVst3InternalParameterSampleRate; ++i)
         {
-            if (! fParameterValuesChangedDuringProcessing[i])
+            if (! fParameterValuesChangedDuringProcessing[i].exchange(false))
                 continue;
 
             normalized = plainParameterToNormalized(i, fCachedParameterValues[i]);
-            fParameterValuesChangedDuringProcessing[i] = false;
             addParameterDataToHostOutputEvents(outparamsptr, i, normalized);
         }
        #endif
@@ -2927,7 +3192,7 @@ private:
                 // NOTE: no output parameter support in VST3, simulate it here
                 curValue = fPlugin.getParameterValue(i);
 
-                if (d_isEqual(curValue, fCachedParameterValues[kVst3InternalParameterBaseCount + i]))
+                if (d_isEqual(curValue, fCachedParameterValues[kVst3InternalParameterBaseCount + i].load()))
                     continue;
             }
             else if (fPlugin.isParameterTrigger(i))
@@ -2942,9 +3207,8 @@ private:
                 curValue = defValue;
                 fPlugin.setParameterValue(i, curValue);
             }
-            else if (fParameterValuesChangedDuringProcessing[kVst3InternalParameterBaseCount + i])
+            else if (fParameterValuesChangedDuringProcessing[kVst3InternalParameterBaseCount + i].exchange(false))
             {
-                fParameterValuesChangedDuringProcessing[kVst3InternalParameterBaseCount + i] = false;
                 curValue = fPlugin.getParameterValue(i);
             }
             else

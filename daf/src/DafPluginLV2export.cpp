@@ -140,7 +140,7 @@ static constexpr const char* const lv2ManifestPluginOptionalFeatures[] = {
     LV2_STATE__mapPath,
     LV2_STATE__freePath,
    #endif
-   #if DAF_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
+   #if DAF_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST || DAF_PLUGIN_WANT_STATE
     LV2_CONTROL_INPUT_PORT_CHANGE_REQUEST_URI,
    #endif
     nullptr

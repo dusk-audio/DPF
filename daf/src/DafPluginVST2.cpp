@@ -1017,6 +1017,7 @@ public:
        #if DAF_PLUGIN_WANT_TIMEPOS
         static constexpr const int kWantVstTimeFlags = 0x2602;
 
+        fTimePosition.bpmValid = false;
         if (const VstTimeInfo* const vstTimeInfo = (const VstTimeInfo*)hostCallback(VST_HOST_OPCODE_07, 0, kWantVstTimeFlags))
         {
             fTimePosition.frame   = vstTimeInfo->samplePos;
@@ -1025,7 +1026,8 @@ public:
             // ticksPerBeat is not possible with VST2
             fTimePosition.bbt.ticksPerBeat = 1920.0;
 
-            if (vstTimeInfo->flags & 0x400)
+            fTimePosition.bpmValid = (vstTimeInfo->flags & 0x400) != 0 && vstTimeInfo->tempo > 0.0;
+            if (fTimePosition.bpmValid)
                 fTimePosition.bbt.beatsPerMinute = vstTimeInfo->tempo;
             else
                 fTimePosition.bbt.beatsPerMinute = 120.0;

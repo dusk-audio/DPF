@@ -585,6 +585,20 @@ public:
             outWritable = false;
             return noErr;
 
+        case kAudioUnitProperty_ParameterStringFromValue:
+            DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
+            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
+            outDataSize = sizeof(AudioUnitParameterStringFromValue);
+            outWritable = false;
+            return noErr;
+
+        case kAudioUnitProperty_ParameterValueFromString:
+            DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
+            DAF_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
+            outDataSize = sizeof(AudioUnitParameterValueFromString);
+            outWritable = false;
+            return noErr;
+
        #if 0
         case kAudioUnitProperty_FastDispatch:
             DAF_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
@@ -948,18 +962,52 @@ public:
                     else
                         info->unit = kAudioUnitParameterUnit_Generic;
 
-                    // | kAudioUnitParameterFlag_ValuesHaveStrings;
-
                     const String& name(fPlugin.getParameterName(inElement));
                     d_strncpy(info->name, name, sizeof(info->name));
                     info->cfNameString = CFStringCreateWithCString(nullptr, name, kCFStringEncodingUTF8);
                 }
+
+                if (fPlugin.hasCustomParameterText(inElement))
+                    info->flags |= kAudioUnitParameterFlag_ValuesHaveStrings;
 
                 info->minValue = ranges.min;
                 info->maxValue = ranges.max;
                 info->defaultValue = ranges.def;
             }
             return noErr;
+
+        case kAudioUnitProperty_ParameterStringFromValue:
+            {
+                AudioUnitParameterStringFromValue* const request = static_cast<AudioUnitParameterStringFromValue*>(outData);
+                if (request == nullptr || request->inParamID >= fParameterCount || request->inValue == nullptr)
+                    return kAudio_ParamError;
+                if (!fPlugin.hasCustomParameterText(request->inParamID))
+                    return kAudioUnitErr_InvalidPropertyValue;
+
+                char text[256];
+                if (!fPlugin.getParameterValueText(request->inParamID, *request->inValue, text, sizeof(text)))
+                    return kAudioUnitErr_InvalidPropertyValue;
+                request->outString = CFStringCreateWithCString(nullptr, text, kCFStringEncodingUTF8);
+                return request->outString != nullptr ? noErr : kAudio_ParamError;
+            }
+
+        case kAudioUnitProperty_ParameterValueFromString:
+            {
+                AudioUnitParameterValueFromString* const request = static_cast<AudioUnitParameterValueFromString*>(outData);
+                if (request == nullptr || request->inParamID >= fParameterCount || request->inString == nullptr)
+                    return kAudio_ParamError;
+                if (!fPlugin.hasCustomParameterText(request->inParamID))
+                    return kAudioUnitErr_InvalidPropertyValue;
+
+                char text[256];
+                if (!CFStringGetCString(request->inString, text, sizeof(text), kCFStringEncodingUTF8))
+                    return kAudioUnitErr_InvalidPropertyValue;
+                float value;
+                if (!fPlugin.getParameterValueFromText(request->inParamID, text, value))
+                    return kAudioUnitErr_InvalidPropertyValue;
+                request->outValue = value;
+                return noErr;
+            }
 
        #if 0
         case kAudioUnitProperty_FastDispatch:
@@ -1798,6 +1846,12 @@ public:
                 DAF_SAFE_ASSERT_RETURN(CFStringGetCString(valueRef, value, valueRefLen + 1, kCFStringEncodingUTF8),
                                            kAudioUnitErr_InvalidPropertyValue);
 
+                if (!fPlugin.validateStateValue(key, value))
+                {
+                    std::free(key);
+                    std::free(value);
+                    return kAudioUnitErr_InvalidPropertyValue;
+                }
                 const String dkey(key);
 
                 // save this key as needed
@@ -1805,6 +1859,8 @@ public:
                     fStateMap[dkey] = value;
 
                 fPlugin.setState(dkey, value);
+                if (fPlugin.isParameterSnapshotState(dkey))
+                    syncParameterSnapshot();
 
                 std::free(key);
                 std::free(value);
@@ -2545,6 +2601,7 @@ private:
        #endif
 
        #if DAF_PLUGIN_WANT_TIMEPOS
+        fTimePosition.bpmValid = false;
         if (fHostCallbackInfo.beatAndTempoProc != nullptr ||
             fHostCallbackInfo.musicalTimeLocationProc != nullptr ||
             fHostCallbackInfo.transportStateProc != nullptr)
@@ -2579,10 +2636,12 @@ private:
                 fTimePosition.bbt.beat  = static_cast<int32_t>(std::fmod(beat, f1)) + 1;
                 fTimePosition.bbt.tick  = std::fmod(g1, 1.0) * 1920.0;
                 fTimePosition.bbt.beatsPerMinute = g2;
+                fTimePosition.bpmValid = g2 > 0.0;
             }
             else
             {
                 fTimePosition.bbt.valid = false;
+                fTimePosition.bpmValid = false;
                 fTimePosition.bbt.bar   = 1;
                 fTimePosition.bbt.beat  = 1;
                 fTimePosition.bbt.tick  = 0.0;
@@ -2888,9 +2947,45 @@ private:
                                                                  reinterpret_cast<const void**>(&data)),);
         DAF_SAFE_ASSERT_RETURN(CFGetTypeID(data) == CFDictionaryGetTypeID(),);
 
+        bool parameterSnapshot = false;
+       #if DAF_PLUGIN_WANT_STATE
+        StringMap pendingStates;
+        CFArrayRef statesRef = nullptr;
+        if (CFDictionaryGetValueIfPresent(data, CFSTR("states"), reinterpret_cast<const void**>(&statesRef)))
+        {
+            if (statesRef == nullptr || CFGetTypeID(statesRef) != CFArrayGetTypeID()) return;
+            const auto readString = [](CFStringRef ref, CFStringEncoding encoding, String& out) {
+                if (ref == nullptr || CFGetTypeID(ref) != CFStringGetTypeID()) return false;
+                const CFIndex capacity = CFStringGetMaximumSizeForEncoding(CFStringGetLength(ref), encoding);
+                if (capacity < 0) return false;
+                std::vector<char> bytes(static_cast<size_t>(capacity) + 1u);
+                if (!CFStringGetCString(ref, bytes.data(), capacity + 1, encoding)) return false;
+                out = bytes.data();
+                return true;
+            };
+            for (CFIndex i = 0; i < CFArrayGetCount(statesRef); ++i)
+            {
+                const CFDictionaryRef state = static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(statesRef, i));
+                if (state == nullptr || CFGetTypeID(state) != CFDictionaryGetTypeID()
+                    || CFDictionaryGetCount(state) != 1) return;
+                CFStringRef keyRef = nullptr, valueRef = nullptr;
+                CFDictionaryGetKeysAndValues(state, reinterpret_cast<const void**>(&keyRef),
+                                            reinterpret_cast<const void**>(&valueRef));
+                String key, value;
+                if (!readString(keyRef, kCFStringEncodingASCII, key)
+                    || !readString(valueRef, kCFStringEncodingUTF8, value)) return;
+                if (!fPlugin.wantStateKey(key)) continue;
+                if (pendingStates.find(key) != pendingStates.end()
+                    || !fPlugin.validateStateValue(key, value)) return;
+                pendingStates[key] = value;
+                parameterSnapshot = parameterSnapshot || fPlugin.isParameterSnapshotState(key);
+            }
+        }
+       #endif
+
        #if DAF_PLUGIN_WANT_PROGRAMS
         CFNumberRef programRef = nullptr;
-        if (CFDictionaryGetValueIfPresent(data, CFSTR("program"), reinterpret_cast<const void**>(&programRef))
+        if (!parameterSnapshot && CFDictionaryGetValueIfPresent(data, CFSTR("program"), reinterpret_cast<const void**>(&programRef))
             && CFGetTypeID(programRef) == CFNumberGetTypeID())
         {
             SInt32 program = -1;
@@ -2916,72 +3011,23 @@ private:
        #endif
 
        #if DAF_PLUGIN_WANT_STATE
-        CFArrayRef statesRef = nullptr;
-        if (CFDictionaryGetValueIfPresent(data, CFSTR("states"), reinterpret_cast<const void**>(&statesRef))
-            && CFGetTypeID(statesRef) == CFArrayGetTypeID())
+        for (const auto& item : pendingStates)
         {
-            const CFIndex numStates = CFArrayGetCount(statesRef);
-            char* key = nullptr;
-            char* value = nullptr;
-            CFIndex keyLen = -1;
-            CFIndex valueLen = -1;
-
-            for (CFIndex i=0; i<numStates; ++i)
-            {
-                const CFDictionaryRef state = static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(statesRef, i));
-                DAF_SAFE_ASSERT_BREAK(CFGetTypeID(state) == CFDictionaryGetTypeID());
-                DAF_SAFE_ASSERT_BREAK(CFDictionaryGetCount(state) == 1);
-
-                CFStringRef keyRef = nullptr;
-                CFStringRef valueRef = nullptr;
-                CFDictionaryGetKeysAndValues(state,
-                                             reinterpret_cast<const void**>(&keyRef),
-                                             reinterpret_cast<const void**>(&valueRef));
-                DAF_SAFE_ASSERT_BREAK(keyRef != nullptr && CFGetTypeID(keyRef) == CFStringGetTypeID());
-                DAF_SAFE_ASSERT_BREAK(valueRef != nullptr && CFGetTypeID(valueRef) == CFStringGetTypeID());
-
-                const CFIndex keyRefLen = CFStringGetLength(keyRef);
-                if (keyLen < keyRefLen)
+            fStateMap[item.first] = item.second;
+            fPlugin.setState(item.first, item.second);
+            for (uint32_t j = 0; j < fStateCount; ++j)
+                if (fPlugin.getStateKey(j) == item.first)
                 {
-                    keyLen = keyRefLen;
-                    key = static_cast<char*>(std::realloc(key, keyLen + 1));
+                    if ((fPlugin.getStateHints(j) & kStateIsOnlyForDSP) == 0x0)
+                        notifyPropertyListeners('DPFs', kAudioUnitScope_Global, j);
+                    break;
                 }
-                DAF_SAFE_ASSERT_BREAK(CFStringGetCString(keyRef, key, keyLen + 1, kCFStringEncodingASCII));
-
-                if (! fPlugin.wantStateKey(key))
-                    continue;
-
-                const CFIndex valueRefLen = CFStringGetLength(valueRef);
-                if (valueLen < valueRefLen)
-                {
-                    valueLen = valueRefLen;
-                    value = static_cast<char*>(std::realloc(value, valueLen + 1));
-                }
-                DAF_SAFE_ASSERT_BREAK(CFStringGetCString(valueRef, value, valueLen + 1, kCFStringEncodingUTF8));
-
-                const String dkey(key);
-                fStateMap[dkey] = value;
-                fPlugin.setState(key, value);
-
-                for (uint32_t j=0; j<fStateCount; ++j)
-                {
-                    if (fPlugin.getStateKey(j) == key)
-                    {
-                        if ((fPlugin.getStateHints(i) & kStateIsOnlyForDSP) == 0x0)
-                            notifyPropertyListeners('DPFs', kAudioUnitScope_Global, j);
-
-                        break;
-                    }
-                }
-            }
-
-            std::free(key);
-            std::free(value);
         }
+        if (parameterSnapshot) syncParameterSnapshot();
        #endif
 
         CFArrayRef paramsRef = nullptr;
-        if (CFDictionaryGetValueIfPresent(data, CFSTR("params"), reinterpret_cast<const void**>(&paramsRef))
+        if (!parameterSnapshot && CFDictionaryGetValueIfPresent(data, CFSTR("params"), reinterpret_cast<const void**>(&paramsRef))
             && CFGetTypeID(paramsRef) == CFArrayGetTypeID())
         {
             const CFIndex numParams = CFArrayGetCount(paramsRef);
@@ -3089,6 +3135,38 @@ private:
    #endif
 
    #if DAF_PLUGIN_WANT_STATE
+    void syncParameterSnapshot()
+    {
+       #if DAF_PLUGIN_WANT_PROGRAMS
+        const int32_t program = fPlugin.getCurrentProgram();
+        if (program >= 0 && static_cast<uint32_t>(program) < fPlugin.getProgramCount())
+        {
+            fCurrentProgram = program;
+            notifyPropertyListeners(kAudioUnitProperty_PresentPreset, kAudioUnitScope_Global, 0);
+        }
+       #endif
+        for (uint32_t i=0; i<fParameterCount; ++i)
+        {
+            if (fPlugin.isParameterOutputOrTrigger(i))
+                continue;
+
+            const float value = fPlugin.getParameterValue(i);
+            fLastParameterValues[i] = value;
+
+            AudioUnitEvent event;
+            std::memset(&event, 0, sizeof(event));
+            event.mEventType                        = kAudioUnitEvent_ParameterValueChange;
+            event.mArgument.mParameter.mAudioUnit   = fComponent;
+            event.mArgument.mParameter.mParameterID = i;
+            event.mArgument.mParameter.mScope       = kAudioUnitScope_Global;
+            AUEventListenerNotify(NULL, NULL, &event);
+            notifyPropertyListeners('DPFp', kAudioUnitScope_Global, i);
+
+            if (fBypassParameterIndex == i)
+                notifyPropertyListeners(kAudioUnitProperty_BypassEffect, kAudioUnitScope_Global, 0);
+        }
+    }
+
     bool updateState(const char* const key, const char* const newValue)
     {
         fPlugin.setState(key, newValue);

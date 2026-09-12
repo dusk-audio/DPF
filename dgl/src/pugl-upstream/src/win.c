@@ -782,6 +782,10 @@ handleMessage(PuglView* view, UINT message, WPARAM wParam, LPARAM lParam)
       }
     }
     handleConfigure(view, &event);
+    // Preserve WM_SIZE/WM_MOVE generation. In particular, WGL needs WM_SIZE to
+    // resize its drawable; a Pugl configure event alone leaves the old buffer
+    // dimensions and offsets/clips rendering after the native window shrinks.
+    DefWindowProc(view->impl->hwnd, message, wParam, lParam);
     break;
   case WM_SIZING:
     if (puglIsValidArea(view->sizeHints[PUGL_MIN_ASPECT]) &&
